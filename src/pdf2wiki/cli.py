@@ -23,7 +23,7 @@ def _cmd_convert(a, cfg):
     else:
         ex = LocalExecutor()
         ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root,
-                             cfg.remote.convert_timeout)
+                             cfg.convert.timeout)
         # local progress already streamed live by convert_book — don't print the log twice
     return 0 if ok else 1
 

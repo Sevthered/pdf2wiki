@@ -38,6 +38,7 @@ class MineruConfig:
 class ConvertConfig:
     out_root: str = "~/pdf2wiki/out"
     workdir: str = "~/.pdf2wiki/run"    # clean cwd for MinerU subprocesses (see README: stdlib-shadow gotcha)
+    timeout: int = 7200                 # seconds per MinerU pass (local conversion)
     gap: int = 3                        # merge nearby rich pages into one hybrid run if gap <= this
     seg: int = 40                       # pipeline segment size (pages) for chunked passes
     maxrun: int = 25                    # cap on a single hybrid run length (pages)

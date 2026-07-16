@@ -14,6 +14,9 @@ def build_review(qa_dir: str, name: str, blocks_path: str | None = None) -> dict
     with open(os.path.join(qa, "mapping.json")) as f:
         mapping = {m["sample_idx"]: m["orig_page"] for m in json.load(f)}
 
+    # NOTE: blocks.json here comes from converting the SAMPLE pdf, so abs_page IS the sample
+    # index (the sample pdf's pages are 0..N-1). mapping only translates it back to the original
+    # book page for display. Do not "fix" this to key by original page.
     bypage: dict[int, list] = {}
     for b in blocks:
         bypage.setdefault(int(b.get("abs_page", 0)), []).append(b)

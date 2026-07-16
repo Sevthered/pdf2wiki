@@ -47,12 +47,21 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
 
     manifest: dict = {}
     if os.path.exists(manifest_path):
-        with open(manifest_path) as f:
-            manifest = json.load(f)
+        try:
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+        except json.JSONDecodeError as e:
+            raise SystemExit(
+                f"status manifest {manifest_path} is corrupt ({e}). "
+                f"Repair or delete it (deleting restarts every book) and re-run."
+            )
 
     def save():
-        with open(manifest_path, "w") as f:
+        # atomic: a kill mid-dump must never truncate the manifest (it's the resume backbone)
+        tmp = manifest_path + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(manifest, f, indent=1)
+        os.replace(tmp, manifest_path)
 
     if remote:
         ex = SSHExecutor(remote, cfg.remote.books_dir, cfg.remote.workdir,
@@ -81,7 +90,8 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
         print(f"=== {slug} ({domain or 'no domain'}) ===", flush=True)
         t0 = time.time()
 
-        ok, log = ex.convert(b["pdf"], slug, cfg.convert.out_root, cfg.remote.convert_timeout)
+        timeout = cfg.remote.convert_timeout if remote else cfg.convert.timeout
+        ok, log = ex.convert(b["pdf"], slug, cfg.convert.out_root, timeout)
         if not ok:
             print(f"  CONVERT FAILED: {slug} — log tail:\n{log[-2000:]}")
             manifest[slug] = {"status": "convert_failed", "domain": domain}

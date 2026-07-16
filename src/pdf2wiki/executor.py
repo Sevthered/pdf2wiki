@@ -34,12 +34,19 @@ class LocalExecutor:
         return os.path.join(os.path.expanduser(out_root), slug)
 
 
+def _remote_path(p: str) -> str:
+    """Normalize a remote path: `~/x` becomes `x` (relative to the remote home, which is where
+    non-interactive ssh commands start). shlex.quote() would otherwise make the tilde literal —
+    the remote shell never expands a quoted `~`."""
+    return p[2:] if p.startswith("~/") else p
+
+
 class SSHExecutor:
     def __init__(self, host: str, books_dir: str, workdir: str,
                  connect_timeout: int = 8, convert_timeout: int = 7200):
         self.host = host
-        self.books_dir = books_dir
-        self.workdir = workdir
+        self.books_dir = _remote_path(books_dir) if books_dir else books_dir
+        self.workdir = _remote_path(workdir)
         self.connect_timeout = connect_timeout
         self.convert_timeout = convert_timeout
 
@@ -61,6 +68,7 @@ class SSHExecutor:
         """Run pdf2wiki's converter on the remote host. pdf_filename is relative to books_dir.
         Returns (ok, remote_log_text)."""
         remote_pdf = f"{self.books_dir}/{pdf_filename}"
+        out_root = _remote_path(out_root)
         log = f"{self.workdir}/logs/{slug}.log"
         inner = (
             f"mkdir -p {shlex.quote(self.workdir)}/logs && "
@@ -68,17 +76,28 @@ class SSHExecutor:
             f"--out {shlex.quote(out_root)} > {shlex.quote(log)} 2>&1; echo EXIT=$?"
         )
         r = self._run(["ssh", self.host, inner], timeout=timeout or self.convert_timeout)
-        logtext = self._run(["ssh", self.host, f"cat {shlex.quote(log)}"]).stdout
-        ok = "EXIT=0" in r.stdout and "FAILED" not in logtext
+        logfetch = self._run(["ssh", self.host, f"cat {shlex.quote(log)}"])
+        logtext = logfetch.stdout if logfetch.returncode == 0 else \
+            f"(could not fetch remote log {log}: {logfetch.stderr.strip()})"
+        # the remote CLI's exit code is authoritative (pdf2wiki convert returns non-zero on any
+        # failure) — do not scrape the log for failure words; book content may contain them
+        ok = "EXIT=0" in r.stdout
         return ok, logtext
 
     def fetch(self, slug: str, out_root: str, dest_dir: str) -> bool:
-        """Pull <out_root>/<slug>/{<slug>.md, images/} from the remote host."""
+        """Pull <out_root>/<slug>/{<slug>.md, images/} from the remote host. scp exit codes are
+        checked — a partial pull must fail loudly, not continue with missing artifacts."""
         os.makedirs(dest_dir, exist_ok=True)
+        out_root = _remote_path(out_root)
         md = f"{out_root}/{slug}/{slug}.md"
-        self._run(["scp", "-q", f"{self.host}:{md}", os.path.join(dest_dir, f"{slug}.md")])
-        self._run(["scp", "-q", "-r", f"{self.host}:{out_root}/{slug}/images",
-                   os.path.join(dest_dir, "images")])
+        r1 = self._run(["scp", "-q", f"{self.host}:{md}", os.path.join(dest_dir, f"{slug}.md")])
+        if r1.returncode != 0:
+            return False
+        r2 = self._run(["scp", "-q", "-r", f"{self.host}:{out_root}/{slug}/images",
+                        os.path.join(dest_dir, "images")])
+        # a book with zero figures legitimately has no images dir — only the md is mandatory
+        if r2.returncode != 0 and "No such file" not in (r2.stderr or ""):
+            return False
         return os.path.exists(os.path.join(dest_dir, f"{slug}.md"))
 
     def artifacts_dir(self, slug: str, out_root: str) -> str:

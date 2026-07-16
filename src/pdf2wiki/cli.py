@@ -19,11 +19,12 @@ def _cmd_convert(a, cfg):
                          cfg.remote.connect_timeout, cfg.remote.convert_timeout)
         ex.check()
         ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root)
+        print(log)               # remote log was captured on the remote host — show it
     else:
         ex = LocalExecutor()
         ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root,
                              cfg.remote.convert_timeout)
-    print(log)
+        # local progress already streamed live by convert_book — don't print the log twice
     return 0 if ok else 1
 
 

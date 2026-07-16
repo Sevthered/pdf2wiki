@@ -116,6 +116,19 @@ def test_transplant_indent_fallback():
     assert "b = 2" in disp
 
 
+def test_transplant_indent_preserves_code_escapes():
+    # bug-backslash-escape-stripped: blanket backslash strip turned `%d\n` into `%dn`
+    # in every flagged block. Only markdown `\_` may be unescaped.
+    pipe = 'fmt.Printf("Cap: %d, length: %d\\n", cap(s), len(s))\n'
+    hy = '  fmt.Printf("Cap: %d, length: %d\\n", cap(s), len(s))\n'
+    disp, reindented = transplant_indent(hy, pipe)
+    assert reindented is True
+    assert '%d\\n' in disp
+    # markdown-escaped underscore is still unescaped
+    disp2, _ = transplant_indent("  load_pem\n", "load\\_pem\n")
+    assert "load_pem" in disp2 and "\\_" not in disp2
+
+
 # ---------- geometry / runs ----------
 
 def test_iou_and_overlap():

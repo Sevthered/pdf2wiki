@@ -328,7 +328,9 @@ def transplant_indent(hybrid_body, pipe_body):
     for l in strip_listing_numbers(re.sub(r"```\w*", "", pipe_body or "")).split("\n"):
         if CAPTION.match(l):
             continue
-        pi.append(strip_callouts(l).replace("\\", ""))
+        # Unescape markdown `\_` only — a blanket backslash strip corrupts real code escapes
+        # (`\n` -> `n` in every flagged block). See bug-backslash-escape-stripped.
+        pi.append(re.sub(r"\\_", "_", strip_callouts(l)))
     hy_ne = [l for l in hy if l.strip()]
     pi_ne = [l for l in pi if l.strip()]
     if pi_ne and len(hy_ne) == len(pi_ne):        # 1:1 -> hybrid indent + pipeline tokens

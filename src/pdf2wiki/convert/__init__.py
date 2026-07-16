@@ -1,14 +1,11 @@
 """Dual-pass converter (MinerU pipeline + hybrid merge).
 
-STATUS: pending import of the validated production converter. The proven implementation
-(base-driven merge: pipeline `-m txt` skeleton for byte-perfect code, hybrid/VLM pass grafted in
-for table grids / Mermaid diagrams / equations, bbox-IoU matching, coverage gate with
-hard-stop-and-resume) is being reconciled from its production deployment before it lands here.
-
-The public contract this module will honor:
-
-    convert_book(pdf_path, slug, out_root, *, start=None, end=None, timeout=None)
-        -> (ok: bool, log_text: str)
+Base-driven merge: the pipeline `-m txt` pass gives a byte-perfect skeleton from the PDF's
+embedded text layer; the hybrid/VLM pass is grafted in for table grids, Mermaid diagram
+transcriptions, LaTeX equations and chart data, matched by page + bbox-IoU. Code blocks are
+token-verified between the passes and flagged on divergence. A coverage gate hard-stops if any
+text-bearing page produced no blocks (zero-fail scrape); all MinerU passes are cached with
+`.done` sentinels for safe resume.
 
 Output layout (consumed by phase5, qa.review, batch):
     <out_root>/<slug>/<slug>.md     merged markdown
@@ -16,13 +13,6 @@ Output layout (consumed by phase5, qa.review, batch):
     <out_root>/<slug>/blocks.json   per-block records with abs_page (for QA review)
     <out_root>/<slug>/*.log         per-pass MinerU logs (never suppressed)
 """
+from .merge import convert_book
 
-
-def convert_book(pdf_path: str, slug: str, out_root: str, *,
-                 start: int | None = None, end: int | None = None,
-                 timeout: int | None = None) -> tuple[bool, str]:
-    raise NotImplementedError(
-        "the converter module has not landed in this release yet — "
-        "see the project README roadmap. Phase 5, qa, and scan commands are fully functional "
-        "on existing MinerU/converter output."
-    )
+__all__ = ["convert_book"]

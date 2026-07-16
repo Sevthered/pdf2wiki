@@ -1,0 +1,551 @@
+"""Dual-pass production converter — pipeline skeleton + hybrid table/image graft.
+
+The MinerU pipeline pass over the whole range gives byte-perfect code/text/structure from the
+PDF's embedded text layer (the skeleton). The hybrid/VLM pass runs ONLY on 'rich' pages
+(tables/figures/code), grouped into contiguous runs, and its table/image blocks are grafted into
+the skeleton by page + bbox (IoU, with a containment fallback). Mermaid diagram transcriptions
+ride inside hybrid image blocks' `content`.
+
+Fidelity rules learned from real books:
+- pipeline tokens are the truth for code — a VLM re-OCR of native text hallucinates tokens;
+- hybrid wins for table grids (the text stream cannot reconstruct grid geometry) and LaTeX;
+- code blocks where the two passes diverge are flagged with an HTML comment for downstream
+  reconciliation, never silently trusted.
+"""
+import ast
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import textwrap
+from collections import Counter, defaultdict
+
+
+# ---------- environment ----------
+
+def _mineru_env():
+    env = dict(os.environ, MINERU_MODEL_SOURCE=os.environ.get("MINERU_MODEL_SOURCE", "huggingface"))
+    # WSL2: GPU userspace libs live here and must be visible to non-interactive subprocesses
+    if os.path.isdir("/usr/lib/wsl/lib"):
+        env["PATH"] = "/usr/lib/wsl/lib:" + env.get("PATH", "")
+    return env
+
+
+def _clean_cwd(workdir: str) -> str:
+    """Clean cwd for all MinerU subprocesses: prevents any local helper .py (e.g. profile.py,
+    inspect.py) from shadowing a stdlib module that vllm/torch import at runtime — that failure
+    mode is cryptic and costs hours."""
+    d = os.path.expanduser(workdir)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+# ---------- helpers ----------
+
+def bbox(b):
+    v = b.get("bbox")
+    if isinstance(v, str):
+        v = json.loads(v)
+    return [float(x) for x in v] if v else None
+
+
+def iou(a, b):
+    if not a or not b:
+        return 0.0
+    x0, y0 = max(a[0], b[0]), max(a[1], b[1])
+    x1, y1 = min(a[2], b[2]), min(a[3], b[3])
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    inter = (x1 - x0) * (y1 - y0)
+    ua = (a[2]-a[0])*(a[3]-a[1]) + (b[2]-b[0])*(b[3]-b[1]) - inter
+    return inter / ua if ua else 0.0
+
+
+def overlap_coef(a, b):
+    """Intersection / smaller-box-area. Unlike IoU, insensitive to one box being much wider than
+    the other: pipeline's code bbox often includes a right-margin annotation-callout column that
+    hybrid's tighter code-only crop excludes, so true matches can sit at IoU~0.2-0.29 (just under
+    the 0.3 threshold) despite hybrid's box being fully inside pipeline's."""
+    if not a or not b:
+        return 0.0
+    x0, y0 = max(a[0], b[0]), max(a[1], b[1])
+    x1, y1 = min(a[2], b[2]), min(a[3], b[3])
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    inter = (x1 - x0) * (y1 - y0)
+    aa = (a[2]-a[0])*(a[3]-a[1])
+    ab = (b[2]-b[0])*(b[3]-b[1])
+    small = min(aa, ab)
+    return inter / small if small else 0.0
+
+
+def detect_watermarks(base, npages):
+    """Book-adaptive: find short text lines that repeat on most pages (per-page DRM watermark).
+    No assumption about wording; returns an empty set for books without a watermark."""
+    pages_of = defaultdict(set)
+    for b in base:
+        t = b.get("text")
+        if isinstance(t, str):
+            s = t.strip()
+            if 0 < len(s) < 200:
+                pages_of[s].add(b.get("page_idx"))
+    thresh = max(3, int(0.6 * npages))            # must appear on >=60% of pages
+    return {s for s, pgs in pages_of.items() if len(pgs) >= thresh}
+
+
+def prescan(pdf, start, end):
+    import pymupdf
+    d = pymupdf.open(pdf)
+    rich = []
+    for i in range(start, end + 1):
+        p = d[i]
+        try:
+            nt = len(p.find_tables().tables)
+        except Exception:
+            nt = 0
+        fig = len(p.get_images()) > 0 or len(p.get_drawings()) > 20
+        if nt > 0 or fig:
+            rich.append(i)
+    return rich
+
+
+def group_runs(pages, gap):
+    if not pages:
+        return []
+    runs, a, prev = [], pages[0], pages[0]
+    for pg in pages[1:]:
+        if pg - prev <= gap + 1:
+            prev = pg
+        else:
+            runs.append((a, prev))
+            a = prev = pg
+    runs.append((a, prev))
+    return runs
+
+
+def cap_runs(runs, maxlen):
+    """Split any run longer than maxlen pages so a single VLM pass can't grow unbounded (OOM/time)
+    and so a failure's blast radius + resume granularity stay small."""
+    out = []
+    for a, b in runs:
+        while b - a + 1 > maxlen:
+            out.append((a, a + maxlen - 1))
+            a += maxlen
+        out.append((a, b))
+    return out
+
+
+def coverage_gaps(pdf, start, end, base):
+    """Return pages in [start,end] that have real text in the PDF but produced ZERO base blocks —
+    i.e. silently dropped by the scrape. Genuinely blank pages (no text) are not gaps."""
+    import pymupdf
+    d = pymupdf.open(pdf)
+    covered = {b.get("abs_page") for b in base}
+    gaps = []
+    for p in range(start, end + 1):
+        if p in covered:
+            continue
+        if len(d[p].get_text().strip()) > 50:      # had text, produced nothing -> dropped
+            gaps.append(p)
+    return gaps
+
+
+# ---------- MinerU passes ----------
+
+class PassFailed(RuntimeError):
+    pass
+
+
+def run_mineru(mineru_bin, pdf, a, b, backend, extra, outdir, clean_cwd, env,
+               label="", timeout=None):
+    """Run a MinerU pass (cached). Returns (content_list, images_dir) with page_idx made ABSOLUTE.
+
+    Cache is guarded by a `.done` sentinel written only after the subprocess exits 0 AND a
+    content_list.json exists — so a pass that crashed mid-write is NEVER reused as complete
+    (safe resume). On failure: report the exact pass + pages + log path, then abort (hard-stop);
+    already-completed passes stay cached, so a fixed re-run resumes past them.
+    MinerU stderr is never suppressed — it goes to the per-pass log file.
+    """
+    tag = label or backend
+    done = f"{outdir}/.done"
+    cl = glob.glob(f"{outdir}/*/*/*content_list.json")
+    if not (os.path.exists(done) and cl):
+        os.makedirs(outdir, exist_ok=True)
+        cmd = [mineru_bin, "-p", pdf, "-o", outdir, "-b", backend, "-s", str(a), "-e", str(b)] + extra
+        print("  run:", " ".join(cmd[3:]))
+        with open(f"{outdir}.log", "w") as log:
+            try:
+                subprocess.run(cmd, env=env, check=True, cwd=clean_cwd,
+                               stdout=log, stderr=subprocess.STDOUT, timeout=timeout)
+            except subprocess.CalledProcessError as e:
+                raise PassFailed(
+                    f"FAILED pass [{tag}] pages {a}-{b} (exit {e.returncode}). log: {outdir}.log — "
+                    f"completed passes are cached; fix root cause and re-run to resume from here."
+                ) from e
+        cl = glob.glob(f"{outdir}/*/*/*content_list.json")
+        if not cl:
+            raise PassFailed(
+                f"FAILED pass [{tag}] pages {a}-{b}: exited 0 but produced no content_list.json. "
+                f"log: {outdir}.log"
+            )
+        with open(done, "w") as f:
+            f.write("ok\n")        # mark complete only now — guards partial-write reuse
+    path = sorted(cl)[0]
+    imgdir = os.path.dirname(path)
+    with open(path) as f:
+        blocks = json.load(f)
+    for blk in blocks:                       # 0-based within run -> absolute page
+        blk["abs_page"] = int(blk.get("page_idx", 0)) + a
+        blk["_imgdir"] = imgdir              # per-pass images dir (pipeline is chunked -> dirs differ)
+    return blocks, imgdir
+
+
+def run_pipeline_chunks(mineru_bin, pdf, start, end, work, clean_cwd, env, seg=40, timeout=None):
+    """Pipeline skeleton over [start,end] in fixed segments. A crash loses only the current
+    segment; completed segments stay cached (.done) and resume on re-run. Blocks carry their own
+    absolute page + images dir (set in run_mineru), so concatenation is order-independent."""
+    base, first_img = [], None
+    a = start
+    while a <= end:
+        b = min(a + seg - 1, end)
+        blk, img = run_mineru(mineru_bin, pdf, a, b, "pipeline", ["-m", "txt"],
+                              f"{work}/base_{a}_{b}", clean_cwd, env,
+                              label=f"pipeline {a}-{b}", timeout=timeout)
+        base += blk
+        first_img = first_img or img
+        a = b + 1
+    return base, first_img
+
+
+# ---------- code fidelity ----------
+
+RICH_TYPES = ("table", "image", "chart", "equation", "code")  # pages needing the hybrid/VLM pass
+
+CALLOUT = re.compile(r"[①-⑳❶-❿⓪]")   # circled-digit code callouts used by tech publishers
+
+
+def strip_callouts(s):
+    lines = []
+    for ln in (s or "").split("\n"):
+        ln = CALLOUT.sub("", ln)
+        ln = re.sub(r"\s+[A-Za-z]\s*$", "", ln)   # trailing standalone letter marker (e.g. " B")
+        lines.append(ln.rstrip())
+    return "\n".join(lines)
+
+
+CAPTION = re.compile(r"^\s*(Listing|Figure|Table)\s+\d")   # caption line bled into a code block
+
+
+def norm_code(s):
+    """Whitespace-insensitive normal form for comparing pipeline vs hybrid code. Removes the
+    noise that causes false divergence flags: fences, merged captions, markdown-escaped `\\_`,
+    and long base64/JWT/key blobs (collapsed to a placeholder so OCR l/1 O/0 confusions in
+    illustrative tokens don't flag)."""
+    s = re.sub(r"```\w*", "", s or "")
+    s = "\n".join(l for l in s.split("\n") if not CAPTION.match(l))
+    s = strip_callouts(s).replace("\\", "")
+    # collapse long base64/JWT/key blobs — but NOT `.` (dotted code identifiers like
+    # `serialization.load_pem_private_key` must stay comparable so a `_`->`.` hallucination still flags).
+    s = re.sub(r"[A-Za-z0-9_+/=\-]{30,}", "§B64§", s)
+    return re.sub(r"\s+", "", s)
+
+
+PLACEHOLDER = re.compile(r'\[\s*\.\.\.\s*\]|<[A-Za-z_][A-Za-z0-9_]*>')   # book elisions/placeholders
+RUBY_MARK = re.compile(r'params\[:|=>|\.each do\b')
+PY_MARK = re.compile(r'\b(def|class|import|from|async\s+def|lambda)\b')
+
+
+def strip_fence(s):
+    return re.sub(r'```\w*\n?', '', s or '')
+
+
+def indent_suspect(body):
+    """Hybrid's indentation is trusted unconditionally on a token match, but hybrid occasionally
+    mis-indents even when tokens agree (e.g. dedents a try-body). Heuristic: for blocks that look
+    like real (not illustrative/placeholder, not Ruby-with-`def`) Python, ast.parse after dedent
+    must succeed — Python's grammar makes a wrong dedent/indent a SyntaxError far more often than
+    not. Skips illustrative snippets (`[...]`, `<placeholder>`) and Ruby, which produced the only
+    false positives seen in testing. Returns True only when the check is confidently meaningful
+    AND fails — not a general "is this valid Python" linter."""
+    b = strip_fence(body)
+    if RUBY_MARK.search(b) or not PY_MARK.search(b) or PLACEHOLDER.search(b):
+        return False
+    try:
+        ast.parse(textwrap.dedent(b))
+        return False
+    except SyntaxError:
+        return True
+
+
+def transplant_indent(hybrid_body, pipe_body):
+    """Genuine divergence -> pipeline TOKENS are the truth (hybrid VLM hallucinates). Display
+    pipeline content re-indented with hybrid's per-line leading whitespace when the two line up
+    1:1; otherwise fall back to pipeline verbatim (correct tokens, flat).
+    Returns (display_body, reindented_bool)."""
+    hy = [l for l in (hybrid_body or "").split("\n") if not l.strip().startswith("```")]
+    pi = []
+    for l in re.sub(r"```\w*", "", pipe_body or "").split("\n"):
+        if CAPTION.match(l):
+            continue
+        pi.append(strip_callouts(l).replace("\\", ""))
+    hy_ne = [l for l in hy if l.strip()]
+    pi_ne = [l for l in pi if l.strip()]
+    if pi_ne and len(hy_ne) == len(pi_ne):        # 1:1 -> hybrid indent + pipeline tokens
+        it = iter(pi_ne)
+        out = []
+        for l in hy:
+            if l.strip():
+                indent = l[:len(l) - len(l.lstrip())]
+                out.append(indent + next(it).strip())
+            else:
+                out.append("")
+        return "\n".join(out).strip("\n"), True
+    return "\n".join(pi).strip("\n"), False        # fallback: pipeline verbatim
+
+
+# ---------- merge ----------
+# Base (pipeline) is the authoritative skeleton: perfect code/text, best figure detection +
+# captions (from the text layer). Hybrid contributes ONLY (a) correct table_body for tables,
+# (b) Mermaid for diagrams, (c) cleaner LaTeX, (d) chart data, (e) code indentation when tokens
+# verify. We never replace a base image with a hybrid one, never insert hybrid-only images.
+DROP = ("header", "page_number", "footer")   # footer = per-page DRM watermark
+
+
+def merge(base, hybrid, wm, tiny_px2=2500):
+    hy = {"table": {}, "image": {}, "equation": {}, "chart": {}, "code": {}}   # type -> {page: [blocks]}
+    for h in hybrid:
+        t = h.get("type")
+        if t == "table":
+            hy["table"].setdefault(h["abs_page"], []).append(h)
+        elif t == "image" and "mermaid" in str(h.get("content", "")):
+            hy["image"].setdefault(h["abs_page"], []).append(h)
+        elif t == "equation" and h.get("text"):
+            hy["equation"].setdefault(h["abs_page"], []).append(h)
+        elif t == "chart" and str(h.get("content", "")).strip():
+            hy["chart"].setdefault(h["abs_page"], []).append(h)
+        elif t == "code" and h.get("code_body"):
+            hy["code"].setdefault(h["abs_page"], []).append(h)
+
+    def best(cands, b, contain_ok=False):
+        m = max(cands, key=lambda h: iou(bbox(b), bbox(h)), default=None)
+        if m and iou(bbox(b), bbox(m)) > 0.3:
+            return m
+        if contain_ok and cands:      # fallback: near-full containment, not just IoU
+            m2 = max(cands, key=lambda h: overlap_coef(bbox(b), bbox(h)), default=None)
+            if m2 and overlap_coef(bbox(b), bbox(m2)) > 0.8:
+                return m2
+        return None
+
+    final = []
+    st = dict(table_swapped=0, table_kept=0, mermaid_attached=0, images=0,
+              eq_swapped=0, eq_kept=0, chart_enriched=0, charts=0, noise_dropped=0,
+              code_verified=0, code_flagged=0, code_pipeline_only=0, code_indent_flagged=0)
+    for b in base:
+        t = b.get("type")
+        if t in DROP:
+            continue
+        if isinstance(b.get("text"), str) and b["text"].strip() in wm:
+            st["noise_dropped"] += 1
+            continue          # per-page watermark (auto-detected)
+        b = dict(b)
+        b["_src"] = "base"        # _imgdir already set per-pass in run_mineru
+        if t == "table":
+            m = best(hy["table"].get(b["abs_page"], []), b)
+            if m:
+                b["table_body"] = m.get("table_body", b.get("table_body"))
+                st["table_swapped"] += 1
+            else:
+                st["table_kept"] += 1
+        elif t == "equation":
+            m = best(hy["equation"].get(b["abs_page"], []), b)   # hybrid LaTeX is cleaner
+            if m:
+                b["text"] = m["text"]
+                st["eq_swapped"] += 1
+            else:
+                st["eq_kept"] += 1
+        elif t == "code":
+            # base `b` = pipeline block (byte-correct tokens); `m` = hybrid match (correct indentation).
+            m = best(hy["code"].get(b["abs_page"], []), b, contain_ok=True)
+            if m:
+                hy_body = m.get("code_body", "")
+                pi_body = b.get("code_body", "")
+                b["sub_type"] = m.get("sub_type", b.get("sub_type"))
+                if norm_code(pi_body) == norm_code(hy_body):
+                    b["code_body"] = hy_body
+                    b["_code_path"] = "verified"
+                    if indent_suspect(hy_body):     # tokens agree but hybrid indent may be wrong
+                        b["_indent_flag"] = True    # no reliable auto-repair -> flag only
+                        st["code_indent_flagged"] += 1
+                    st["code_verified"] += 1   # agree -> hybrid (keeps indentation)
+                else:
+                    # genuine divergence -> pipeline tokens win (hybrid VLM hallucinates: _->., dropped chars).
+                    disp, reindented = transplant_indent(hy_body, pi_body)
+                    b["code_body"] = disp
+                    b["_code_flag"] = True
+                    b["_reindented"] = reindented
+                    b["_code_path"] = "flagged"
+                    st["code_flagged"] += 1
+            else:                                                # no hybrid on this page: pipeline only, strip callout markers
+                b["code_body"] = strip_callouts(b.get("code_body", ""))
+                b["_code_path"] = "pipeline_only"
+                st["code_pipeline_only"] += 1
+        elif t == "chart":
+            m = best(hy["chart"].get(b["abs_page"], []), b)      # hybrid transcribes chart data
+            if m:
+                b["content"] = m.get("content", "")
+                st["chart_enriched"] += 1
+            st["charts"] += 1
+        elif t == "image":
+            bb = bbox(b)
+            area = (bb[2]-bb[0])*(bb[3]-bb[1]) if bb else 0
+            cap = b.get("image_caption") or []
+            if not any(cap) and area < tiny_px2:   # caption-less tiny image = decorative noise
+                st["noise_dropped"] += 1
+                continue
+            m = best(hy["image"].get(b["abs_page"], []), b)
+            if m:
+                b["content"] = m.get("content", "")
+                st["mermaid_attached"] += 1
+            st["images"] += 1
+        final.append(b)
+    return final, st
+
+
+# ---------- render ----------
+
+def render(b):
+    t = b["type"]
+    if t == "text":
+        lvl = b.get("text_level")
+        return ("#" * int(lvl) + " " if lvl else "") + b.get("text", "")
+    if t == "code":
+        body = b.get("code_body", "") or ""
+        flag = ""
+        if b.get("_code_flag"):                  # divergence: displayed body is now the pipeline (correct) tokens
+            how = "re-indented from hybrid" if b.get("_reindented") else "verbatim (indentation approximate)"
+            flag = f"<!-- code-verify: hybrid VLM diverged from text layer; showing pipeline tokens {how}. -->\n"
+        elif b.get("_indent_flag"):               # tokens matched, but hybrid indentation looks broken (ast-parse failed)
+            flag = "<!-- code-verify: hybrid indentation may be broken (failed a Python indent sanity check); verify manually. -->\n"
+        if body.lstrip().startswith("```"):      # MinerU already fenced it (with a language)
+            return flag + body
+        return flag + f"```{b.get('sub_type', '') or ''}\n{body}\n```"
+    if t == "list":
+        return "\n".join("- " + str(x) for x in b.get("list_items", []))
+    if t == "equation":
+        return b.get("text", "")                     # already $$...$$ LaTeX
+    if t == "chart":
+        cap = " ".join(b.get("chart_caption", []) or [])
+        out = f"![]({b.get('img_path') or ''})" + (f"\n\n*{cap}*" if cap else "")
+        c = b.get("content", "")
+        if c and c.strip():
+            out += f"\n\n<details><summary>chart data</summary>\n\n{c}\n\n</details>"
+        return out
+    if t == "table":
+        cap = " ".join(b.get("table_caption", []) or [])
+        return (b.get("table_body") or "") + (f"\n\n*{cap}*" if cap else "")
+    if t == "image":
+        cap = " ".join(b.get("image_caption", []) or [])
+        out = f"![]({b.get('img_path') or ''})" + (f"\n\n*{cap}*" if cap else "")
+        c = b.get("content", "")
+        if c and "mermaid" in c:
+            out += f"\n\n<details><summary>diagram (mermaid)</summary>\n\n{c}\n\n</details>"
+        return out
+    return ""
+
+
+def collect_images(final, outdir):
+    imgdir = os.path.join(outdir, "images")
+    os.makedirs(imgdir, exist_ok=True)
+    for b in final:
+        ip = b.get("img_path")
+        if not ip:
+            continue
+        src = os.path.join(b["_imgdir"], ip)
+        if os.path.exists(src):
+            shutil.copy(src, os.path.join(imgdir, os.path.basename(ip)))
+            b["img_path"] = "images/" + os.path.basename(ip)
+
+
+# ---------- entry point ----------
+
+class CoverageError(RuntimeError):
+    pass
+
+
+def convert_book(pdf_path: str, slug: str, out_root: str, *,
+                 start: int | None = None, end: int | None = None,
+                 timeout: int | None = None, cfg=None) -> tuple[bool, str]:
+    """Convert one book. Returns (ok, log_text). Resumable: completed MinerU passes are cached
+    under the output dir (`.done` sentinels) and skipped on re-run."""
+    import pymupdf
+
+    from ..config import load_config
+    cfg = cfg or load_config()
+
+    lines: list[str] = []
+
+    def say(msg):
+        print(msg)
+        lines.append(str(msg))
+
+    try:
+        mineru_bin = cfg.mineru.resolve_binary()
+        env = _mineru_env()
+        clean_cwd = _clean_cwd(cfg.convert.workdir)
+        start = start or 0
+        end = end if end is not None else pymupdf.open(pdf_path).page_count - 1
+        work = os.path.join(os.path.expanduser(out_root), slug)
+        os.makedirs(work, exist_ok=True)
+
+        say("pipeline pass (skeleton, chunked):")
+        base, _ = run_pipeline_chunks(mineru_bin, pdf_path, start, end, work, clean_cwd, env,
+                                      seg=cfg.convert.seg, timeout=timeout)
+        total = end - start + 1
+
+        # coverage gate: no page with real text may be silently dropped (hard-stop, zero-fail scrape)
+        gaps = coverage_gaps(pdf_path, start, end, base)
+        covered = len({b.get("abs_page") for b in base})
+        say(f"coverage: {covered}/{total} pages produced blocks; text-bearing gaps={len(gaps)}")
+        if gaps:
+            raise CoverageError(
+                f"FAILED coverage: {len(gaps)} text-bearing page(s) produced no blocks: {gaps} — "
+                f"these were dropped by the pipeline scrape; investigate before trusting output."
+            )
+
+        # rich pages = where pipeline detected content needing the VLM. Derived from pipeline
+        # output (not pymupdf) so CODE pages are included — pipeline mangles code indentation.
+        rich = sorted({b["abs_page"] for b in base if b.get("type") in RICH_TYPES})
+        runs = cap_runs(group_runs(rich, cfg.convert.gap), cfg.convert.maxrun)
+        say(f"[{slug}] pages {start}-{end} ({total}); rich={len(rich)} "
+            f"({100 * len(rich) // total if total else 0}%); hybrid runs={len(runs)}")
+
+        hybrid = []
+        for i, (ra, rb) in enumerate(runs):
+            say(f"hybrid pass {i + 1}/{len(runs)} pages {ra}-{rb}:")
+            hb, _ = run_mineru(mineru_bin, pdf_path, ra, rb, "hybrid-engine",
+                               ["--effort", cfg.mineru.effort], f"{work}/hy_{ra}_{rb}",
+                               clean_cwd, env, label=f"hybrid {ra}-{rb}", timeout=timeout)
+            hybrid += hb                       # only table/mermaid/latex/chart/code-indent used
+
+        wm = detect_watermarks(base, total)
+        if wm:
+            say(f"watermark(s) auto-detected: {[w[:50] for w in wm]}")
+        final, stats = merge(base, hybrid, wm, tiny_px2=cfg.convert.tiny_px2)
+        collect_images(final, work)
+        md = "\n\n".join(render(b) for b in final)
+        for w in wm:                                     # scrub watermark embedded in captions/merged text
+            md = md.replace(w, " ")
+        with open(f"{work}/{slug}.md", "w") as f:
+            f.write(md)
+        with open(f"{work}/blocks.json", "w") as f:
+            json.dump(final, f, indent=1, default=str)
+        say(f"graft stats: {stats}")
+        say(f"final types: {dict(Counter(b['type'] for b in final))}")
+        say(f"wrote {work}/{slug}.md ({len(md)} chars)")
+        return True, "\n".join(lines)
+    except (PassFailed, CoverageError, FileNotFoundError) as e:
+        say(f"FAILED: {e}")
+        return False, "\n".join(lines)

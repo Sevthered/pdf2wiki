@@ -26,9 +26,10 @@ Then a five-step post-processing chain (**phase5**) polishes the result:
 
 ## Status
 
-**Alpha.** The phase5 chain, QA tooling, scan, and batch driver are functional. The dual-pass
-converter module is landing next (being reconciled from its production deployment); until then,
-`pdf2wiki convert` raises `NotImplementedError` — run phase5 on existing MinerU output.
+**Alpha.** All stages functional: converter (ported from a production deployment validated on
+five full technical books, function-level parity verified), phase5 chain, QA tooling, scan, and
+batch driver. End-to-end GPU runs are exercised on real books; expect rough edges on unusual
+layouts — the coverage gate hard-stops rather than silently dropping content.
 
 ## Requirements
 

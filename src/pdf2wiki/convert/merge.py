@@ -452,6 +452,69 @@ def merge(base, hybrid, wm, tiny_px2=2500):
     return final, st
 
 
+# ---------- chapter normalization from the PDF's own ToC ----------
+
+def _norm_title(s):
+    """Normal form for matching a ToC title against a rendered heading: case/punct-insensitive,
+    ignoring a leading 'Chapter N:'/'Appendix A.'/'Part I' prefix (books often print the bare
+    title on the chapter page while the ToC carries the prefixed form)."""
+    s = re.sub(r"^(chapter|appendix|part)\s+[\divxlc]+\s*[:.\-]?\s*", "", (s or "").strip().lower())
+    return re.sub(r"[^a-z0-9]+", "", s)
+
+
+def normalize_chapters_from_toc(final, toc_l1):
+    """Fix heading levels using the PDF's own table of contents (level-1 bookmarks) — the ground
+    truth for chapter boundaries. Layout models mistag chapter headings (real chapters come out
+    H2 or plain text; section headings get promoted to H1), which breaks any downstream
+    H1-boundary chapter split.
+
+    For each ToC level-1 entry (title, 0-based page):
+      - a text block near that page whose title matches -> promoted to level 1 and given the
+        canonical ToC title (stable, prefixed filenames downstream);
+      - no matching block, but the page produced text -> a synthetic level-1 heading is inserted
+        (the layout model dropped the heading entirely);
+      - a bare cover/image page with no text -> skipped.
+    Evidence gate: only when >=3 entries matched are the remaining unmatched level-1 text blocks
+    demoted to level 2 (kills spurious H1s) — a garbage/missing ToC changes nothing.
+    Returns (final, stats)."""
+    matched_ids = set()
+    matched = 0
+    inserts = []
+    for title, page in toc_l1:
+        want = _norm_title(title)
+        if not want:
+            continue
+        hit = None
+        for b in final:
+            if id(b) in matched_ids or b.get("type") != "text":
+                continue
+            ap = int(b.get("abs_page", -99))
+            if page - 1 <= ap <= page + 2 and _norm_title(b.get("text")) == want:
+                hit = b
+                break
+        if hit is not None:
+            hit["text_level"] = 1
+            hit["text"] = title.strip()
+            matched_ids.add(id(hit))
+            matched += 1
+        else:
+            has_text = any(b.get("type") == "text" and int(b.get("abs_page", -99)) == page
+                           for b in final)
+            idx = next((i for i, b in enumerate(final)
+                        if int(b.get("abs_page", -99)) >= page), None)
+            if has_text and idx is not None:
+                inserts.append((idx, {"type": "text", "text": title.strip(), "text_level": 1,
+                                      "abs_page": page, "_src": "toc", "_imgdir": ""}))
+    for idx, blk in sorted(inserts, key=lambda x: -x[0]):
+        final.insert(idx, blk)
+    if matched >= 3:
+        for b in final:
+            if (b.get("type") == "text" and b.get("text_level") == 1
+                    and id(b) not in matched_ids and b.get("_src") != "toc"):
+                b["text_level"] = 2
+    return final, {"toc_matched": matched, "toc_inserted": len(inserts)}
+
+
 # ---------- render ----------
 
 def render(b):
@@ -572,6 +635,10 @@ def convert_book(pdf_path: str, slug: str, out_root: str, *,
         if wm:
             say(f"watermark(s) auto-detected: {[w[:50] for w in wm]}")
         final, stats = merge(base, hybrid, wm, tiny_px2=cfg.convert.tiny_px2)
+        toc_l1 = [(t, p - 1) for lvl, t, p in pymupdf.open(pdf_path).get_toc() if lvl == 1]
+        if toc_l1:
+            final, toc_stats = normalize_chapters_from_toc(final, toc_l1)
+            say(f"chapter normalize from ToC: {toc_stats}")
         collect_images(final, work)
         md = "\n\n".join(render(b) for b in final)
         for w in wm:                                     # scrub watermark embedded in captions/merged text

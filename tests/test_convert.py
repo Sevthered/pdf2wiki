@@ -5,8 +5,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pdf2wiki.convert.merge import (cap_runs, detect_watermarks, group_runs, indent_suspect,
-                                    iou, merge, norm_code, overlap_coef, render,
-                                    strip_callouts, strip_listing_numbers, transplant_indent)
+                                    iou, merge, norm_code, normalize_chapters_from_toc,
+                                    overlap_coef, render, strip_callouts,
+                                    strip_listing_numbers, transplant_indent)
 
 
 # ---------- code normal form ----------
@@ -175,6 +176,72 @@ def test_merge_grafts_and_flags():
     assert "header" not in types                       # DROP list applied
     flagged = [b for b in final if b.get("_code_flag")]
     assert flagged and "private_key" in flagged[0]["code_body"]   # pipeline tokens won
+
+
+# ---------- ToC chapter normalization ----------
+
+def _txt(text, page, lvl=None):
+    b = {"type": "text", "text": text, "abs_page": page, "_imgdir": "/x"}
+    if lvl:
+        b["text_level"] = lvl
+    return b
+
+
+def _toc_fixture():
+    return [
+        _txt("Introduction to Things", 10, lvl=1),      # ch1: correct H1, bare title
+        _txt("body", 11),
+        _txt("Common Patterns", 40, lvl=2),             # ch2: mistagged H2
+        _txt("body2", 41),
+        _txt("Removing a container", 45, lvl=1),        # spurious section H1
+        _txt("summary prose only", 70),                 # ch3 heading dropped by layout model
+        _txt("body3", 71),
+        _txt("Index", 90, lvl=2),
+    ]
+
+
+TOC = [("Chapter 1: Introduction to Things", 10), ("Chapter 2: Common Patterns", 40),
+       ("Chapter 3: Testing", 70), ("Index", 90)]
+
+
+def test_toc_promotes_and_canonicalizes():
+    final, stats = normalize_chapters_from_toc(_toc_fixture(), TOC)
+    lvl1 = [b["text"] for b in final if b.get("text_level") == 1]
+    assert "Chapter 1: Introduction to Things" in lvl1     # promoted + canonical ToC title
+    assert "Chapter 2: Common Patterns" in lvl1            # H2 -> H1
+    assert stats["toc_matched"] == 3                       # ch1, ch2, Index
+
+
+def test_toc_inserts_dropped_heading():
+    final, stats = normalize_chapters_from_toc(_toc_fixture(), TOC)
+    assert stats["toc_inserted"] == 1
+    ins = next(b for b in final if b.get("_src") == "toc")
+    assert ins["text"] == "Chapter 3: Testing" and ins["abs_page"] == 70
+    # inserted BEFORE the first block of its page
+    idx = final.index(ins)
+    assert final[idx + 1]["text"] == "summary prose only"
+
+
+def test_toc_demotes_spurious_h1():
+    final, _ = normalize_chapters_from_toc(_toc_fixture(), TOC)
+    junk = next(b for b in final if b["text"] == "Removing a container")
+    assert junk["text_level"] == 2
+
+
+def test_toc_no_demotion_below_evidence_gate():
+    # only 1 ToC entry matches -> demotion must NOT fire
+    blocks = [_txt("Introduction to Things", 10, lvl=1), _txt("Some H1 section", 20, lvl=1)]
+    final, stats = normalize_chapters_from_toc(blocks, [("Chapter 1: Introduction to Things", 10)])
+    assert stats["toc_matched"] == 1
+    assert next(b for b in final if b["text"] == "Some H1 section")["text_level"] == 1
+
+
+def test_toc_skips_textless_cover_pages():
+    blocks = [{"type": "image", "img_path": "c.jpg", "abs_page": 0, "_imgdir": "/x"},
+              _txt("Introduction to Things", 10, lvl=1)]
+    final, stats = normalize_chapters_from_toc(
+        blocks, [("Cover", 0), ("Chapter 1: Introduction to Things", 10)])
+    assert stats["toc_inserted"] == 0                      # no synthetic heading on image-only page
 
 
 def test_render_emits_code_verify_flag():

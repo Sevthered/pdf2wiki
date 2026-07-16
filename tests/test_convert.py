@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pdf2wiki.convert.merge import (cap_runs, detect_watermarks, group_runs, indent_suspect,
                                     iou, merge, norm_code, overlap_coef, render,
-                                    strip_callouts, transplant_indent)
+                                    strip_callouts, strip_listing_numbers, transplant_indent)
 
 
 # ---------- code normal form ----------
@@ -29,9 +29,57 @@ def test_norm_code_flags_dot_for_underscore_hallucination():
     assert norm_code(a) != norm_code(b)
 
 
-def test_strip_callouts():
+def test_strip_callouts_with_circled_digit_signature():
+    # circled digit present in block -> trailing letters are callout markers, strip both
     assert strip_callouts("int x = 1;①") == "int x = 1;"
-    assert strip_callouts("foo() B") == "foo()"
+    assert strip_callouts("int x = 1;①\nfoo() B") == "int x = 1;\nfoo()"
+
+
+def test_strip_callouts_preserves_code_without_circled_digits():
+    # no circled digits -> a trailing bare letter is REAL code, never strip
+    # (regression: ate Go's wrapped `..., r` param, `return b`, `package a`)
+    src = "func ServeHTTP(rw http.ResponseWriter, r\nreturn b\npackage a"
+    assert strip_callouts(src) == src
+
+
+# ---------- listing line numbers ----------
+
+def test_strip_listing_numbers_monotonic_block():
+    src = "10 // comment\n11 type Strategy interface {\n12   NextEndpoint() url.URL\n13 }"
+    out = strip_listing_numbers(src)
+    assert out == "// comment\ntype Strategy interface {\n  NextEndpoint() url.URL\n}"
+
+
+def test_strip_listing_numbers_keeps_wrapped_continuation_lines():
+    src = "59 func f(rw http.ResponseWriter, r\n*http.Request) {\n60   body()\n61 }\n62 x"
+    out = strip_listing_numbers(src)
+    assert "*http.Request) {" in out          # unnumbered wrap preserved
+    assert "func f(rw http.ResponseWriter, r" in out
+    assert "59" not in out
+
+
+def test_strip_listing_numbers_blank_numbered_lines():
+    src = "39 decoder := x\n40\n41 err := y\n42 z"
+    assert strip_listing_numbers(src) == "decoder := x\n\nerr := y\nz"
+
+
+def test_strip_listing_numbers_refuses_data_matrix():
+    src = "1 2 3\n4 5 6"                       # too few rows -> untouched
+    assert strip_listing_numbers(src) == src
+    src2 = "9 8 7\n5 4 3\n2 1 0"               # decreasing -> not line numbers -> untouched
+    assert strip_listing_numbers(src2) == src2
+
+
+def test_strip_listing_numbers_refuses_unnumbered_code():
+    src = "def f():\n    return 1\nx = f()"
+    assert strip_listing_numbers(src) == src
+
+
+def test_norm_code_equates_numbered_and_unnumbered():
+    # the Packt false-flag storm: pipeline has printed numbers, hybrid doesn't
+    piped = "10 type Strategy interface {\n11   NextEndpoint() url.URL\n12 }"
+    hybrid = "type Strategy interface {\n  NextEndpoint() url.URL\n}"
+    assert norm_code(piped) == norm_code(hybrid)
 
 
 # ---------- indent checks ----------

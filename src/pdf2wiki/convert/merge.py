@@ -224,16 +224,53 @@ def run_pipeline_chunks(mineru_bin, pdf, start, end, work, clean_cwd, env, seg=4
 
 RICH_TYPES = ("table", "image", "chart", "equation", "code")  # pages needing the hybrid/VLM pass
 
-CALLOUT = re.compile(r"[①-⑳❶-❿⓪]")   # circled-digit code callouts used by tech publishers
+CALLOUT = re.compile(r"[①-⑳❶-❿⓪]")   # circled-digit code callouts used by some tech publishers
 
 
 def strip_callouts(s):
+    """Remove code-callout markers. Trailing standalone letters (e.g. " B") are ALSO callout
+    markers in books that use circled digits — but in books that don't, a trailing bare letter is
+    real code (Go's wrapped `..., r` parameter, `return b`, `package a`). So the letter strip is
+    GATED on the block showing the circled-digit signature; circled digits themselves are never
+    valid code and are always removed."""
+    has_circled = bool(CALLOUT.search(s or ""))
     lines = []
     for ln in (s or "").split("\n"):
         ln = CALLOUT.sub("", ln)
-        ln = re.sub(r"\s+[A-Za-z]\s*$", "", ln)   # trailing standalone letter marker (e.g. " B")
+        if has_circled:
+            ln = re.sub(r"\s+[A-Za-z]\s*$", "", ln)   # trailing letter marker (e.g. " B")
         lines.append(ln.rstrip())
     return "\n".join(lines)
+
+
+LINENUM = re.compile(r"^\s*(\d{1,4})(?:\s(.*))?$")
+
+
+def strip_listing_numbers(s):
+    """Remove publisher-printed listing line numbers (some publishers typeset them; the text
+    layer captures them, the VLM omits them — polluting output and causing false divergence
+    flags). Evidence-gated: strips ONLY when the leading integers cover most non-blank lines AND
+    form a non-decreasing sequence — i.e. they demonstrably ARE line numbers, not code (a data
+    matrix like `1 2 3` / `4 5 6` has too few rows or breaks monotonicity). Wrapped continuation
+    lines (unnumbered) are preserved as-is."""
+    lines = (s or "").split("\n")
+    nums, nonblank = [], 0
+    for ln in lines:
+        if not ln.strip():
+            continue
+        nonblank += 1
+        m = LINENUM.match(ln)
+        if m:
+            nums.append(int(m.group(1)))
+    if len(nums) < 3 or nonblank == 0 or len(nums) < 0.6 * nonblank:
+        return s
+    if any(b < a for a, b in zip(nums, nums[1:])):
+        return s
+    out = []
+    for ln in lines:
+        m = LINENUM.match(ln) if ln.strip() else None
+        out.append((m.group(2) or "") if m else ln)
+    return "\n".join(out)
 
 
 CAPTION = re.compile(r"^\s*(Listing|Figure|Table)\s+\d")   # caption line bled into a code block
@@ -245,6 +282,7 @@ def norm_code(s):
     and long base64/JWT/key blobs (collapsed to a placeholder so OCR l/1 O/0 confusions in
     illustrative tokens don't flag)."""
     s = re.sub(r"```\w*", "", s or "")
+    s = strip_listing_numbers(s)     # printed listing numbers: text layer has them, VLM omits them
     s = "\n".join(l for l in s.split("\n") if not CAPTION.match(l))
     s = strip_callouts(s).replace("\\", "")
     # collapse long base64/JWT/key blobs — but NOT `.` (dotted code identifiers like
@@ -287,7 +325,7 @@ def transplant_indent(hybrid_body, pipe_body):
     Returns (display_body, reindented_bool)."""
     hy = [l for l in (hybrid_body or "").split("\n") if not l.strip().startswith("```")]
     pi = []
-    for l in re.sub(r"```\w*", "", pipe_body or "").split("\n"):
+    for l in strip_listing_numbers(re.sub(r"```\w*", "", pipe_body or "")).split("\n"):
         if CAPTION.match(l):
             continue
         pi.append(strip_callouts(l).replace("\\", ""))
@@ -388,8 +426,8 @@ def merge(base, hybrid, wm, tiny_px2=2500):
                     b["_reindented"] = reindented
                     b["_code_path"] = "flagged"
                     st["code_flagged"] += 1
-            else:                                                # no hybrid on this page: pipeline only, strip callout markers
-                b["code_body"] = strip_callouts(b.get("code_body", ""))
+            else:                                                # no hybrid on this page: pipeline only, strip noise
+                b["code_body"] = strip_callouts(strip_listing_numbers(b.get("code_body", "")))
                 b["_code_path"] = "pipeline_only"
                 st["code_pipeline_only"] += 1
         elif t == "chart":

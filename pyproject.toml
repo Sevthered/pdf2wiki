@@ -1,0 +1,38 @@
+[project]
+name = "pdf2wiki"
+version = "0.1.0"
+description = "Convert technical books (native-text PDFs) into clean, chapter-split, LLM-ready Markdown using a dual-pass MinerU pipeline plus fidelity-preserving post-processing."
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "pymupdf>=1.24",
+]
+keywords = ["pdf", "markdown", "mineru", "obsidian", "knowledge-base", "book", "conversion"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+
+[project.urls]
+Homepage = "https://github.com/Sevthered/pdf2wiki"
+
+[project.scripts]
+pdf2wiki = "pdf2wiki.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdf2wiki"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]

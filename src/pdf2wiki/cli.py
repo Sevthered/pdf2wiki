@@ -1,0 +1,143 @@
+"""pdf2wiki command-line interface.
+
+Convention: every mutating command is DRY-RUN by default and requires --apply to write
+(exceptions: convert and qa, whose whole purpose is producing new artifacts in their own
+output directories — they never modify existing files in place).
+"""
+import argparse
+import json
+import sys
+
+from .config import load_config
+
+
+def _cmd_convert(a, cfg):
+    from .executor import LocalExecutor, SSHExecutor
+    if a.remote or cfg.remote.host:
+        host = a.remote or cfg.remote.host
+        ex = SSHExecutor(host, cfg.remote.books_dir, cfg.remote.workdir,
+                         cfg.remote.connect_timeout, cfg.remote.convert_timeout)
+        ex.check()
+        ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root)
+    else:
+        ex = LocalExecutor()
+        ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root,
+                             cfg.remote.convert_timeout)
+    print(log)
+    return 0 if ok else 1
+
+
+def _cmd_phase5(a, cfg):
+    from .phase5 import run_chain
+    report = run_chain(a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply)
+    print(f"caption_unbleed: {report['caption_unbleed']['unwrapped']} unwrapped")
+    lr = report["lang_retag"]
+    print(f"lang_retag: {lr['changes']} changes {lr['stats']}")
+    print(f"dash_normalize: {report['dash_normalize']['fixes']} fixes")
+    mr = report["mermaid_repair"]
+    print(f"mermaid_repair: {mr['blocks_changed']} blocks, "
+          f"parse-breaker score {mr['score_before']} -> {mr['score_after']}")
+    cs = report["chapter_split"]
+    print(f"chapter_split: {cs['boundaries']} boundaries")
+    for i, t in enumerate(cs["titles"], 1):
+        print(f"  {i:2d}. {t}")
+    if a.apply:
+        print(f"\nAPPLIED — wrote {len(cs['files'])} chapter files")
+    else:
+        print(f"\n(dry-run — would write {len(cs['files'])} chapter files; pass --apply)")
+    return 0
+
+
+def _cmd_qa_sample(a, cfg):
+    from .qa.sample import sample_pages
+    r = sample_pages(a.pdf, a.name, a.qa_root or cfg.qa.root,
+                     n=a.pages or cfg.qa.pages, seed=a.seed if a.seed is not None else cfg.qa.seed,
+                     dpi=a.dpi or cfg.qa.dpi)
+    print(f"{a.name}: sampled {len(r['pages'])} pages (seed {r['seed']}) "
+          f"from range {r['range'][0]}-{r['range'][1]} of {r['page_count']}")
+    print("pages:", r["pages"])
+    print(f"sample pdf: {r['sample_pdf']} ; PNGs in {r['qa_dir']}/pages/")
+    return 0
+
+
+def _cmd_qa_review(a, cfg):
+    from .qa.review import build_review
+    r = build_review(a.qa_dir, a.name, blocks_path=a.blocks)
+    print(f"wrote {r['review']} ; pages with content: {r['pages_with_content']}/{r['sampled']}")
+    return 0
+
+
+def _cmd_scan(a, cfg):
+    from .scan import scan_dir
+    print(json.dumps(scan_dir(a.directory), indent=1))
+    return 0
+
+
+def _cmd_batch(a, cfg):
+    from .batch import run_batch
+    run_batch(a.books, cfg, a.stage, remote=a.remote or (cfg.remote.host or None),
+              max_books=a.max_books, only=a.only, vault=a.vault or (cfg.output.vault or None))
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="pdf2wiki",
+                                 description="Convert technical books (native-text PDFs) into "
+                                             "clean, chapter-split, LLM-ready Markdown.")
+    ap.add_argument("--config", default=None, help="explicit config TOML path")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("convert", help="convert one PDF (dual-pass MinerU merge)")
+    p.add_argument("pdf")
+    p.add_argument("--name", required=True, help="output slug")
+    p.add_argument("--out", default=None, help="output root (default from config)")
+    p.add_argument("--remote", default=None, help="ssh host to run the conversion on")
+    p.set_defaults(fn=_cmd_convert)
+
+    p = sub.add_parser("phase5", help="post-process a converted .md (dry-run by default)")
+    p.add_argument("md")
+    p.add_argument("--book", required=True, help="book slug for frontmatter")
+    p.add_argument("--out", default=None, help="chapter output dir (default: <md dir>/chapters)")
+    p.add_argument("--source-name", default=None,
+                   help="original PDF filename for frontmatter `source:` "
+                        "(avoids leaking a staging path)")
+    p.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
+    p.set_defaults(fn=_cmd_phase5)
+
+    pqa = sub.add_parser("qa", help="conversion QA tools")
+    qsub = pqa.add_subparsers(dest="qa_cmd", required=True)
+    p = qsub.add_parser("sample", help="sample N random pages -> sample PDF + PNGs")
+    p.add_argument("pdf")
+    p.add_argument("name")
+    p.add_argument("-n", "--pages", type=int, default=None)
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--dpi", type=int, default=None)
+    p.add_argument("--qa-root", default=None)
+    p.set_defaults(fn=_cmd_qa_sample)
+    p = qsub.add_parser("review", help="build per-page review.txt from blocks.json")
+    p.add_argument("qa_dir")
+    p.add_argument("name")
+    p.add_argument("--blocks", default=None, help="explicit blocks.json path")
+    p.set_defaults(fn=_cmd_qa_review)
+
+    p = sub.add_parser("scan", help="scan a directory of PDFs -> title/year guesses (JSON)")
+    p.add_argument("directory")
+    p.set_defaults(fn=_cmd_scan)
+
+    p = sub.add_parser("batch", help="manifest-driven multi-book run (resumable)")
+    p.add_argument("books", help="books TOML file ([[book]] entries with pdf/slug/domain)")
+    p.add_argument("--stage", default="~/pdf2wiki/stage", help="staging + status-manifest dir")
+    p.add_argument("--remote", default=None, help="ssh host to convert on")
+    p.add_argument("--max-books", type=int, default=None,
+                   help="stop after this many books attempted this run")
+    p.add_argument("--only", default=None, help="run only this slug")
+    p.add_argument("--vault", default=None, help="final placement root (e.g. an Obsidian vault)")
+    p.set_defaults(fn=_cmd_batch)
+
+    a = ap.parse_args(argv)
+    cfg = load_config(a.config)
+    return a.fn(a, cfg)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

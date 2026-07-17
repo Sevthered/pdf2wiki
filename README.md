@@ -1,5 +1,9 @@
 # pdf2wiki
 
+[![PyPI](https://img.shields.io/pypi/v/pdf2wiki)](https://pypi.org/project/pdf2wiki/)
+[![Python](https://img.shields.io/pypi/pyversions/pdf2wiki)](https://pypi.org/project/pdf2wiki/)
+[![License: AGPL-3.0](https://img.shields.io/pypi/l/pdf2wiki)](LICENSE)
+
 Convert heavily technical books (native-text PDFs) into clean, chapter-split, **LLM-ready Markdown** —
 code byte-perfect, tables intact, diagrams transcribed to Mermaid — suitable for an Obsidian vault or
 any Markdown-native knowledge base.

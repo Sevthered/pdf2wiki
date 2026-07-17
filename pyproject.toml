@@ -1,6 +1,6 @@
 [project]
 name = "pdf2wiki"
-version = "0.1.0"
+version = "0.1.1"
 description = "Convert technical books (native-text PDFs) into clean, chapter-split, LLM-ready Markdown using a dual-pass MinerU pipeline plus fidelity-preserving post-processing."
 authors = [{ name = "Sevthered" }]
 readme = "README.md"
@@ -22,6 +22,10 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/Sevthered/pdf2wiki"
+Repository = "https://github.com/Sevthered/pdf2wiki"
+Documentation = "https://github.com/Sevthered/pdf2wiki/tree/main/docs"
+Issues = "https://github.com/Sevthered/pdf2wiki/issues"
+Changelog = "https://github.com/Sevthered/pdf2wiki/blob/main/CHANGELOG.md"
 
 [project.scripts]
 pdf2wiki = "pdf2wiki.cli:main"

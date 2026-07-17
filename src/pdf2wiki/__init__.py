@@ -11,4 +11,4 @@ Pipeline stages:
   4. batch    — manifest-driven multi-book runs, resumable, with optional SSH remote execution.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"

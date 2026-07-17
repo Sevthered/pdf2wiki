@@ -33,7 +33,7 @@ To also place the finished chapters into a knowledge base, set `--vault` (or `[o
 [config](../reference/configuration.md)):
 
 ```bash
-pdf2wiki batch books.toml --vault ~/Obsidian/Tech-Books
+pdf2wiki batch books.toml --vault ~/Obsidian/MyVault
 ```
 
 Chapters land in `<vault>/<domain>/<slug>/`.

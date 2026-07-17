@@ -36,7 +36,7 @@ host = "gpu-box"
 books_dir = "/mnt/d/Books"
 
 [output]
-vault = "~/Obsidian/Tech-Books"
+vault = "~/Obsidian/MyVault"
 ```
 
 ## `[mineru]`

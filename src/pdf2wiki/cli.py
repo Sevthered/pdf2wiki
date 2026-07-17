@@ -38,6 +38,7 @@ def _cmd_phase5(a, cfg):
     mr = report["mermaid_repair"]
     print(f"mermaid_repair: {mr['blocks_changed']} blocks, "
           f"parse-breaker score {mr['score_before']} -> {mr['score_after']}")
+    print(f"code_unescape: {report['code_unescape']['fixes']} fixes")
     cs = report["chapter_split"]
     print(f"chapter_split: {cs['boundaries']} boundaries")
     for i, t in enumerate(cs["titles"], 1):

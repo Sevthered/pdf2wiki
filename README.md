@@ -16,13 +16,14 @@ real technical books:
   equations and chart data are grafted in from the hybrid pass by bbox-IoU matching. Code blocks
   are token-verified against the pipeline text layer and flagged when the VLM diverged.
 
-Then a five-step post-processing chain (**phase5**) polishes the result:
+Then a six-step post-processing chain (**phase5**) polishes the result:
 
 1. `caption_unbleed` — unwrap figure/listing captions MinerU trapped in code fences
 2. `lang_retag` — fix unreliable code-fence language tags (precision-first heuristics)
 3. `dash_normalize` — fix typographic dashes inside code (`–dev` → `--dev`)
 4. `mermaid_repair` — sanitize VLM-transcribed Mermaid so it parses
-5. `chapter_split` — split into per-chapter files with YAML frontmatter
+5. `code_unescape` — strip MinerU's markdown-punct escapes inside code fences (`\$`→`$`, `\*`→`*`)
+6. `chapter_split` — split into per-chapter files with YAML frontmatter
 
 ## Status
 

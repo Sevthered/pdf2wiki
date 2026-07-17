@@ -127,6 +127,13 @@ def test_transplant_indent_preserves_code_escapes():
     # markdown-escaped underscore is still unescaped
     disp2, _ = transplant_indent("  load_pem\n", "load\\_pem\n")
     assert "load_pem" in disp2 and "\\_" not in disp2
+    # markdown-punct escapes ($ * ~ `) are unescaped; real escaped-backslash survives
+    disp3, _ = transplant_indent("  x := \\*p\n", "x := \\*p\n")
+    assert "*p" in disp3 and "\\*" not in disp3
+    disp4, _ = transplant_indent("  \\$ ls \\~/d\n", "\\$ ls \\~/d\n")
+    assert "$ ls ~/d" in disp4
+    disp5, _ = transplant_indent('  re("[^\\\\s]+")\n', 're("[^\\\\s]+")\n')
+    assert '[^\\\\s]+' in disp5   # escaped-backslash kept
 
 
 # ---------- geometry / runs ----------

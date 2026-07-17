@@ -5,7 +5,8 @@ import textwrap
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pdf2wiki.phase5 import caption_unbleed, chapter_split, dash_normalize, lang_retag, mermaid_repair
+from pdf2wiki.phase5 import (caption_unbleed, chapter_split, code_unescape, dash_normalize,
+                             lang_retag, mermaid_repair)
 
 
 # ---------- caption_unbleed ----------
@@ -121,6 +122,51 @@ def test_non_mermaid_untouched_by_repair():
     md = '```python\ns = "a\\nb"\n```\n'
     out, stats = mermaid_repair.repair(md)
     assert out == md and stats["blocks_changed"] == 0
+
+
+# ---------- code_unescape ----------
+
+def test_code_unescape_strips_markdown_punct_in_code():
+    md = "```bash\n\\$ go run \\*main.go\n```\n"
+    out, changes = code_unescape.unescape(md)
+    assert "$ go run *main.go" in out
+    assert len(changes) == 1
+
+
+def test_code_unescape_keeps_real_escapes():
+    # \n \t \d \s \" and escaped-backslash must survive
+    md = '```go\nfmt.Printf("%d\\n\\t", x)\nr := regexp.MustCompile("[^\\\\s]+\\\\d")\n```\n'
+    out, _ = code_unescape.unescape(md)
+    assert '%d\\n\\t' in out
+    assert '[^\\\\s]+\\\\d' in out
+
+
+def test_code_unescape_leaves_regex_metachars():
+    # \. \( \[ are real regex escapes -> untouched
+    md = "```python\nre.match(r'a\\.b\\(c\\)', s)\n```\n"
+    out, changes = code_unescape.unescape(md)
+    assert "a\\.b\\(c\\)" in out
+    assert changes == []
+
+
+def test_code_unescape_prose_untouched():
+    md = "cost was US\\$4.24 million and a \\* footnote\n\n```sh\n\\$ ls\n```\n"
+    out, _ = code_unescape.unescape(md)
+    assert "US\\$4.24" in out          # prose escape kept
+    assert "$ ls" in out               # code escape stripped
+
+
+def test_code_unescape_skips_mermaid():
+    md = "```mermaid\ngraph TD\nA[\\$x] --> B\n```\n"
+    out, changes = code_unescape.unescape(md)
+    assert out == md and changes == []
+
+
+def test_code_unescape_idempotent():
+    md = "```bash\n\\$ echo \\~/path \\*\n```\n"
+    once, _ = code_unescape.unescape(md)
+    twice, changes = code_unescape.unescape(once)
+    assert once == twice and changes == []
 
 
 # ---------- chapter_split ----------

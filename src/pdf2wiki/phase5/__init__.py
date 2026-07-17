@@ -1,13 +1,15 @@
 """Phase 5 post-processing chain — fixed order, each step sees the previous step's output:
 
-    caption_unbleed -> lang_retag -> dash_normalize -> mermaid_repair -> chapter_split
+    caption_unbleed -> lang_retag -> dash_normalize -> mermaid_repair -> code_unescape -> chapter_split
 
 Order matters: caption_unbleed removes caption-only junk fences and lifts leading captions so
 lang_retag detects on clean code; lang tags before dash-normalize scopes to code fences;
-dash/mermaid fixes must land before the md is split into chapters. Re-run whenever the converter
+dash/mermaid fixes must land before the md is split into chapters; code_unescape strips leftover
+markdown-punct escapes inside code fences last (both merge paths). Re-run whenever the converter
 output changes upstream — do not reuse stale artifacts.
 """
-from . import caption_unbleed, chapter_split, dash_normalize, lang_retag, mermaid_repair
+from . import (caption_unbleed, chapter_split, code_unescape, dash_normalize, lang_retag,
+               mermaid_repair)
 
 
 def run_chain(md_path: str, book: str, out_dir: str | None = None,
@@ -32,6 +34,9 @@ def run_chain(md_path: str, book: str, out_dir: str | None = None,
 
     md, mstats = mermaid_repair.repair(md)
     report["mermaid_repair"] = mstats
+
+    md, unescapes = code_unescape.unescape(md)
+    report["code_unescape"] = {"fixes": len(unescapes)}
 
     if apply:
         with open(md_path, "w") as f:

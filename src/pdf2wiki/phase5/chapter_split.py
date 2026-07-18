@@ -12,6 +12,7 @@ path still resolves. No rewrite needed.
 Everything before the first boundary becomes `00-front-matter.md` (title page, ToC, preface).
 Frontmatter fields kept minimal: title, book, chapter, source, tags.
 """
+import json
 import os
 import re
 
@@ -47,12 +48,15 @@ def slugify(title: str) -> str:
 
 
 def frontmatter(title: str, book: str, order: int, source: str) -> str:
+    # json.dumps -> a valid double-quoted YAML scalar (JSON string syntax is a YAML subset).
+    # Python repr()/raw interpolation broke YAML on titles with mixed quotes/backslashes and on
+    # source filenames containing `: `, `#`, or a leading flow-indicator char.
     return (
         "---\n"
-        f"title: {title!r}\n"
-        f"book: {book}\n"
+        f"title: {json.dumps(title)}\n"
+        f"book: {json.dumps(book)}\n"
         f"chapter: {order}\n"
-        f"source: {source}\n"
+        f"source: {json.dumps(source)}\n"
         "tags: [book]\n"
         "---\n\n"
     )
@@ -71,7 +75,7 @@ def split(md_path: str, book: str, out_dir: str | None = None,
     paths don't leak into permanent frontmatter). Defaults to md_path.
     """
     source = source_name or md_path
-    with open(md_path) as f:
+    with open(md_path, encoding="utf-8") as f:
         text = f.read()
     lines = text.split("\n")
     bounds = find_boundaries(lines)
@@ -101,7 +105,7 @@ def split(md_path: str, book: str, out_dir: str | None = None,
     if not dry_run:
         os.makedirs(out, exist_ok=True)
         for path, content in plans:
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
     written = [p for p, _ in plans]
     return written, bounds

@@ -1,13 +1,16 @@
 """Unit tests for the converter's pure functions (no MinerU / GPU needed)."""
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pdf2wiki.convert.merge import (cap_runs, detect_watermarks, group_runs, indent_suspect,
-                                    iou, merge, norm_code, normalize_chapters_from_toc,
-                                    overlap_coef, render, strip_callouts,
-                                    strip_listing_numbers, transplant_indent)
+import pdf2wiki.convert.merge as merge_mod
+from pdf2wiki.convert.merge import (PassFailed, cap_runs, detect_watermarks, group_runs,
+                                    indent_suspect, iou, merge, norm_code,
+                                    normalize_chapters_from_toc, overlap_coef, render,
+                                    run_mineru, strip_callouts, strip_listing_numbers,
+                                    toc_level1, transplant_indent)
 
 
 # ---------- code normal form ----------
@@ -99,6 +102,12 @@ def test_indent_suspect_valid_python():
     assert indent_suspect("def f():\n    return 1\n") is False
 
 
+def test_indent_suspect_nul_byte_does_not_crash():
+    # ast.parse raises ValueError ("source code string cannot contain null bytes") on a NUL —
+    # previously uncaught, it crashed the whole book. Now treated as suspect (True), no raise.
+    assert indent_suspect("def f():\n    x = 1\x00\n") is True
+
+
 def test_indent_suspect_skips_ruby_and_placeholders():
     assert indent_suspect("params[:id] => x\n.each do |y|\ndef f\n") is False
     assert indent_suspect("def g():\n[...]\n") is False
@@ -136,6 +145,24 @@ def test_transplant_indent_preserves_code_escapes():
     assert '[^\\\\s]+' in disp5   # escaped-backslash kept
 
 
+# ---------- MinerU pass failure handling ----------
+
+def test_run_mineru_timeout_becomes_passfailed(tmp_path, monkeypatch):
+    # a slow MinerU pass must surface as a clean PassFailed (documented hard-stop), not a raw
+    # TimeoutExpired escaping convert_book's handler and crashing the book.
+    def fake_run(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="mineru", timeout=7200)
+
+    monkeypatch.setattr(merge_mod.subprocess, "run", fake_run)
+    outdir = str(tmp_path / "pass")
+    try:
+        run_mineru("mineru", "book.pdf", 0, 1, "pipeline", ["-m", "txt"],
+                   outdir, str(tmp_path), {}, label="pipeline 0-1", timeout=7200)
+        assert False, "expected PassFailed"
+    except PassFailed as e:
+        assert "timed out" in str(e)
+
+
 # ---------- geometry / runs ----------
 
 def test_iou_and_overlap():
@@ -156,10 +183,21 @@ def test_group_and_cap_runs():
 def test_detect_watermarks():
     base = []
     for pg in range(20):
-        base.append({"type": "text", "text": "LICENSED TO user@example.com", "page_idx": pg})
-        base.append({"type": "text", "text": f"unique content {pg}", "page_idx": pg})
+        base.append({"type": "text", "text": "LICENSED TO user@example.com", "abs_page": pg})
+        base.append({"type": "text", "text": f"unique content {pg}", "abs_page": pg})
     wm = detect_watermarks(base, 20)
     assert wm == {"LICENSED TO user@example.com"}
+
+
+def test_detect_watermarks_buckets_by_abs_page_across_chunks():
+    # page_idx is chunk-relative (resets every 40-page pipeline segment); a watermark on all 100
+    # pages of a 100-page book distinct-counts as only 40 when bucketed by page_idx -> below the
+    # 0.6*100=60 threshold -> never detected. Bucketing by abs_page sees all 100 distinct pages.
+    base = []
+    for abs_page in range(100):
+        base.append({"type": "text", "text": "DRM footer — do not distribute",
+                     "page_idx": abs_page % 40, "abs_page": abs_page})
+    assert detect_watermarks(base, 100) == {"DRM footer — do not distribute"}
 
 
 # ---------- merge ----------
@@ -262,6 +300,18 @@ def test_toc_skips_textless_cover_pages():
     final, stats = normalize_chapters_from_toc(
         blocks, [("Cover", 0), ("Chapter 1: Introduction to Things", 10)])
     assert stats["toc_inserted"] == 0                      # no synthetic heading on image-only page
+
+
+def test_toc_level1_drops_destinationless_bookmarks():
+    class Doc:
+        def get_toc(self):
+            return [[1, "Chapter One", 10],     # real dest -> kept, 0-based 9
+                    [1, "Broken Bookmark", -1], # destination-less -> get_toc returns -1 -> DROP
+                    [2, "A Section", 12],        # not level 1 -> ignored
+                    [1, "Chapter Two", 30]]
+    assert toc_level1(Doc()) == [("Chapter One", 9), ("Chapter Two", 29)]
+    # regression: the dropped entry must not become page -2 (which injects a spurious H1 at top)
+    assert all(p >= 0 for _, p in toc_level1(Doc()))
 
 
 def test_render_emits_code_verify_flag():

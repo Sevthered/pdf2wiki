@@ -91,7 +91,10 @@ def detect_watermarks(base, npages):
         if isinstance(t, str):
             s = t.strip()
             if 0 < len(s) < 200:
-                pages_of[s].add(b.get("page_idx"))
+                # bucket by ABSOLUTE page: page_idx is chunk-relative (resets every pipeline
+                # segment), so on a multi-chunk book distinct-page counts capped at the seg size
+                # and never met the 60% threshold -> the DRM footer survived on every page.
+                pages_of[s].add(b.get("abs_page"))
     thresh = max(3, int(0.6 * npages))            # must appear on >=60% of pages
     return {s for s, pgs in pages_of.items() if len(pgs) >= thresh}
 
@@ -176,7 +179,7 @@ def run_mineru(mineru_bin, pdf, a, b, backend, extra, outdir, clean_cwd, env,
         os.makedirs(outdir, exist_ok=True)
         cmd = [mineru_bin, "-p", pdf, "-o", outdir, "-b", backend, "-s", str(a), "-e", str(b)] + extra
         print("  run:", " ".join(cmd[3:]))
-        with open(f"{outdir}.log", "w") as log:
+        with open(f"{outdir}.log", "w", encoding="utf-8") as log:
             try:
                 subprocess.run(cmd, env=env, check=True, cwd=clean_cwd,
                                stdout=log, stderr=subprocess.STDOUT, timeout=timeout)
@@ -185,17 +188,22 @@ def run_mineru(mineru_bin, pdf, a, b, backend, extra, outdir, clean_cwd, env,
                     f"FAILED pass [{tag}] pages {a}-{b} (exit {e.returncode}). log: {outdir}.log — "
                     f"completed passes are cached; fix root cause and re-run to resume from here."
                 ) from e
+            except subprocess.TimeoutExpired as e:
+                raise PassFailed(
+                    f"FAILED pass [{tag}] pages {a}-{b}: timed out after {e.timeout}s. log: {outdir}.log "
+                    f"— completed passes are cached; re-run to resume from here."
+                ) from e
         cl = glob.glob(f"{outdir}/*/*/*content_list.json")
         if not cl:
             raise PassFailed(
                 f"FAILED pass [{tag}] pages {a}-{b}: exited 0 but produced no content_list.json. "
                 f"log: {outdir}.log"
             )
-        with open(done, "w") as f:
+        with open(done, "w", encoding="utf-8") as f:
             f.write("ok\n")        # mark complete only now — guards partial-write reuse
     path = sorted(cl)[0]
     imgdir = os.path.dirname(path)
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         blocks = json.load(f)
     for blk in blocks:                       # 0-based within run -> absolute page
         blk["abs_page"] = int(blk.get("page_idx", 0)) + a
@@ -314,7 +322,9 @@ def indent_suspect(body):
     try:
         ast.parse(textwrap.dedent(b))
         return False
-    except SyntaxError:
+    except (SyntaxError, ValueError):
+        # ValueError: ast.parse raises "source code string cannot contain null bytes" on a NUL
+        # in the code body — uncaught it escaped convert_book's handler and crashed the whole book.
         return True
 
 
@@ -465,6 +475,14 @@ def _norm_title(s):
     title on the chapter page while the ToC carries the prefixed form)."""
     s = re.sub(r"^(chapter|appendix|part)\s+[\divxlc]+\s*[:.\-]?\s*", "", (s or "").strip().lower())
     return re.sub(r"[^a-z0-9]+", "", s)
+
+
+def toc_level1(doc):
+    """Level-1 ToC entries as (title, 0-based page). Drops destination-less bookmarks:
+    get_toc() returns page=-1 for them, and the -1-1=-2 that results would slip past the
+    page-match window and inject/promote a synthetic H1 at the document top, corrupting the
+    chapter split."""
+    return [(t, p - 1) for lvl, t, p in doc.get_toc() if lvl == 1 and p >= 1]
 
 
 def normalize_chapters_from_toc(final, toc_l1):
@@ -640,7 +658,7 @@ def convert_book(pdf_path: str, slug: str, out_root: str, *,
         if wm:
             say(f"watermark(s) auto-detected: {[w[:50] for w in wm]}")
         final, stats = merge(base, hybrid, wm, tiny_px2=cfg.convert.tiny_px2)
-        toc_l1 = [(t, p - 1) for lvl, t, p in pymupdf.open(pdf_path).get_toc() if lvl == 1]
+        toc_l1 = toc_level1(pymupdf.open(pdf_path))
         if toc_l1:
             final, toc_stats = normalize_chapters_from_toc(final, toc_l1)
             say(f"chapter normalize from ToC: {toc_stats}")
@@ -648,9 +666,9 @@ def convert_book(pdf_path: str, slug: str, out_root: str, *,
         md = "\n\n".join(render(b) for b in final)
         for w in wm:                                     # scrub watermark embedded in captions/merged text
             md = md.replace(w, " ")
-        with open(f"{work}/{slug}.md", "w") as f:
+        with open(f"{work}/{slug}.md", "w", encoding="utf-8") as f:
             f.write(md)
-        with open(f"{work}/blocks.json", "w") as f:
+        with open(f"{work}/blocks.json", "w", encoding="utf-8") as f:
             json.dump(final, f, indent=1, default=str)
         say(f"graft stats: {stats}")
         say(f"final types: {dict(Counter(b['type'] for b in final))}")

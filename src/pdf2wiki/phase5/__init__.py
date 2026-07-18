@@ -18,7 +18,7 @@ def run_chain(md_path: str, book: str, out_dir: str | None = None,
     step in memory and writes NOTHING (the split step reports planned files only).
     Returns a report dict.
     """
-    with open(md_path) as f:
+    with open(md_path, encoding="utf-8") as f:
         md = f.read()
     report: dict = {}
 
@@ -39,7 +39,7 @@ def run_chain(md_path: str, book: str, out_dir: str | None = None,
     report["code_unescape"] = {"fixes": len(unescapes)}
 
     if apply:
-        with open(md_path, "w") as f:
+        with open(md_path, "w", encoding="utf-8") as f:
             f.write(md)
 
     written, bounds = chapter_split.split(md_path, book, out_dir=out_dir,

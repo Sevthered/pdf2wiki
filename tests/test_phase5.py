@@ -184,8 +184,27 @@ def test_split_basic(tmp_path):
     assert names == ["00-front-matter.md", "01-chapter-one.md", "02-chapter-two.md"]
     ch1 = (tmp_path / "ch" / "01-chapter-one.md").read_text()
     assert ch1.startswith("---\n")
-    assert "book: testbook" in ch1
+    assert 'book: "testbook"' in ch1               # json.dumps -> quoted YAML scalar
     assert "# Chapter One" in ch1
+
+
+def test_split_frontmatter_is_valid_yaml_with_hostile_title(tmp_path):
+    # repr()/raw interpolation emitted invalid YAML on mixed quotes, backslashes, and a
+    # source filename with `: ` or a leading flow char. json.dumps always yields a valid scalar.
+    md = _write(tmp_path, 'preface\n\n# It\'s a "test": C:\\path & [x]\nbody\n')
+    chapter_split.split(md, "book: with colon", out_dir=str(tmp_path / "ch"),
+                        source_name="[weird]: file #1.pdf")
+    ch1 = (tmp_path / "ch" / "01-its-a-test-cpath-x.md").read_text()
+    fm = ch1.split("---\n")[1]
+    try:
+        import yaml                                  # if PyYAML present, prove it round-trips
+    except ImportError:
+        assert 'title: "' in fm and 'source: "' in fm
+        return
+    meta = yaml.safe_load(fm)
+    assert meta["title"] == 'It\'s a "test": C:\\path & [x]'
+    assert meta["book"] == "book: with colon"
+    assert meta["source"] == "[weird]: file #1.pdf"
 
 
 def test_split_fence_aware(tmp_path):

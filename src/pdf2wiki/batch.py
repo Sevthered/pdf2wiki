@@ -48,7 +48,7 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
     manifest: dict = {}
     if os.path.exists(manifest_path):
         try:
-            with open(manifest_path) as f:
+            with open(manifest_path, encoding="utf-8") as f:
                 manifest = json.load(f)
         except json.JSONDecodeError as e:
             raise SystemExit(
@@ -59,7 +59,7 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
     def save():
         # atomic: a kill mid-dump must never truncate the manifest (it's the resume backbone)
         tmp = manifest_path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=1)
         os.replace(tmp, manifest_path)
 
@@ -91,7 +91,16 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
         t0 = time.time()
 
         timeout = cfg.remote.convert_timeout if remote else cfg.convert.timeout
-        ok, log = ex.convert(b["pdf"], slug, cfg.convert.out_root, timeout)
+        # convert/fetch must NOT propagate: a TimeoutExpired (SSHExecutor subprocess) or a
+        # FileNotFoundError (resolve_binary) here would abort the whole batch, violating the
+        # documented "one book's failure does not abort the batch." Mark failed + continue.
+        try:
+            ok, log = ex.convert(b["pdf"], slug, cfg.convert.out_root, timeout)
+        except Exception as e:
+            print(f"  CONVERT ERROR: {slug}: {e}")
+            manifest[slug] = {"status": "convert_failed", "domain": domain, "error": str(e)}
+            save()
+            continue
         if not ok:
             print(f"  CONVERT FAILED: {slug} — log tail:\n{log[-2000:]}")
             manifest[slug] = {"status": "convert_failed", "domain": domain}
@@ -99,7 +108,14 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             continue
 
         work = os.path.join(stage, slug)
-        if not ex.fetch(slug, cfg.convert.out_root, work):
+        try:
+            fetched = ex.fetch(slug, cfg.convert.out_root, work)
+        except Exception as e:
+            print(f"  FETCH ERROR: {slug}: {e}")
+            manifest[slug] = {"status": "fetch_failed", "domain": domain, "error": str(e)}
+            save()
+            continue
+        if not fetched:
             manifest[slug] = {"status": "fetch_failed", "domain": domain}
             save()
             continue

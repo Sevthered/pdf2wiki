@@ -77,8 +77,12 @@ def _cmd_scan(a, cfg):
 
 def _cmd_batch(a, cfg):
     from .batch import run_batch
-    run_batch(a.books, cfg, a.stage, remote=a.remote or (cfg.remote.host or None),
-              max_books=a.max_books, only=a.only, vault=a.vault or (cfg.output.vault or None))
+    manifest = run_batch(a.books, cfg, a.stage, remote=a.remote or (cfg.remote.host or None),
+                         max_books=a.max_books, only=a.only, vault=a.vault or (cfg.output.vault or None))
+    failed = [s for s, e in manifest.items() if e.get("status") != "done"]
+    if failed:                       # non-zero exit so CI/automation can detect a partial batch
+        print(f"batch: {len(failed)} book(s) not done: {failed}", file=sys.stderr)
+        return 1
     return 0
 
 

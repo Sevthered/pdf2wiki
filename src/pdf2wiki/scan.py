@@ -49,10 +49,11 @@ def scan_one(path: str) -> dict:
     import pymupdf  # lazy
     try:
         d = pymupdf.open(path)
+        npages = d.page_count
+        pages_text = [d[i].get_text() for i in range(min(10, npages))]
     except Exception as e:
+        # a page-level error (corrupt page, bad text stream) must not kill the whole dir scan
         return {"file": os.path.basename(path), "error": str(e)}
-    npages = d.page_count
-    pages_text = [d[i].get_text() for i in range(min(10, npages))]
     title, tconf = guess_title(pages_text, path)
     year, yconf = guess_year(pages_text)
     return {

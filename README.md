@@ -23,7 +23,9 @@ Why two backends instead of one: [why a dual-backend pipeline](docs/explanation/
 - [MinerU](https://github.com/opendatalab/MinerU) ≥ 3.4 on `PATH`
 - A C compiler for vLLM's Triton JIT: `sudo apt install build-essential python3-dev`
 
-Only the conversion needs the GPU — `phase5`, `qa`, and `scan` run anywhere Python runs.
+Only the conversion needs the GPU — `phase5`, `qa`, and `scan` run anywhere Python runs. No GPU at all?
+See [offload the hybrid pass to a server](docs/how-to/offload-hybrid-to-a-server.md) (pipeline runs local
+on CPU, the VLM pass goes to a remote MinerU server) or [remote GPU](docs/how-to/set-up-remote-gpu.md).
 
 ## Install
 
@@ -69,7 +71,7 @@ Query-side (consult + review) ships now; ingest-side is a later release. Details
 Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://diataxis.fr/)):
 
 - **Tutorials** — [convert your first book](docs/tutorials/convert-your-first-book.md)
-- **How-to** — [convert](docs/how-to/convert-a-book.md) · [post-process & split](docs/how-to/post-process-and-split.md) · [batch](docs/how-to/run-a-batch.md) · [QA](docs/how-to/qa-a-conversion.md) · [remote GPU](docs/how-to/set-up-remote-gpu.md) · [troubleshoot](docs/how-to/troubleshoot.md)
+- **How-to** — [convert](docs/how-to/convert-a-book.md) · [post-process & split](docs/how-to/post-process-and-split.md) · [batch](docs/how-to/run-a-batch.md) · [QA](docs/how-to/qa-a-conversion.md) · [remote GPU](docs/how-to/set-up-remote-gpu.md) · [offload hybrid to a server](docs/how-to/offload-hybrid-to-a-server.md) · [troubleshoot](docs/how-to/troubleshoot.md)
 - **Reference** — [CLI](docs/reference/cli.md) · [configuration](docs/reference/configuration.md) · [pipeline stages](docs/reference/pipeline-stages.md) · [phase 5 steps](docs/reference/phase5-steps.md) · [output layout](docs/reference/output-layout.md)
 - **Explanation** — [why dual-backend](docs/explanation/why-dual-backend.md) · [how the merge works](docs/explanation/how-the-merge-works.md) · [design principles](docs/explanation/design-principles.md)
 - **Architecture** — [overview with C4 diagrams](docs/architecture/architecture.md)

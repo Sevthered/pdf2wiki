@@ -1,7 +1,6 @@
 ---
 name: knowledge-query
 description: "Consult a plain-Markdown Obsidian knowledge vault (distilled from technical books, the 'LLM Wiki' pattern) as first-stop reference when planning or designing work in a domain the vault covers. Discovers coverage dynamically from the vault's own domain pages — not a fixed list. Triggers on: /knowledge-query, check the wiki, what does the wiki say, what do the books say, planning tasks in a covered domain when a project CLAUDE.md subscribes to a vault."
-allowed-tools: Read Grep Glob Agent Bash
 ---
 
 # knowledge-query: Consult the Knowledge Vault Before Planning

@@ -1,7 +1,6 @@
 ---
 name: knowledge-review
 description: "In-depth, wiki-grounded review/lint of a project against a distilled-Markdown knowledge vault. Detects which of the vault's domains the project touches (dynamically, from the vault's own domain pages), builds review checklists from vault pages, fans out parallel review agents, and reports severity-ranked findings each citing file:line + [[Page-Name]]. Triggers on: /knowledge-review, review against the wiki, wiki-grounded review, lint against the vault, audit project with the knowledge vault."
-allowed-tools: Read Grep Glob Bash Agent Write
 ---
 
 # knowledge-review: Wiki-Grounded Project Review

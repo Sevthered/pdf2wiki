@@ -48,6 +48,22 @@ pdf2wiki phase5 out/my-book/my-book.md --book my-book --source-name book.pdf --a
 
 New here? Follow the guided [tutorial: convert your first book](docs/tutorials/convert-your-first-book.md).
 
+## Query the vault: the `llm-wiki` plugin
+
+pdf2wiki *builds* a knowledge vault; the bundled **`llm-wiki`** Claude Code plugin *reads* one — so
+Claude can consult it while you plan, and review your code against it, always citing the exact
+`[[Page-Name]]`. It's the "LLM Wiki" pattern (an alternative to RAG/embeddings): plain Markdown read
+just-in-time, with coverage discovered from the vault itself. Standalone (works with any vault in the
+shape pdf2wiki produces) and **MIT-licensed**.
+
+```bash
+claude plugin marketplace add https://github.com/Sevthered/pdf2wiki
+claude plugin install llm-wiki@pdf2wiki
+```
+
+Query-side (consult + review) ships now; ingest-side is a later release. Details:
+[`plugin/`](plugin/) · [llm-wiki documentation](docs/llm-wiki/).
+
 ## Documentation
 
 Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://diataxis.fr/)):
@@ -57,6 +73,7 @@ Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://dia
 - **Reference** — [CLI](docs/reference/cli.md) · [configuration](docs/reference/configuration.md) · [pipeline stages](docs/reference/pipeline-stages.md) · [phase 5 steps](docs/reference/phase5-steps.md) · [output layout](docs/reference/output-layout.md)
 - **Explanation** — [why dual-backend](docs/explanation/why-dual-backend.md) · [how the merge works](docs/explanation/how-the-merge-works.md) · [design principles](docs/explanation/design-principles.md)
 - **Architecture** — [overview with C4 diagrams](docs/architecture/architecture.md)
+- **Plugin** — [llm-wiki (query/review a vault)](docs/llm-wiki/)
 
 ## Status
 
@@ -66,4 +83,5 @@ content. Remote mode is **experimental** — no full public end-to-end run yet; 
 
 ## License
 
-AGPL-3.0-or-later. This tool drives the MinerU CLI (AGPL-3.0) as an external process.
+AGPL-3.0-or-later for the converter. This tool drives the MinerU CLI (AGPL-3.0) as an external process.
+The bundled `plugin/` (the `llm-wiki` Claude Code plugin) is **MIT**-licensed — see [`plugin/LICENSE`](plugin/LICENSE).

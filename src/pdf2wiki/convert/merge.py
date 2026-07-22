@@ -13,6 +13,7 @@ Fidelity rules learned from real books:
   reconciliation, never silently trusted.
 """
 import ast
+import difflib
 import glob
 import json
 import os
@@ -356,7 +357,53 @@ def transplant_indent(hybrid_body, pipe_body):
             else:
                 out.append("")
         return "\n".join(out).strip("\n"), True
+    # Line counts differ (e.g. hybrid dropped a REPL-echo line): the strict 1:1 path would fall
+    # through to the flat pipeline body, which is fine for brace languages but BREAKS Python.
+    # Fuzzy-align the pipeline tokens to hybrid's (correct) indentation and keep it only when the
+    # result is valid Python structure; otherwise flat fallback (no regression).
+    # See bug-python-indent-lost-diverge.
+    if pi_ne and hy_ne:
+        recovered = _recover_hybrid_indent(hy_ne, pi_ne)
+        if recovered is not None:
+            return recovered, True
     return "\n".join(pi).strip("\n"), False        # fallback: pipeline verbatim
+
+
+def _recover_hybrid_indent(hy_ne, pi_ne):
+    """Diverged block, mismatched line counts: align pipeline token lines (correct tokens) to
+    hybrid lines (correct indentation) with difflib, re-apply hybrid's per-line leading
+    whitespace, and accept the result ONLY if it is valid Python structure -- parseable either as
+    a top-level snippet or as a function body (book code blocks are often a bare function body
+    split off from their `def` header, so a lone `return`/`yield` must not disqualify it).
+    Brace-language and unrecoverable blocks fail the parse gate -> None -> caller keeps the flat
+    fallback. hy_ne/pi_ne are the non-empty lines."""
+    hy_indent = [l[:len(l) - len(l.lstrip())] for l in hy_ne]
+    hy_strip = [l.strip() for l in hy_ne]
+    pi_strip = [l.strip() for l in pi_ne]
+    out = [None] * len(pi_ne)
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, pi_strip, hy_strip, autojunk=False).get_opcodes():
+        if tag in ("equal", "replace"):        # paired lines -> hybrid indent + pipeline tokens
+            for k in range(min(i2 - i1, j2 - j1)):
+                out[i1 + k] = hy_indent[j1 + k] + pi_strip[i1 + k]
+    for idx in range(len(pi_ne)):              # pipeline-only lines (no hybrid match): infer from context
+        if out[idx] is None:
+            prev = out[idx - 1] if idx and out[idx - 1] is not None else ""
+            ind = prev[:len(prev) - len(prev.lstrip())]
+            if prev.rstrip().endswith(":"):
+                ind += "    "
+            out[idx] = ind + pi_strip[idx]
+    body = "\n".join(out)
+
+    def parses(src):
+        try:
+            ast.parse(src)
+            return True
+        except (SyntaxError, ValueError):
+            return False
+
+    if parses(textwrap.dedent(body)) or parses("def _f():\n" + textwrap.indent(body, "    ")):
+        return body
+    return None
 
 
 # ---------- merge ----------

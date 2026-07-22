@@ -120,9 +120,23 @@ def test_transplant_indent_1to1():
 
 
 def test_transplant_indent_fallback():
-    disp, reindented = transplant_indent("  a = 1\n", "a = 1\nb = 2\n")
+    # Mismatched line counts + non-Python (brace) code: recovery's AST gate rejects it, so we keep
+    # the flat pipeline body verbatim (correct tokens). Brace languages don't need indentation to
+    # be structurally correct. See bug-python-indent-lost-diverge.
+    disp, reindented = transplant_indent("  int a = 1;\n", "int a = 1;\nreturn b;\n")
     assert reindented is False
-    assert "b = 2" in disp
+    assert "return b;" in disp
+
+
+def test_transplant_indent_python_recovers_on_line_mismatch():
+    # bug-python-indent-lost-diverge: hybrid dropped a line (1 vs 2), the strict 1:1 path fails, but
+    # the pipeline tokens are valid Python once hybrid's indentation is fuzzy-aligned back on — so we
+    # recover the structure instead of emitting a flat (broken) body.
+    hy = "def f():\n    return 1\n"
+    pipe = "def f():\nreturn 1\n"          # pipeline flattened the body indent
+    disp, reindented = transplant_indent(hy, pipe)
+    assert reindented is True
+    assert disp == "def f():\n    return 1"
 
 
 def test_transplant_indent_preserves_code_escapes():

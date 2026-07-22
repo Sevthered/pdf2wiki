@@ -1,0 +1,12 @@
+{
+  "name": "llm-wiki",
+  "description": "Consult and review against a plain-Markdown Obsidian knowledge vault (the 'LLM Wiki' pattern) — deep reference pages distilled from technical books, built for LLM consumption. Standalone: works with any vault laid out as wiki/{concepts,entities,sources,domains}/. Skills: knowledge-query, knowledge-review; agent: knowledge-researcher. Coverage is discovered from the vault, not hardcoded. Pairs with the pdf2wiki converter, which builds such a vault from PDFs.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Sevthered"
+  },
+  "homepage": "https://github.com/Sevthered/pdf2wiki",
+  "repository": "https://github.com/Sevthered/pdf2wiki",
+  "license": "MIT",
+  "keywords": ["obsidian", "knowledge-base", "wiki", "rag-alternative", "research", "review", "documentation"]
+}

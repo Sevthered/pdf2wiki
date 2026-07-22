@@ -46,6 +46,12 @@ Background and design rationale.
 
 - [Architecture](architecture/architecture.md) — arc42-style overview with C4 diagrams.
 
+## [llm-wiki plugin (Claude Code)](llm-wiki/)
+
+A standalone Claude Code plugin to **consult** and **review your code against** a knowledge vault of
+the shape pdf2wiki builds — the query side of the "LLM Wiki" pattern. It works with any such vault and
+does not require pdf2wiki. See the [llm-wiki docs](llm-wiki/README.md).
+
 ---
 
 This doc set follows the [Diátaxis](https://diataxis.fr/) framework: tutorials, how-to guides,

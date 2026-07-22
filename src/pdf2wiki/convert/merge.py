@@ -694,11 +694,36 @@ def convert_book(pdf_path: str, slug: str, out_root: str, *,
             f"({100 * len(rich) // total if total else 0}%); hybrid runs={len(runs)}")
 
         hybrid = []
+        # Hybrid backend: local GPU (hybrid-engine) by default, or offload the VLM pass to a remote
+        # OpenAI-compatible MinerU server (hybrid-http-client -u URL) when a URL is configured. The
+        # layout runs client-side; only the VLM inference is remote, so --effort (image-analysis /
+        # Mermaid / chart transcription) is preserved. Pipeline always stays local.
+        # See decision-pdf2wiki-api-hybrid-offload.
+        hy_url = (cfg.mineru.hybrid_server_url or "").strip()
+        if hy_url:
+            hy_backend = "hybrid-http-client"
+            hy_extra = ["--effort", cfg.mineru.effort, "-u", hy_url]
+            say(f"hybrid pass offloaded to remote MinerU server: {hy_url}")
+        else:
+            hy_backend = "hybrid-engine"
+            hy_extra = ["--effort", cfg.mineru.effort]
         for i, (ra, rb) in enumerate(runs):
             say(f"hybrid pass {i + 1}/{len(runs)} pages {ra}-{rb}:")
-            hb, _ = run_mineru(mineru_bin, pdf_path, ra, rb, "hybrid-engine",
-                               ["--effort", cfg.mineru.effort], f"{work}/hy_{ra}_{rb}",
-                               clean_cwd, env, label=f"hybrid {ra}-{rb}", timeout=timeout)
+            try:
+                hb, _ = run_mineru(mineru_bin, pdf_path, ra, rb, hy_backend, hy_extra,
+                                   f"{work}/hy_{ra}_{rb}", clean_cwd, env,
+                                   label=f"hybrid {ra}-{rb}", timeout=timeout)
+            except PassFailed as e:
+                if not hy_url:
+                    raise
+                # Fail fast, loud: never fall back to local hybrid (assumes the GPU we offloaded
+                # away) or pipeline-only (loses tables/diagrams/Mermaid). Cached passes resume.
+                raise PassFailed(
+                    f"{e}\nhybrid pass was offloaded to server '{hy_url}' (pages {ra}-{rb}); it must "
+                    f"be reachable and serving an OpenAI-compatible MinerU endpoint. Not falling back "
+                    f"to local hybrid or pipeline-only. Fix the server and re-run — completed passes "
+                    f"are cached and resume."
+                ) from e
             hybrid += hb                       # only table/mermaid/latex/chart/code-indent used
 
         wm = detect_watermarks(base, total)

@@ -20,10 +20,12 @@ class LocalExecutor:
     def check(self) -> None:
         pass  # nothing to verify locally
 
-    def convert(self, pdf_path: str, slug: str, out_root: str, timeout: int) -> tuple[bool, str]:
-        """Run the converter locally. Returns (ok, log_text)."""
+    def convert(self, pdf_path: str, slug: str, out_root: str, timeout: int,
+                cfg=None) -> tuple[bool, str]:
+        """Run the converter locally. Returns (ok, log_text). `cfg` carries CLI overrides (e.g.
+        --hybrid-server-url); when None, convert_book loads the default config."""
         from .convert import convert_book  # lazy: keep GPU-path imports out of CLI startup
-        return convert_book(pdf_path, slug, out_root, timeout=timeout)
+        return convert_book(pdf_path, slug, out_root, timeout=timeout, cfg=cfg)
 
     def fetch(self, slug: str, out_root: str, dest_dir: str) -> bool:
         """Local mode: artifacts are already on disk — just report where."""

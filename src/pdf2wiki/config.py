@@ -21,6 +21,11 @@ class MineruConfig:
     binary: str = ""                    # empty -> discover `mineru` on PATH
     model_source: str = "huggingface"   # MINERU_MODEL_SOURCE
     effort: str = "high"                # hybrid-engine effort for the VLM pass
+    hybrid_server_url: str = ""         # empty -> local hybrid-engine (GPU). Set -> offload ONLY the
+    #                                     hybrid VLM pass to this OpenAI-compatible MinerU server
+    #                                     (`hybrid-http-client -u URL`); pipeline stays local (CPU ok).
+    #                                     BYO server; no auth (front with a reverse proxy). See
+    #                                     decision-pdf2wiki-api-hybrid-offload.
 
     def resolve_binary(self) -> str:
         if self.binary:

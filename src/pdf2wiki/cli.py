@@ -13,7 +13,17 @@ from .config import load_config
 
 def _cmd_convert(a, cfg):
     from .executor import LocalExecutor, SSHExecutor
+    if a.hybrid_server_url:
+        cfg.mineru.hybrid_server_url = a.hybrid_server_url
     if a.remote or cfg.remote.host:
+        # --remote (whole-convert over SSH) and --hybrid-server-url (local pipeline + remote hybrid
+        # VLM) are distinct, mutually exclusive convert strategies — refuse rather than silently
+        # ignore one. See decision-pdf2wiki-api-hybrid-offload.
+        if cfg.mineru.hybrid_server_url:
+            print("error: --remote and --hybrid-server-url are mutually exclusive convert modes "
+                  "(--remote runs the whole conversion on the SSH host; --hybrid-server-url runs "
+                  "pipeline locally and offloads only the hybrid VLM pass). Pick one.", file=sys.stderr)
+            return 2
         host = a.remote or cfg.remote.host
         ex = SSHExecutor(host, cfg.remote.books_dir, cfg.remote.workdir,
                          cfg.remote.connect_timeout, cfg.remote.convert_timeout)
@@ -23,7 +33,7 @@ def _cmd_convert(a, cfg):
     else:
         ex = LocalExecutor()
         ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root,
-                             cfg.convert.timeout)
+                             cfg.convert.timeout, cfg=cfg)
         # local progress already streamed live by convert_book — don't print the log twice
     return 0 if ok else 1
 
@@ -98,6 +108,9 @@ def main(argv=None):
     p.add_argument("--name", required=True, help="output slug")
     p.add_argument("--out", default=None, help="output root (default from config)")
     p.add_argument("--remote", default=None, help="ssh host to run the conversion on")
+    p.add_argument("--hybrid-server-url", default=None,
+                   help="offload only the hybrid VLM pass to this OpenAI-compatible MinerU server "
+                        "(pipeline stays local); BYO server, no auth. Mutually exclusive with --remote")
     p.set_defaults(fn=_cmd_convert)
 
     p = sub.add_parser("phase5", help="post-process a converted .md (dry-run by default)")

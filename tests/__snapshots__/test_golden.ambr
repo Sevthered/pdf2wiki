@@ -1,0 +1,141 @@
+# serializer version: 1
+# name: test_merge_golden[blocks_json]
+  '''
+  [
+   {
+    "type": "text",
+    "abs_page": 0,
+    "bbox": [
+     0,
+     0,
+     500,
+     20
+    ],
+    "text": "Chapter 1",
+    "text_level": 1,
+    "_src": "base"
+   },
+   {
+    "type": "code",
+    "sub_type": "python",
+    "abs_page": 0,
+    "bbox": [
+     0,
+     30,
+     500,
+     80
+    ],
+    "code_body": "def f():\n    return 1",
+    "_src": "base",
+    "_code_path": "verified"
+   },
+   {
+    "type": "code",
+    "sub_type": "python",
+    "abs_page": 0,
+    "bbox": [
+     0,
+     90,
+     500,
+     140
+    ],
+    "code_body": "x = load_key()",
+    "_src": "base",
+    "_code_flag": true,
+    "_reindented": true,
+    "_code_path": "flagged"
+   },
+   {
+    "type": "table",
+    "abs_page": 1,
+    "bbox": [
+     0,
+     0,
+     500,
+     60
+    ],
+    "table_body": "<table>\n<tr><td>4.3</td><td>9.5</td></tr>\n</table>",
+    "_src": "base"
+   },
+   {
+    "type": "image",
+    "abs_page": 1,
+    "bbox": [
+     0,
+     70,
+     500,
+     200
+    ],
+    "img_path": "images/fig1.jpg",
+    "image_caption": [
+     "Figure 1.1 Architecture"
+    ],
+    "_src": "base",
+    "content": "```mermaid\nflowchart LR\n  A --> B\n```"
+   },
+   {
+    "type": "text",
+    "abs_page": 1,
+    "bbox": [
+     0,
+     210,
+     500,
+     230
+    ],
+    "text": "Some prose.",
+    "_src": "base"
+   }
+  ]
+  '''
+# ---
+# name: test_merge_golden[graft_stats]
+  dict({
+    'chart_enriched': 0,
+    'charts': 0,
+    'code_flagged': 1,
+    'code_indent_flagged': 0,
+    'code_pipeline_only': 0,
+    'code_verified': 1,
+    'eq_kept': 0,
+    'eq_swapped': 0,
+    'images': 1,
+    'mermaid_attached': 1,
+    'noise_dropped': 1,
+    'table_kept': 0,
+    'table_swapped': 1,
+  })
+# ---
+# name: test_merge_golden[rendered_md]
+  '''
+  # Chapter 1
+  
+  ```python
+  def f():
+      return 1
+  ```
+  
+  <!-- code-verify: hybrid VLM diverged from text layer; showing pipeline tokens re-indented from hybrid. -->
+  ```python
+  x = load_key()
+  ```
+  
+  <table>
+  <tr><td>4.3</td><td>9.5</td></tr>
+  </table>
+  
+  ![](images/fig1.jpg)
+  
+  *Figure 1.1 Architecture*
+  
+  <details><summary>diagram (mermaid)</summary>
+  
+  ```mermaid
+  flowchart LR
+    A --> B
+  ```
+  
+  </details>
+  
+  Some prose.
+  '''
+# ---

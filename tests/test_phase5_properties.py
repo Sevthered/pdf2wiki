@@ -25,6 +25,7 @@ from pdf2wiki.phase5 import (
     code_unescape,
     dash_normalize,
     lang_retag,
+    mermaid_repair,
 )
 
 # ---- generators: arbitrary converted-book markdown in the documented domain ----
@@ -130,3 +131,46 @@ def test_lang_retag_idempotent(md: str) -> None:
     once, _, _ = lang_retag.retag(md)
     twice, changes, _ = lang_retag.retag(once)
     assert twice == once and changes == []
+
+
+# ---- structural: the in-fence transforms only rewrite a fence's tag or body, never its count ----
+# retag/dash_normalize/code_unescape rewrite the tag or characters inside a fence; mermaid_repair
+# rewrites mermaid labels. None may add, drop, or merge a fence. A body line never contains a bare
+# ``` (domain), so every "```" occurrence is a real delimiter -> counting them counts delimiters.
+# (caption_unbleed is deliberately excluded: removing a caption-only fence is its whole job.)
+
+
+def _fences(md: str) -> int:
+    return md.count("```")
+
+
+@settings(max_examples=300)
+@given(_doc())
+def test_fence_count_preserved(md: str) -> None:
+    n = _fences(md)
+    assert _fences(dash_normalize.normalize(md)[0]) == n
+    assert _fences(code_unescape.unescape(md)[0]) == n
+    assert _fences(lang_retag.retag(md)[0]) == n
+    assert _fences(mermaid_repair.repair(md)[0]) == n
+
+
+_PROSE_DOC = st.lists(_PROSE, min_size=1, max_size=6).map("\n\n".join)
+
+
+@settings(max_examples=200)
+@given(_PROSE_DOC)
+def test_no_fence_input_is_untouched(prose: str) -> None:
+    # dash_normalize/code_unescape/lang_retag act ONLY inside fences (never prose). With no fence in
+    # the input, each must return it byte-identical with no recorded changes.
+    assert dash_normalize.normalize(prose) == (prose, [])
+    assert code_unescape.unescape(prose) == (prose, [])
+    out, changes, _ = lang_retag.retag(prose)
+    assert out == prose and changes == []
+
+
+@settings(max_examples=300)
+@given(_doc())
+def test_mermaid_repair_never_worsens_score(md: str) -> None:
+    # repair's validation proxy is a parse-breaker score; sanitizing a label must never raise it.
+    _, stats = mermaid_repair.repair(md)
+    assert stats["score_after"] <= stats["score_before"]

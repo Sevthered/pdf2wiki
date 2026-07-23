@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+from typing import Any
 
 
 class ExecutionError(RuntimeError):
@@ -22,7 +23,7 @@ class LocalExecutor:
         pass  # nothing to verify locally
 
     def convert(
-        self, pdf_path: str, slug: str, out_root: str, timeout: int, cfg=None
+        self, pdf_path: str, slug: str, out_root: str, timeout: int, cfg: Any = None
     ) -> tuple[bool, str]:
         """Run the converter locally. Returns (ok, log_text). `cfg` carries CLI overrides (e.g.
         --hybrid-server-url); when None, convert_book loads the default config."""
@@ -85,7 +86,7 @@ class SSHExecutor:
             "ServerAliveCountMax=240",
         ]
 
-    def _run(self, cmd: list[str], timeout: int | None = None) -> subprocess.CompletedProcess:
+    def _run(self, cmd: list[str], timeout: int | None = None) -> subprocess.CompletedProcess[str]:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     def check(self) -> None:

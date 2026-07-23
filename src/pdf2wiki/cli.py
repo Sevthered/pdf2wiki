@@ -8,11 +8,12 @@ output directories — they never modify existing files in place).
 import argparse
 import json
 import sys
+from typing import Any
 
 from .config import load_config
 
 
-def _cmd_convert(a, cfg):
+def _cmd_convert(a: argparse.Namespace, cfg: Any) -> int:
     from .executor import LocalExecutor, SSHExecutor
 
     if a.mineru_cloud:
@@ -67,15 +68,15 @@ def _cmd_convert(a, cfg):
         ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root)
         print(log)  # remote log was captured on the remote host — show it
     else:
-        ex = LocalExecutor()
-        ok, log = ex.convert(
+        local = LocalExecutor()  # own name: its convert() takes cfg, SSHExecutor's doesn't
+        ok, log = local.convert(
             a.pdf, a.name, a.out or cfg.convert.out_root, cfg.convert.timeout, cfg=cfg
         )
         # local progress already streamed live by convert_book — don't print the log twice
     return 0 if ok else 1
 
 
-def _cmd_phase5(a, cfg):
+def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
     from .phase5 import run_chain
 
     report = run_chain(a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply)
@@ -100,7 +101,7 @@ def _cmd_phase5(a, cfg):
     return 0
 
 
-def _cmd_qa_sample(a, cfg):
+def _cmd_qa_sample(a: argparse.Namespace, cfg: Any) -> int:
     from .qa.sample import sample_pages
 
     r = sample_pages(
@@ -120,7 +121,7 @@ def _cmd_qa_sample(a, cfg):
     return 0
 
 
-def _cmd_qa_review(a, cfg):
+def _cmd_qa_review(a: argparse.Namespace, cfg: Any) -> int:
     from .qa.review import build_review
 
     r = build_review(a.qa_dir, a.name, blocks_path=a.blocks)
@@ -128,7 +129,7 @@ def _cmd_qa_review(a, cfg):
     return 0
 
 
-def _cmd_qa_flagged(a, cfg):
+def _cmd_qa_flagged(a: argparse.Namespace, cfg: Any) -> int:
     from .qa.flagged import flagged_report
 
     reports = sorted(
@@ -146,14 +147,14 @@ def _cmd_qa_flagged(a, cfg):
     return 0
 
 
-def _cmd_scan(a, cfg):
+def _cmd_scan(a: argparse.Namespace, cfg: Any) -> int:
     from .scan import scan_dir
 
     print(json.dumps(scan_dir(a.directory), indent=1))
     return 0
 
 
-def _cmd_batch(a, cfg):
+def _cmd_batch(a: argparse.Namespace, cfg: Any) -> int:
     from .batch import run_batch
 
     manifest = run_batch(
@@ -177,7 +178,7 @@ def _cmd_batch(a, cfg):
     return 0
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="pdf2wiki",
         description="Convert technical books (native-text PDFs) into "
@@ -266,7 +267,8 @@ def main(argv=None):
 
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
-    return a.fn(a, cfg)
+    exit_code: int = a.fn(a, cfg)  # each _cmd_* returns an int exit code
+    return exit_code
 
 
 if __name__ == "__main__":

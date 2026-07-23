@@ -44,6 +44,8 @@ dev = [
     "ruff>=0.15",
     "syrupy>=4",
     "hypothesis>=6",
+    "mypy>=1.11",
+    "types-requests>=2.28",
 ]
 
 [tool.ruff]
@@ -62,3 +64,16 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011", "E402", "RUF043"]  # assert-False idiom; sys.path.insert before imports; raises-match patterns
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/pdf2wiki"]  # the shipped package; tests keep their sys.path/fixture looseness
+
+# pymupdf ships no type information and has no stub package. It IS installed (a runtime dep), so
+# without follow_imports=skip mypy would analyze its untyped API and flag every call under strict;
+# skip makes it a clean Any boundary.
+[[tool.mypy.overrides]]
+module = ["pymupdf", "pymupdf.*", "fitz", "fitz.*"]
+ignore_missing_imports = true
+follow_imports = "skip"

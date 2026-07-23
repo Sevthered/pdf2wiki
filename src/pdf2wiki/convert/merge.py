@@ -25,13 +25,14 @@ import signal
 import subprocess
 import textwrap
 from collections import Counter, defaultdict
+from typing import Any
 
 from .block import Block
 
 # ---------- environment ----------
 
 
-def _mineru_env():
+def _mineru_env() -> dict[str, str]:
     env = dict(os.environ, MINERU_MODEL_SOURCE=os.environ.get("MINERU_MODEL_SOURCE", "huggingface"))
     # WSL2: GPU userspace libs live here and must be visible to non-interactive subprocesses
     if os.path.isdir("/usr/lib/wsl/lib"):
@@ -51,14 +52,14 @@ def _clean_cwd(workdir: str) -> str:
 # ---------- helpers ----------
 
 
-def bbox(b):
+def bbox(b: dict[str, Any]) -> list[float] | None:
     v = b.get("bbox")
     if isinstance(v, str):
         v = json.loads(v)
     return [float(x) for x in v] if v else None
 
 
-def iou(a, b):
+def iou(a: list[float] | None, b: list[float] | None) -> float:
     if not a or not b:
         return 0.0
     x0, y0 = max(a[0], b[0]), max(a[1], b[1])
@@ -70,7 +71,7 @@ def iou(a, b):
     return inter / ua if ua else 0.0
 
 
-def overlap_coef(a, b):
+def overlap_coef(a: list[float] | None, b: list[float] | None) -> float:
     """Intersection / smaller-box-area. Unlike IoU, insensitive to one box being much wider than
     the other: pipeline's code bbox often includes a right-margin annotation-callout column that
     hybrid's tighter code-only crop excludes, so true matches can sit at IoU~0.2-0.29 (just under
@@ -88,10 +89,10 @@ def overlap_coef(a, b):
     return inter / small if small else 0.0
 
 
-def detect_watermarks(base, npages):
+def detect_watermarks(base: list[dict[str, Any]], npages: int) -> set[str]:
     """Book-adaptive: find short text lines that repeat on most pages (per-page DRM watermark).
     No assumption about wording; returns an empty set for books without a watermark."""
-    pages_of = defaultdict(set)
+    pages_of: defaultdict[str, set[Any]] = defaultdict(set)
     for b in base:
         t = b.get("text")
         if isinstance(t, str):
@@ -105,11 +106,11 @@ def detect_watermarks(base, npages):
     return {s for s, pgs in pages_of.items() if len(pgs) >= thresh}
 
 
-def prescan(pdf, start, end):
+def prescan(pdf: str, start: int, end: int) -> list[int]:
     import pymupdf
 
     d = pymupdf.open(pdf)
-    rich = []
+    rich: list[int] = []
     for i in range(start, end + 1):
         p = d[i]
         try:
@@ -122,10 +123,11 @@ def prescan(pdf, start, end):
     return rich
 
 
-def group_runs(pages, gap):
+def group_runs(pages: list[int], gap: int) -> list[tuple[int, int]]:
     if not pages:
         return []
-    runs, a, prev = [], pages[0], pages[0]
+    runs: list[tuple[int, int]] = []
+    a, prev = pages[0], pages[0]
     for pg in pages[1:]:
         if pg - prev <= gap + 1:
             prev = pg
@@ -136,10 +138,10 @@ def group_runs(pages, gap):
     return runs
 
 
-def cap_runs(runs, maxlen):
+def cap_runs(runs: list[tuple[int, int]], maxlen: int) -> list[tuple[int, int]]:
     """Split any run longer than maxlen pages so a single VLM pass can't grow unbounded (OOM/time)
     and so a failure's blast radius + resume granularity stay small."""
-    out = []
+    out: list[tuple[int, int]] = []
     for a, b in runs:
         while b - a + 1 > maxlen:
             out.append((a, a + maxlen - 1))
@@ -148,14 +150,14 @@ def cap_runs(runs, maxlen):
     return out
 
 
-def coverage_gaps(pdf, start, end, base):
+def coverage_gaps(pdf: str, start: int, end: int, base: list[dict[str, Any]]) -> list[int]:
     """Return pages in [start,end] that have real text in the PDF but produced ZERO base blocks —
     i.e. silently dropped by the scrape. Genuinely blank pages (no text) are not gaps."""
     import pymupdf
 
     d = pymupdf.open(pdf)
     covered = {b.get("abs_page") for b in base}
-    gaps = []
+    gaps: list[int] = []
     for p in range(start, end + 1):
         if p in covered:
             continue
@@ -172,8 +174,18 @@ class PassFailed(RuntimeError):
 
 
 def run_mineru(
-    mineru_bin, pdf, a, b, backend, extra, outdir, clean_cwd, env, label="", timeout=None
-):
+    mineru_bin: str,
+    pdf: str,
+    a: int,
+    b: int,
+    backend: str,
+    extra: list[str],
+    outdir: str,
+    clean_cwd: str,
+    env: dict[str, str],
+    label: str = "",
+    timeout: int | None = None,
+) -> tuple[list[dict[str, Any]], str]:
     """Run a MinerU pass (cached). Returns (content_list, images_dir) with page_idx made ABSOLUTE.
 
     Cache is guarded by a `.done` sentinel written only after the subprocess exits 0 AND a
@@ -247,18 +259,29 @@ def run_mineru(
     path = sorted(cl)[0]
     imgdir = os.path.dirname(path)
     with open(path, encoding="utf-8") as f:
-        blocks = json.load(f)
+        blocks: list[dict[str, Any]] = json.load(f)
     for blk in blocks:  # 0-based within run -> absolute page
         blk["abs_page"] = int(blk.get("page_idx", 0)) + a
         blk["_imgdir"] = imgdir  # per-pass images dir (pipeline is chunked -> dirs differ)
     return blocks, imgdir
 
 
-def run_pipeline_chunks(mineru_bin, pdf, start, end, work, clean_cwd, env, seg=40, timeout=None):
+def run_pipeline_chunks(
+    mineru_bin: str,
+    pdf: str,
+    start: int,
+    end: int,
+    work: str,
+    clean_cwd: str,
+    env: dict[str, str],
+    seg: int = 40,
+    timeout: int | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
     """Pipeline skeleton over [start,end] in fixed segments. A crash loses only the current
     segment; completed segments stay cached (.done) and resume on re-run. Blocks carry their own
     absolute page + images dir (set in run_mineru), so concatenation is order-independent."""
-    base, first_img = [], None
+    base: list[dict[str, Any]] = []
+    first_img: str | None = None
     a = start
     while a <= end:
         b = min(a + seg - 1, end)
@@ -288,7 +311,7 @@ RICH_TYPES = ("table", "image", "chart", "equation", "code")  # pages needing th
 CALLOUT = re.compile(r"[①-⑳❶-❿⓪]")  # circled-digit code callouts used by some tech publishers
 
 
-def strip_callouts(s):
+def strip_callouts(s: str) -> str:
     """Remove code-callout markers. Trailing standalone letters (e.g. " B") are ALSO callout
     markers in books that use circled digits — but in books that don't, a trailing bare letter is
     real code (Go's wrapped `..., r` parameter, `return b`, `package a`). So the letter strip is
@@ -307,7 +330,7 @@ def strip_callouts(s):
 LINENUM = re.compile(r"^\s*(\d{1,4})(?:\s(.*))?$")
 
 
-def strip_listing_numbers(s):
+def strip_listing_numbers(s: str) -> str:
     """Remove publisher-printed listing line numbers (some publishers typeset them; the text
     layer captures them, the VLM omits them — polluting output and causing false divergence
     flags). Evidence-gated: strips ONLY when the leading integers cover most non-blank lines AND
@@ -315,7 +338,8 @@ def strip_listing_numbers(s):
     matrix like `1 2 3` / `4 5 6` has too few rows or breaks monotonicity). Wrapped continuation
     lines (unnumbered) are preserved as-is."""
     lines = (s or "").split("\n")
-    nums, nonblank = [], 0
+    nums: list[int] = []
+    nonblank = 0
     for ln in lines:
         if not ln.strip():
             continue
@@ -327,7 +351,7 @@ def strip_listing_numbers(s):
         return s
     if any(b < a for a, b in itertools.pairwise(nums)):
         return s
-    out = []
+    out: list[str] = []
     for ln in lines:
         m = LINENUM.match(ln) if ln.strip() else None
         out.append((m.group(2) or "") if m else ln)
@@ -337,7 +361,7 @@ def strip_listing_numbers(s):
 CAPTION = re.compile(r"^\s*(Listing|Figure|Table)\s+\d")  # caption line bled into a code block
 
 
-def norm_code(s):
+def norm_code(s: str) -> str:
     """Whitespace-insensitive normal form for comparing pipeline vs hybrid code. Removes the
     noise that causes false divergence flags: fences, merged captions, markdown-escaped `\\_`,
     and long base64/JWT/key blobs (collapsed to a placeholder so OCR l/1 O/0 confusions in
@@ -357,11 +381,11 @@ RUBY_MARK = re.compile(r"params\[:|=>|\.each do\b")
 PY_MARK = re.compile(r"\b(def|class|import|from|async\s+def|lambda)\b")
 
 
-def strip_fence(s):
+def strip_fence(s: str) -> str:
     return re.sub(r"```\w*\n?", "", s or "")
 
 
-def indent_suspect(body):
+def indent_suspect(body: str) -> bool:
     """Hybrid's indentation is trusted unconditionally on a token match, but hybrid occasionally
     mis-indents even when tokens agree (e.g. dedents a try-body). Heuristic: for blocks that look
     like real (not illustrative/placeholder, not Ruby-with-`def`) Python, ast.parse after dedent
@@ -381,13 +405,13 @@ def indent_suspect(body):
         return True
 
 
-def transplant_indent(hybrid_body, pipe_body):
+def transplant_indent(hybrid_body: str, pipe_body: str) -> tuple[str, bool]:
     """Genuine divergence -> pipeline TOKENS are the truth (hybrid VLM hallucinates). Display
     pipeline content re-indented with hybrid's per-line leading whitespace when the two line up
     1:1; otherwise fall back to pipeline verbatim (correct tokens, flat).
     Returns (display_body, reindented_bool)."""
     hy = [l for l in (hybrid_body or "").split("\n") if not l.strip().startswith("```")]
-    pi = []
+    pi: list[str] = []
     for l in strip_listing_numbers(re.sub(r"```\w*", "", pipe_body or "")).split("\n"):
         if CAPTION.match(l):
             continue
@@ -401,7 +425,7 @@ def transplant_indent(hybrid_body, pipe_body):
     pi_ne = [l for l in pi if l.strip()]
     if pi_ne and len(hy_ne) == len(pi_ne):  # 1:1 -> hybrid indent + pipeline tokens
         it = iter(pi_ne)
-        out = []
+        out: list[str] = []
         for l in hy:
             if l.strip():
                 indent = l[: len(l) - len(l.lstrip())]
@@ -421,7 +445,7 @@ def transplant_indent(hybrid_body, pipe_body):
     return "\n".join(pi).strip("\n"), False  # fallback: pipeline verbatim
 
 
-def _recover_hybrid_indent(hy_ne, pi_ne):
+def _recover_hybrid_indent(hy_ne: list[str], pi_ne: list[str]) -> str | None:
     """Diverged block, mismatched line counts: align pipeline token lines (correct tokens) to
     hybrid lines (correct indentation) with difflib, re-apply hybrid's per-line leading
     whitespace, and accept the result ONLY if it is valid Python structure -- parseable either as
@@ -432,7 +456,7 @@ def _recover_hybrid_indent(hy_ne, pi_ne):
     hy_indent = [l[: len(l) - len(l.lstrip())] for l in hy_ne]
     hy_strip = [l.strip() for l in hy_ne]
     pi_strip = [l.strip() for l in pi_ne]
-    out = [None] * len(pi_ne)
+    out: list[str | None] = [None] * len(pi_ne)
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
         None, pi_strip, hy_strip, autojunk=False
     ).get_opcodes():
@@ -441,14 +465,15 @@ def _recover_hybrid_indent(hy_ne, pi_ne):
                 out[i1 + k] = hy_indent[j1 + k] + pi_strip[i1 + k]
     for idx in range(len(pi_ne)):  # pipeline-only lines (no hybrid match): infer from context
         if out[idx] is None:
-            prev = out[idx - 1] if idx and out[idx - 1] is not None else ""
+            prev_val = out[idx - 1] if idx else None
+            prev = prev_val if prev_val is not None else ""
             ind = prev[: len(prev) - len(prev.lstrip())]
             if prev.rstrip().endswith(":"):
                 ind += "    "
             out[idx] = ind + pi_strip[idx]
-    body = "\n".join(out)
+    body = "\n".join(line if line is not None else "" for line in out)
 
-    def parses(src):
+    def parses(src: str) -> bool:
         try:
             ast.parse(src)
             return True
@@ -468,17 +493,22 @@ def _recover_hybrid_indent(hy_ne, pi_ne):
 DROP = ("header", "page_number", "footer")  # footer = per-page DRM watermark
 
 
-def merge(base, hybrid, wm, tiny_px2=2500):
-    base = [Block.from_dict(b) for b in base]
-    hybrid = [Block.from_dict(h) for h in hybrid]
-    hy = {
+def merge(
+    base: list[dict[str, Any]],
+    hybrid: list[dict[str, Any]],
+    wm: set[str],
+    tiny_px2: int = 2500,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    base_blocks = [Block.from_dict(b) for b in base]
+    hybrid_blocks = [Block.from_dict(h) for h in hybrid]
+    hy: dict[str, dict[int, list[Block]]] = {
         "table": {},
         "image": {},
         "equation": {},
         "chart": {},
         "code": {},
     }  # type -> {page: [blocks]}
-    for h in hybrid:
+    for h in hybrid_blocks:
         t = h.type
         if t == "table":
             hy["table"].setdefault(h.abs_page, []).append(h)
@@ -491,7 +521,7 @@ def merge(base, hybrid, wm, tiny_px2=2500):
         elif t == "code" and h.code_body:
             hy["code"].setdefault(h.abs_page, []).append(h)
 
-    def best(cands, b, contain_ok=False):
+    def best(cands: list[Block], b: Block, contain_ok: bool = False) -> Block | None:
         m = max(cands, key=lambda h: iou(b.bbox, h.bbox), default=None)
         if m and iou(b.bbox, m.bbox) > 0.3:
             return m
@@ -501,8 +531,8 @@ def merge(base, hybrid, wm, tiny_px2=2500):
                 return m2
         return None
 
-    final = []
-    st = dict(
+    final: list[dict[str, Any]] = []
+    st: dict[str, int] = dict(
         table_swapped=0,
         table_kept=0,
         mermaid_attached=0,
@@ -517,7 +547,7 @@ def merge(base, hybrid, wm, tiny_px2=2500):
         code_pipeline_only=0,
         code_indent_flagged=0,
     )
-    for b in base:
+    for b in base_blocks:
         t = b.type
         if t in DROP:
             continue
@@ -592,7 +622,7 @@ def merge(base, hybrid, wm, tiny_px2=2500):
 # ---------- chapter normalization from the PDF's own ToC ----------
 
 
-def _norm_title(s):
+def _norm_title(s: str | None) -> str:
     """Normal form for matching a ToC title against a rendered heading: case/punct-insensitive,
     ignoring a leading 'Chapter N:'/'Appendix A.'/'Part I' prefix (books often print the bare
     title on the chapter page while the ToC carries the prefixed form)."""
@@ -600,7 +630,7 @@ def _norm_title(s):
     return re.sub(r"[^a-z0-9]+", "", s)
 
 
-def toc_level1(doc):
+def toc_level1(doc: Any) -> list[tuple[str, int]]:
     """Level-1 ToC entries as (title, 0-based page). Drops destination-less bookmarks:
     get_toc() returns page=-1 for them, and the -1-1=-2 that results would slip past the
     page-match window and inject/promote a synthetic H1 at the document top, corrupting the
@@ -608,7 +638,9 @@ def toc_level1(doc):
     return [(t, p - 1) for lvl, t, p in doc.get_toc() if lvl == 1 and p >= 1]
 
 
-def normalize_chapters_from_toc(final, toc_l1):
+def normalize_chapters_from_toc(
+    final: list[dict[str, Any]], toc_l1: list[tuple[str, int]]
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Fix heading levels using the PDF's own table of contents (level-1 bookmarks) — the ground
     truth for chapter boundaries. Layout models mistag chapter headings (real chapters come out
     H2 or plain text; section headings get promoted to H1), which breaks any downstream
@@ -623,14 +655,14 @@ def normalize_chapters_from_toc(final, toc_l1):
     Evidence gate: only when >=3 entries matched are the remaining unmatched level-1 text blocks
     demoted to level 2 (kills spurious H1s) — a garbage/missing ToC changes nothing.
     Returns (final, stats)."""
-    matched_ids = set()
+    matched_ids: set[int] = set()
     matched = 0
-    inserts = []
+    inserts: list[tuple[int, dict[str, Any]]] = []
     for title, page in toc_l1:
         want = _norm_title(title)
         if not want:
             continue
-        hit = None
+        hit: dict[str, Any] | None = None
         for b in final:
             if id(b) in matched_ids or b.get("type") != "text":
                 continue
@@ -725,7 +757,7 @@ def render(b: Block) -> str:
     return ""
 
 
-def collect_images(final, outdir):
+def collect_images(final: list[dict[str, Any]], outdir: str) -> None:
     imgdir = os.path.join(outdir, "images")
     os.makedirs(imgdir, exist_ok=True)
     for b in final:
@@ -753,7 +785,7 @@ def convert_book(
     start: int | None = None,
     end: int | None = None,
     timeout: int | None = None,
-    cfg=None,
+    cfg: Any = None,
 ) -> tuple[bool, str]:
     """Convert one book. Returns (ok, log_text). Resumable: completed MinerU passes are cached
     under the output dir (`.done` sentinels) and skipped on re-run."""
@@ -765,7 +797,7 @@ def convert_book(
 
     lines: list[str] = []
 
-    def say(msg):
+    def say(msg: str) -> None:
         print(msg)
         lines.append(str(msg))
 
@@ -811,7 +843,7 @@ def convert_book(
             f"({100 * len(rich) // total if total else 0}%); hybrid runs={len(runs)}"
         )
 
-        hybrid = []
+        hybrid: list[dict[str, Any]] = []
         # Hybrid backend: local GPU (hybrid-engine) by default, or offload the VLM pass to a remote
         # OpenAI-compatible MinerU server (hybrid-http-client -u URL) when a URL is configured. The
         # layout runs client-side; only the VLM inference is remote, so --effort (image-analysis /

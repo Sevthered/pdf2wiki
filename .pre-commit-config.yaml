@@ -1,0 +1,7 @@
+# Catch REUSE/SPDX gaps locally before commit; CI (`uv run reuse lint`) is the backstop.
+# Install once: `uv run pre-commit install`.
+repos:
+  - repo: https://github.com/fsfe/reuse-tool
+    rev: v6.2.0  # keep in sync with the `reuse` dev dependency in pyproject.toml
+    hooks:
+      - id: reuse

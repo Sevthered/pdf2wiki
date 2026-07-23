@@ -26,6 +26,17 @@ uv run pytest -q
 Tests live in `tests/` and use synthetic fixtures (no PDFs, no network, no GPU). Please add or update
 tests for any behavior change and keep the suite green.
 
+## Lint & license compliance
+
+CI runs `ruff check`, `ruff format --check`, `reuse lint`, `mypy`, and `pytest`. Run them locally
+with `uv run <tool>`. The project is [REUSE](https://reuse.software/) 3.3 compliant — every source
+file carries an SPDX header (`src/**` is AGPL-3.0-or-later, `plugin/**` is MIT); non-code files are
+covered by `REUSE.toml`. Install the pre-commit hook to catch a missing header before you commit:
+
+```bash
+uv run pre-commit install
+```
+
 ## Conventions
 
 - **Style.** Match the surrounding code. Keep changes surgical.

@@ -26,5 +26,6 @@ jobs:
       - run: uv sync --group dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run reuse lint  # REUSE 3.3: every file has SPDX copyright + license info
       - run: uv run mypy  # strict; config in pyproject [tool.mypy], src is strict-clean
       - run: uv run pytest -q

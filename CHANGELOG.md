@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-07-23
+
+QA + diagnostics from an external review of the repo. No breaking changes; +4 tests (103 → 107).
+
+### Added
+- **`pdf2wiki qa flags PATHS...`** — per-book report of the code blocks where the VLM diverged from the
+  byte-clean text layer (`_code_flag`), or where hybrid indentation failed a Python ast check
+  (`_indent_flag`), read from `blocks.json`. Ranks multiple books by flagged count (which books to
+  trust least) and lists each flagged block (page / language / snippet) for a single book — the
+  highest-signal spots to spot-check.
+
+### Changed
+- **Batch summary rolls up `error_class`** — a partial batch now prints, e.g.,
+  `5 book(s) not done — by class: permanent×3, timeout×1, fetch×1` (plus the slug list), so a cluster
+  of same-kind failures reads as one diagnosis instead of N separate slugs. Exit code unchanged.
+
 ## [0.2.2] - 2026-07-23
 
 Resilience + security hardening from a book-grounded review (Tech-Books vault: Backoff-Retries,

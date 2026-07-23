@@ -52,13 +52,6 @@ def _clean_cwd(workdir: str) -> str:
 # ---------- helpers ----------
 
 
-def bbox(b: dict[str, Any]) -> list[float] | None:
-    v = b.get("bbox")
-    if isinstance(v, str):
-        v = json.loads(v)
-    return [float(x) for x in v] if v else None
-
-
 def iou(a: list[float] | None, b: list[float] | None) -> float:
     if not a or not b:
         return 0.0

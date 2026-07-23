@@ -12,13 +12,14 @@ path still resolves. No rewrite needed.
 Everything before the first boundary becomes `00-front-matter.md` (title page, ToC, preface).
 Frontmatter fields kept minimal: title, book, chapter, source, tags.
 """
+
 import json
 import os
 import re
 
-FENCE = re.compile(r'^```')
-H1 = re.compile(r'^# (.+)$')
-APPENDIX_H2 = re.compile(r'^## (Appendix [A-Z]\..+)$')
+FENCE = re.compile(r"^```")
+H1 = re.compile(r"^# (.+)$")
+APPENDIX_H2 = re.compile(r"^## (Appendix [A-Z]\..+)$")
 
 
 def find_boundaries(lines: list[str]) -> list[tuple[int, str]]:
@@ -42,9 +43,9 @@ def find_boundaries(lines: list[str]) -> list[tuple[int, str]]:
 
 
 def slugify(title: str) -> str:
-    s = re.sub(r'[^\w\s-]', '', title.lower()).strip()
-    s = re.sub(r'[\s_-]+', '-', s)
-    return s[:60].strip('-') or "untitled"
+    s = re.sub(r"[^\w\s-]", "", title.lower()).strip()
+    s = re.sub(r"[\s_-]+", "-", s)
+    return s[:60].strip("-") or "untitled"
 
 
 def frontmatter(title: str, book: str, order: int, source: str) -> str:
@@ -66,8 +67,13 @@ class NoBoundariesError(RuntimeError):
     pass
 
 
-def split(md_path: str, book: str, out_dir: str | None = None,
-          source_name: str | None = None, dry_run: bool = False) -> tuple[list[str], list[tuple[int, str]]]:
+def split(
+    md_path: str,
+    book: str,
+    out_dir: str | None = None,
+    source_name: str | None = None,
+    dry_run: bool = False,
+) -> tuple[list[str], list[tuple[int, str]]]:
     """Split md_path into chapter files. Returns (written_paths, boundaries).
 
     dry_run: compute boundaries and target paths, write nothing.
@@ -86,21 +92,29 @@ def split(md_path: str, book: str, out_dir: str | None = None,
     written: list[str] = []
 
     # front matter: everything before the first boundary
-    front = "\n".join(lines[:bounds[0][0]]).strip("\n")
+    front = "\n".join(lines[: bounds[0][0]]).strip("\n")
     plans: list[tuple[str, str]] = []
     if front.strip():
-        plans.append((os.path.join(out, "00-front-matter.md"),
-                      frontmatter("Front matter", book, 0, source) + front + "\n"))
+        plans.append(
+            (
+                os.path.join(out, "00-front-matter.md"),
+                frontmatter("Front matter", book, 0, source) + front + "\n",
+            )
+        )
 
     # each chapter: from its boundary to the next (or EOF)
     for idx, (start, title) in enumerate(bounds, start=1):
         end = bounds[idx][0] if idx < len(bounds) else len(lines)
         chapter_lines = list(lines[start:end])
-        chapter_lines[0] = f"# {title}"    # heading normalize: boundary heading is always H1 in its
+        chapter_lines[0] = f"# {title}"  # heading normalize: boundary heading is always H1 in its
         body = "\n".join(chapter_lines).strip("\n")  # own file, even when the source mistagged it
         slug = slugify(title)
-        plans.append((os.path.join(out, f"{idx:02d}-{slug}.md"),
-                      frontmatter(title, book, idx, source) + body + "\n"))
+        plans.append(
+            (
+                os.path.join(out, f"{idx:02d}-{slug}.md"),
+                frontmatter(title, book, idx, source) + body + "\n",
+            )
+        )
 
     if not dry_run:
         os.makedirs(out, exist_ok=True)

@@ -12,21 +12,24 @@ Lines are split on arrow ops first so each node is isolated (greedy inner-label 
 even when a label contains stray quotes/brackets). Never changes non-mermaid fences.
 Validation is a parse-breaker score (proxy), not a real mermaid parse.
 """
+
 import re
 
-MERBLOCK = re.compile(r'^(```mermaid\n)(.*?)^(```)', re.S | re.M)
-ARROW = re.compile(r'(\s*(?:-\.->|--[>x]|==>|===|-\.-|---|~~~)\s*)')   # keep arrows as separators
+MERBLOCK = re.compile(r"^(```mermaid\n)(.*?)^(```)", re.S | re.M)
+ARROW = re.compile(r"(\s*(?:-\.->|--[>x]|==>|===|-\.-|---|~~~)\s*)")  # keep arrows as separators
 # id (or `subgraph name`) + shape-open + "label" + close. Prefix allows a `subgraph name ` lead-in.
 NODE = re.compile(r'^([\w&;\s]*?)([\[\{\(])"(.*)"([\]\}\)])(.*)$')
-OPEN_ONLY = re.compile(r'^([\w&;\s]*?)([\[\{\(])["\'](.*)$')            # unclosed / mismatched-quote label
+OPEN_ONLY = re.compile(r'^([\w&;\s]*?)([\[\{\(])["\'](.*)$')  # unclosed / mismatched-quote label
 CLOSE = {"[": "]", "{": "}", "(": ")"}
-ORPHAN_TAIL = re.compile(r'([\]\}\)])[\s\}\]\)]*(?:<br>[\s\}\]\)]*)*$')  # stray brackets/br after a close
+ORPHAN_TAIL = re.compile(
+    r"([\]\}\)])[\s\}\]\)]*(?:<br>[\s\}\]\)]*)*$"
+)  # stray brackets/br after a close
 
 
 def _san_inner(s: str) -> str:
-    s = s.replace("\\", "")                        # drop stray backslashes (\' escape noise)
+    s = s.replace("\\", "")  # drop stray backslashes (\' escape noise)
     s = s.replace('"', "'").replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
-    s = re.sub(r'(<br>\s*)+', '<br>', s)
+    s = re.sub(r"(<br>\s*)+", "<br>", s)
     return s.strip("<br> ").strip()
 
 
@@ -34,8 +37,8 @@ def _fix_segment(seg: str) -> str:
     m = NODE.match(seg)
     if m:
         pre, op, inner, _cl, post = m.groups()
-        return f'{pre}{op}"{_san_inner(inner)}"{CLOSE[op]}{post}'   # emit close MATCHING the opener
-    m = OPEN_ONLY.match(seg)                       # unclosed label -> close it with a matching bracket
+        return f'{pre}{op}"{_san_inner(inner)}"{CLOSE[op]}{post}'  # emit close MATCHING the opener
+    m = OPEN_ONLY.match(seg)  # unclosed label -> close it with a matching bracket
     if m:
         pre, op, inner = m.groups()
         return f'{pre}{op}"{_san_inner(inner)}"{CLOSE[op]}'
@@ -45,10 +48,10 @@ def _fix_segment(seg: str) -> str:
 def _fix_line(ln: str) -> str:
     ln = ln.replace("&quot;", "'").replace("\\n", "<br>")
     parts = ARROW.split(ln)
-    for i in range(0, len(parts), 2):             # even indices = node segments
+    for i in range(0, len(parts), 2):  # even indices = node segments
         parts[i] = _fix_segment(parts[i])
     ln = "".join(parts)
-    ln = ORPHAN_TAIL.sub(r'\1', ln)               # drop orphan braces/br leaked from multi-line JSON labels
+    ln = ORPHAN_TAIL.sub(r"\1", ln)  # drop orphan braces/br leaked from multi-line JSON labels
     return ln
 
 

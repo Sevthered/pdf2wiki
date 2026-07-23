@@ -1,5 +1,6 @@
 """Split converted blocks by sample page -> per-page markdown, aligned with the rendered PNGs
 from qa.sample, for manual side-by-side back-checks."""
+
 import json
 import os
 
@@ -24,7 +25,9 @@ def build_review(qa_dir: str, name: str, blocks_path: str | None = None) -> dict
     out = []
     for si in sorted(mapping):
         md = "\n\n".join(render_block(b) for b in bypage.get(si, []))
-        out.append(f"\n\n{'=' * 70}\nSAMPLE {si:02d}  (original page {mapping[si]})\n{'=' * 70}\n{md}")
+        out.append(
+            f"\n\n{'=' * 70}\nSAMPLE {si:02d}  (original page {mapping[si]})\n{'=' * 70}\n{md}"
+        )
     review_path = os.path.join(qa, "review.txt")
     with open(review_path, "w", encoding="utf-8") as f:
         f.write("\n".join(out))

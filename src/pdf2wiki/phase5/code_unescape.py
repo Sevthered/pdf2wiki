@@ -11,19 +11,20 @@ Fixes ONLY within ``` code blocks (never prose, where markdown escaping is corre
 ```mermaid. Idempotent. See bug-backslash-escape-stripped (the `\\_`-only fix was incomplete: it left
 `\\$ \\* \\~` on both the flagged pipeline path and the hybrid path).
 """
+
 import re
 
-FENCE = re.compile(r'^(```)([a-zA-Z]*)\n(.*?)^```', re.S | re.M)
+FENCE = re.compile(r"^(```)([a-zA-Z]*)\n(.*?)^```", re.S | re.M)
 # Unescape \X -> X for X in this set. `(?<!\\)` keeps a real escaped-backslash (\\X) intact.
-UNESCAPE = r'$*~_`#@%&!'
-_PAT = re.compile(r'(?<!\\)\\([' + re.escape(UNESCAPE) + r'])')
+UNESCAPE = r"$*~_`#@%&!"
+_PAT = re.compile(r"(?<!\\)\\([" + re.escape(UNESCAPE) + r"])")
 
 
 def _fix_body(body: str) -> tuple[str, list[tuple[str, str]]]:
     changes: list[tuple[str, str]] = []
     out_lines = []
     for ln in body.split("\n"):
-        nl = _PAT.sub(r'\1', ln)
+        nl = _PAT.sub(r"\1", ln)
         if nl != ln:
             changes.append((ln.strip(), nl.strip()))
         out_lines.append(nl)

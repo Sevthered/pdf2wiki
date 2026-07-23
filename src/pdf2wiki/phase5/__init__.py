@@ -8,12 +8,24 @@ dash/mermaid fixes must land before the md is split into chapters; code_unescape
 markdown-punct escapes inside code fences last (both merge paths). Re-run whenever the converter
 output changes upstream — do not reuse stale artifacts.
 """
-from . import (caption_unbleed, chapter_split, code_unescape, dash_normalize, lang_retag,
-               mermaid_repair)
+
+from . import (
+    caption_unbleed,
+    chapter_split,
+    code_unescape,
+    dash_normalize,
+    lang_retag,
+    mermaid_repair,
+)
 
 
-def run_chain(md_path: str, book: str, out_dir: str | None = None,
-              source_name: str | None = None, apply: bool = False) -> dict:
+def run_chain(
+    md_path: str,
+    book: str,
+    out_dir: str | None = None,
+    source_name: str | None = None,
+    apply: bool = False,
+) -> dict:
     """Run the full chain on md_path. With apply=False (dry-run), computes and reports every
     step in memory and writes NOTHING (the split step reports planned files only).
     Returns a report dict.
@@ -26,8 +38,11 @@ def run_chain(md_path: str, book: str, out_dir: str | None = None,
     report["caption_unbleed"] = {"unwrapped": len(captions), "captions": captions}
 
     md, retags, stats = lang_retag.retag(md)
-    report["lang_retag"] = {"changes": len(retags), "stats": dict(stats),
-                            "detail": [(o, n, w) for o, n, w, _ in retags]}
+    report["lang_retag"] = {
+        "changes": len(retags),
+        "stats": dict(stats),
+        "detail": [(o, n, w) for o, n, w, _ in retags],
+    }
 
     md, dashes = dash_normalize.normalize(md)
     report["dash_normalize"] = {"fixes": len(dashes)}
@@ -42,10 +57,13 @@ def run_chain(md_path: str, book: str, out_dir: str | None = None,
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(md)
 
-    written, bounds = chapter_split.split(md_path, book, out_dir=out_dir,
-                                          source_name=source_name, dry_run=not apply)
-    report["chapter_split"] = {"boundaries": len(bounds),
-                               "titles": [t for _, t in bounds],
-                               "files": written}
+    written, bounds = chapter_split.split(
+        md_path, book, out_dir=out_dir, source_name=source_name, dry_run=not apply
+    )
+    report["chapter_split"] = {
+        "boundaries": len(bounds),
+        "titles": [t for _, t in bounds],
+        "files": written,
+    }
     report["applied"] = apply
     return report

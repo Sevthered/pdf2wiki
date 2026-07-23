@@ -186,6 +186,87 @@ def test_convert_cloud_bad_pdf(tmp_path):
     assert "cannot open PDF" in log
 
 
+def _write_content_list(dest_dir, blocks):
+    import json
+    os.makedirs(dest_dir, exist_ok=True)
+    with open(os.path.join(dest_dir, "u_content_list.json"), "w", encoding="utf-8") as f:
+        json.dump(blocks, f)
+
+
+def test_convert_cloud_merge_two_passes(tmp_path, monkeypatch):
+    """--cloud-model merge: runs BOTH cloud passes and splices with our local merge — pipeline supplies
+    byte-clean code tokens, vlm supplies indentation. Mocks the fetch; real merge() runs."""
+    pdf = tmp_path / "book.pdf"
+    _make_pdf(pdf, pages=1)
+    cfg = load_config()
+    cfg.mineru_cloud.token = "t"
+
+    # same code block on page 0, same bbox in both passes: pipeline = flat clean tokens,
+    # vlm = indented (correct) — merge must keep pipeline tokens with vlm indentation.
+    pipe_blocks = [
+        {"type": "code", "sub_type": "code", "bbox": [10, 10, 200, 80], "page_idx": 0,
+         "code_body": "def f():\nreturn 1"},
+        {"type": "text", "bbox": [10, 90, 200, 100], "page_idx": 0, "text": "hello"},
+    ]
+    vlm_blocks = [
+        {"type": "code", "sub_type": "code", "bbox": [10, 10, 200, 79], "page_idx": 0,
+         "code_body": "def f():\n    return 1"},
+        {"type": "text", "bbox": [10, 90, 200, 100], "page_idx": 0, "text": "hello"},
+    ]
+    seen = []
+
+    def fake_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=None):
+        seen.append(model_version)
+        _write_content_list(dest_dir, pipe_blocks if model_version == "pipeline" else vlm_blocks)
+        return dest_dir
+
+    monkeypatch.setattr(cloud, "_run_cloud_pass", fake_pass)
+    ok, log = cloud.convert_book_cloud_merge(str(pdf), "book", str(tmp_path / "out"), cfg=cfg)
+    assert ok is True
+    assert seen == ["pipeline", "vlm"]                     # both passes, in order
+    md = (tmp_path / "out" / "book" / "book.md").read_text()
+    assert "def f():" in md and "return 1" in md
+    assert "\n    return 1" in md                          # vlm indentation preserved
+    assert "graft stats" in log
+    assert (tmp_path / "out" / "book" / "blocks.json").exists()
+
+
+def test_convert_cloud_merge_page_guard(tmp_path, monkeypatch):
+    pdf = tmp_path / "big.pdf"
+    _make_pdf(pdf, pages=3)
+    cfg = load_config()
+    cfg.mineru_cloud.token = "t"
+    cfg.mineru_cloud.max_pages = 2
+    called = []
+    monkeypatch.setattr(cloud, "_run_cloud_pass", lambda *a, **k: called.append(1))
+    ok, log = cloud.convert_book_cloud_merge(str(pdf), "big", str(tmp_path / "out"), cfg=cfg)
+    assert ok is False
+    assert "exceeds mineru.net" in log
+    assert not called                                      # never hit the API past the guard
+
+
+def test_load_cloud_content_list_injects_abs_page(tmp_path):
+    _write_content_list(str(tmp_path), [{"type": "text", "bbox": [0, 0, 1, 1], "page_idx": 4, "text": "x"}])
+    blocks = cloud._load_cloud_content_list(str(tmp_path))
+    assert blocks[0]["abs_page"] == 4                       # abs_page = page_idx (already absolute)
+    assert blocks[0]["_imgdir"] == str(tmp_path)
+
+
+def test_cli_cloud_merge_routes(monkeypatch):
+    from pdf2wiki import cli
+    from pdf2wiki import convert as convmod
+    seen = {}
+
+    def fake_merge(pdf, slug, out, cfg=None):
+        seen["called"] = (pdf, slug)
+        return True, "ok"
+
+    monkeypatch.setattr(convmod, "convert_book_cloud_merge", fake_merge)
+    rc = cli._cmd_convert(_convert_args(mineru_cloud=True, cloud_model="merge"), load_config())
+    assert rc == 0
+    assert seen["called"] == ("b.pdf", "slug")
+
+
 def _convert_args(**over):
     from types import SimpleNamespace
     base = dict(pdf="b.pdf", name="slug", out=None, remote=None,

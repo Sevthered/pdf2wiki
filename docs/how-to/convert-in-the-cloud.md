@@ -1,11 +1,11 @@
 # Convert in the cloud (no GPU, no MinerU)
 
-> **Experimental — mind the code fidelity.** An A/B test (2026-07-22) showed the cloud **`vlm`** model
-> **corrupts code** (the Qwen2-VL model drifts into Chinese tokens on ambiguous code OCR, e.g.
-> `orElseThrow` → `response二等奖Throw`, `findFirst` → `找到了`). The **`pipeline`** model (default) uses
-> the text layer and keeps code byte-clean, but **flattens indentation**. Neither cloud model matches the
-> local dual-pass converter (clean code *and* indentation). Prefer the local converter for code-heavy
-> books; use this for no-GPU one-offs.
+> **Code fidelity — use `--cloud-model merge`.** An A/B test showed the single cloud **`vlm`** model
+> **corrupts code** (Qwen2-VL drifts into Chinese tokens on ambiguous code OCR, e.g. `orElseThrow` →
+> `response二等奖Throw`, `findFirst` → `找到了`). The **`pipeline`** model keeps code byte-clean but
+> **flattens indentation**. The **`merge`** model runs *both* cloud passes and splices them locally with
+> pdf2wiki's own base-driven merge — **byte-clean code AND correct indentation/tables/Mermaid**, matching
+> the local dual-pass converter, still GPU-less. Prefer `merge` for code-heavy books.
 
 `--mineru-cloud` converts a PDF with **zero local setup** — no GPU, no MinerU install, no server. It
 uploads the PDF to the fully-managed [mineru.net](https://mineru.net) Precision API, waits for the
@@ -33,15 +33,27 @@ pdf2wiki convert book.pdf --name my-book --mineru-cloud
 Pick the parsing model with `--cloud-model` (default `pipeline`):
 
 ```bash
-pdf2wiki convert book.pdf --name my-book --mineru-cloud --cloud-model vlm
+pdf2wiki convert book.pdf --name my-book --mineru-cloud --cloud-model merge   # best fidelity
 ```
 
-- **`pipeline`** (default) — text-layer extraction. **Byte-clean code**, but **flat** indentation.
-- **`vlm`** — MinerU2.5 VLM. Preserves indentation + adds tables/Mermaid, but **corrupts code** (Chinese-
-  token drift — see the warning above). Use only for figure/table-heavy PDFs where code fidelity is moot.
+- **`merge`** — **recommended.** Runs *both* `pipeline` and `vlm` in the cloud (two API calls) and
+  splices them with pdf2wiki's local base-driven merge: pipeline supplies byte-clean code tokens, vlm
+  supplies indentation + tables + Mermaid. Matches the local dual-pass converter, GPU-less. Costs **2×**
+  the daily page quota and 2× egress.
+- **`pipeline`** (default) — one pass, text-layer extraction. **Byte-clean code**, but **flat** indentation.
+- **`vlm`** — one pass, MinerU2.5 VLM. Preserves indentation + adds tables/Mermaid, but **corrupts code**
+  (Chinese-token drift — see the warning above). Use only for figure/table-heavy PDFs where code is moot.
 
 `--mineru-cloud` is mutually exclusive with `--remote` and `--hybrid-server-url` (it runs the *whole*
 conversion in the cloud) — passing them together exits with an error.
+
+### How `merge` works
+
+`merge` submits the PDF twice (`model_version=pipeline` and `model_version=vlm`), pulls back each pass's
+`content_list.json`, and feeds both into the same base-driven merge the local converter uses — blocks are
+matched by page + bbox-IoU, code takes pipeline tokens (re-indented from vlm), tables/diagrams take the
+vlm grid/Mermaid. The PDF's own ToC still drives chapter normalization (read locally). Output is identical
+in shape to every other path (`<slug>.md` + `blocks.json` + `images/`), phase5-ready.
 
 ## Config
 

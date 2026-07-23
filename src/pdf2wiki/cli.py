@@ -20,10 +20,17 @@ def _cmd_convert(a, cfg):
             print("error: --mineru-cloud cannot combine with --remote or --hybrid-server-url "
                   "(it runs the whole conversion in the mineru.net cloud). Pick one.", file=sys.stderr)
             return 2
+        out_root = a.out or cfg.convert.out_root
+        if a.cloud_model == "merge":
+            # dual-pass merge pseudo-model: 2 cloud calls (pipeline + vlm) + our local base-driven merge.
+            # See decision-pdf2wiki-cloud-dual-merge.
+            from .convert import convert_book_cloud_merge
+            ok, log = convert_book_cloud_merge(a.pdf, a.name, out_root, cfg=cfg)
+            return 0 if ok else 1
         from .convert import convert_book_cloud
         if a.cloud_model:
             cfg.mineru_cloud.model_version = a.cloud_model
-        ok, log = convert_book_cloud(a.pdf, a.name, a.out or cfg.convert.out_root, cfg=cfg)
+        ok, log = convert_book_cloud(a.pdf, a.name, out_root, cfg=cfg)
         return 0 if ok else 1
     if a.hybrid_server_url:
         cfg.mineru.hybrid_server_url = a.hybrid_server_url
@@ -127,9 +134,10 @@ def main(argv=None):
                    help="convert via the fully-managed mineru.net cloud (no GPU / no local MinerU). "
                         "Uploads the PDF to a third-party cloud — needs a token (env MINERU_API_TOKEN "
                         "or [mineru_cloud]). Mutually exclusive with --remote/--hybrid-server-url")
-    p.add_argument("--cloud-model", default=None, choices=["pipeline", "vlm", "MinerU-HTML"],
+    p.add_argument("--cloud-model", default=None, choices=["pipeline", "vlm", "MinerU-HTML", "merge"],
                    help="mineru.net model_version for --mineru-cloud (default: pipeline = code-safe; "
-                        "vlm adds indent/tables but CORRUPTS code)")
+                        "vlm adds indent/tables but CORRUPTS code; merge = run BOTH pipeline+vlm in the "
+                        "cloud and splice locally = clean code AND indent/tables, GPU-less)")
     p.set_defaults(fn=_cmd_convert)
 
     p = sub.add_parser("phase5", help="post-process a converted .md (dry-run by default)")

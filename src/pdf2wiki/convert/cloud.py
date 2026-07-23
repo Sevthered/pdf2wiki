@@ -4,6 +4,14 @@ No GPU and no local MinerU: the PDF is uploaded to the OpenDataLab cloud (mineru
 parsed there, and the result Markdown + images are pulled back. Output layout matches the local
 converter (`<out>/<slug>/<slug>.md` + `images/`), so phase5 consumes it unchanged.
 
+Two shapes:
+  * single-backend (`convert_book_cloud`): one cloud pass; accept its `full.md` verbatim. `--cloud-model
+    pipeline` (default, code-safe) | `vlm` (indent/tables but corrupts code) | `MinerU-HTML`.
+  * dual-pass merge (`convert_book_cloud_merge`, `--cloud-model merge`): run BOTH `pipeline` and `vlm` in
+    the cloud, pull back each `content_list.json`, and feed them into our existing pure-Python `merge()`
+    locally — clean code (pipeline tokens) AND indentation/tables/Mermaid (vlm), fully GPU-less. Gate-
+    verified 2026-07-23 (research/2026-07-23-cloud-dual-merge-architecture, decision-pdf2wiki-cloud-dual-merge).
+
 ⚠ DATA EGRESS: this uploads the source PDF to a third-party cloud. Only reachable behind the explicit
 `--mineru-cloud` opt-in, and it logs the upload loudly. Do not use for material you cannot send offsite.
 
@@ -12,6 +20,8 @@ required here because the OSS pre-signed upload URL is signed with NO Content-Ty
 auto-adds one → SignatureDoesNotMatch; requests sends the raw body without it. Token is read from config,
 then env MINERU_API_TOKEN, then a token_file; it is never written to disk or logged.
 """
+import glob
+import json
 import os
 import time
 import zipfile
@@ -80,16 +90,88 @@ def _put_file(upload_url, pdf_path, timeout=300):
         raise CloudError(f"upload PUT -> HTTP {r.status_code}: {r.text[:200]}")
 
 
+def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=None) -> str:
+    """Run ONE cloud parse pass (submit → presigned PUT → poll → download → unzip). Extracts the whole
+    result ZIP (full.md + *_content_list.json + images/ + *.json) into `dest_dir` and returns it.
+    Raises CloudError on any failure (fail-fast, loud)."""
+    c = cfg.mineru_cloud
+    name = os.path.basename(pdf_path)
+    say(f"⚠ mineru.net Cloud: uploading '{name}' to a THIRD-PARTY cloud "
+        f"(model_version={model_version}, lang={c.language}). Data leaves this machine.")
+
+    # Step 1: request a pre-signed upload URL for this file.
+    body = {
+        "files": [{"name": name, "is_ocr": False}],
+        "model_version": model_version,
+        "enable_formula": True,
+        "enable_table": True,
+        "language": c.language,
+    }
+    if c.extra_formats:
+        body["extra_formats"] = list(c.extra_formats)
+    sub = _api(f"{c.base_url}/file-urls/batch", token, method="POST", body=body)
+    batch_id = sub["batch_id"]
+    upload_url = sub["file_urls"][0]
+
+    # Step 2: upload the bytes.
+    _put_file(upload_url, pdf_path)
+    say(f"[{model_version}] uploaded; batch={batch_id}; polling…")
+
+    # Step 3: poll until this file is done (or failed). Fail-fast + loud on error.
+    deadline = time.monotonic() + (timeout or c.poll_timeout)
+    zip_url = None
+    while time.monotonic() < deadline:
+        data = _api(f"{c.base_url}/extract-results/batch/{batch_id}", token)
+        item = next((x for x in data.get("extract_result", []) if x.get("file_name") == name), None)
+        if item:
+            state = item.get("state")
+            if state == "done":
+                zip_url = item["full_zip_url"]
+                break
+            if state == "failed":
+                raise CloudError(f"cloud parse failed for '{name}' ({model_version}): {item.get('err_msg')}")
+            prog = item.get("extract_progress", {})
+            say(f"  [{model_version}] state={state} {prog.get('extracted_pages', '?')}/{prog.get('total_pages', '?')}")
+        time.sleep(6)
+    if not zip_url:
+        raise CloudError(f"timed out after {timeout or c.poll_timeout}s waiting for batch {batch_id} ({model_version})")
+
+    # Step 4: download the result ZIP and extract it whole.
+    requests = _requests()
+    try:
+        resp = requests.get(zip_url, timeout=300)
+        resp.raise_for_status()
+        zbytes = resp.content
+    except requests.RequestException as e:
+        raise CloudError(f"result download failed ({model_version}): {e}") from e
+    os.makedirs(dest_dir, exist_ok=True)
+    zipfile.ZipFile(BytesIO(zbytes)).extractall(dest_dir)
+    return dest_dir
+
+
+def _check_pages(pdf_path, max_pages) -> int:
+    import pymupdf
+    try:
+        pages = pymupdf.open(pdf_path).page_count
+    except Exception as e:
+        raise CloudError(f"cannot open PDF '{pdf_path}': {e}") from e
+    if pages > max_pages:
+        raise CloudError(
+            f"{pages} pages exceeds mineru.net's {max_pages}-page limit per file. Split the PDF "
+            f"into <= {max_pages}-page parts and convert each (cloud chunking is not automated)."
+        )
+    return pages
+
+
 def convert_book_cloud(pdf_path: str, slug: str, out_root: str, *,
                        cfg=None, model_version: str | None = None,
                        timeout: int | None = None) -> tuple[bool, str]:
-    """Convert one book via the mineru.net Cloud API. Returns (ok, log_text).
+    """Convert one book via a SINGLE mineru.net Cloud pass. Returns (ok, log_text).
 
-    Output: <out_root>/<slug>/<slug>.md plus <out_root>/<slug>/images/ — the same layout the local
-    converter produces (mineru.net already emits `![](images/<hash>.jpg)` refs, so no path rewrite).
+    Accepts the cloud's `full.md` verbatim. Output: <out_root>/<slug>/<slug>.md plus images/ — the same
+    layout the local converter produces (mineru.net already emits `![](images/<hash>.jpg)` refs).
+    For dual-backend merge quality see convert_book_cloud_merge (`--cloud-model merge`).
     """
-    import pymupdf
-
     from ..config import load_config
     cfg = cfg or load_config()
     c = cfg.mineru_cloud
@@ -103,84 +185,110 @@ def convert_book_cloud(pdf_path: str, slug: str, out_root: str, *,
 
     try:
         token = _resolve_token(cfg)
-        try:
-            pages = pymupdf.open(pdf_path).page_count
-        except Exception as e:
-            raise CloudError(f"cannot open PDF '{pdf_path}': {e}") from e
-        if pages > c.max_pages:
-            raise CloudError(
-                f"{pages} pages exceeds mineru.net's {c.max_pages}-page limit per file. Split the PDF "
-                f"into <= {c.max_pages}-page parts and convert each (cloud chunking is not automated)."
-            )
-
-        name = os.path.basename(pdf_path)
-        say(f"⚠ mineru.net Cloud: uploading '{name}' ({pages}p) to a THIRD-PARTY cloud "
-            f"(model_version={model_version}, lang={c.language}). Data leaves this machine.")
-
-        # Step 1: request a pre-signed upload URL for this file.
-        body = {
-            "files": [{"name": name, "is_ocr": False}],
-            "model_version": model_version,
-            "enable_formula": True,
-            "enable_table": True,
-            "language": c.language,
-        }
-        if c.extra_formats:
-            body["extra_formats"] = list(c.extra_formats)
-        sub = _api(f"{c.base_url}/file-urls/batch", token, method="POST", body=body)
-        batch_id = sub["batch_id"]
-        upload_url = sub["file_urls"][0]
-
-        # Step 2: upload the bytes.
-        _put_file(upload_url, pdf_path)
-        say(f"uploaded; batch={batch_id}; polling…")
-
-        # Step 3: poll until this file is done (or failed). Fail-fast + loud on error.
-        deadline = time.monotonic() + (timeout or c.poll_timeout)
-        zip_url = None
-        while time.monotonic() < deadline:
-            data = _api(f"{c.base_url}/extract-results/batch/{batch_id}", token)
-            item = next((x for x in data.get("extract_result", []) if x.get("file_name") == name), None)
-            if item:
-                state = item.get("state")
-                if state == "done":
-                    zip_url = item["full_zip_url"]
-                    break
-                if state == "failed":
-                    raise CloudError(f"cloud parse failed for '{name}': {item.get('err_msg')}")
-                prog = item.get("extract_progress", {})
-                say(f"  state={state} {prog.get('extracted_pages', '?')}/{prog.get('total_pages', '?')}")
-            time.sleep(6)
-        if not zip_url:
-            raise CloudError(f"timed out after {timeout or c.poll_timeout}s waiting for batch {batch_id}")
-
-        # Step 4: download the result zip and lay it out like the local converter.
+        pages = _check_pages(pdf_path, c.max_pages)
         work = os.path.join(os.path.expanduser(out_root), slug)
-        os.makedirs(work, exist_ok=True)
-        requests = _requests()
-        try:
-            resp = requests.get(zip_url, timeout=300)
-            resp.raise_for_status()
-            zbytes = resp.content
-        except requests.RequestException as e:
-            raise CloudError(f"result download failed: {e}") from e
-        zf = zipfile.ZipFile(BytesIO(zbytes))
-        md_member = next((n for n in zf.namelist() if n == "full.md" or n.endswith("/full.md")), None)
+        say(f"single cloud pass ({pages}p, model_version={model_version})")
+        pass_dir = _run_cloud_pass(pdf_path, model_version, token, cfg,
+                                   os.path.join(work, "_cloud"), say, timeout=timeout)
+
+        md_member = next((n for n in (glob.glob(f"{pass_dir}/full.md") + glob.glob(f"{pass_dir}/*/full.md"))), None)
         if not md_member:
-            raise CloudError(f"result zip has no full.md (members: {zf.namelist()[:8]})")
-        md_text = zf.read(md_member).decode("utf-8")
+            raise CloudError(f"result has no full.md under {pass_dir}")
+        with open(md_member, encoding="utf-8") as f:
+            md_text = f.read()
+        os.makedirs(work, exist_ok=True)
         with open(os.path.join(work, f"{slug}.md"), "w", encoding="utf-8") as f:
             f.write(md_text)
         n_img = 0
-        for member in zf.namelist():
-            if member.startswith("images/") and not member.endswith("/"):
-                dest = os.path.join(work, "images", os.path.basename(member))
+        for img in glob.glob(f"{pass_dir}/**/images/*", recursive=True):
+            if os.path.isfile(img):
+                dest = os.path.join(work, "images", os.path.basename(img))
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as f:
-                    f.write(zf.read(member))
+                with open(dest, "wb") as out, open(img, "rb") as src:
+                    out.write(src.read())
                 n_img += 1
         say(f"wrote {work}/{slug}.md ({len(md_text)} chars), {n_img} images")
         return True, "\n".join(lines)
     except CloudError as e:
         say(f"FAILED (mineru.net Cloud): {e}")
+        return False, "\n".join(lines)
+
+
+def _load_cloud_content_list(pass_dir: str):
+    """Load a cloud pass's `*_content_list.json` and adapt it to what merge() consumes:
+    inject `abs_page` (cloud page_idx is already whole-doc absolute — no per-chunk offset) and
+    `_imgdir` (this pass's extraction dir, for collect_images). Returns the block list."""
+    cl = glob.glob(f"{pass_dir}/*_content_list.json") + glob.glob(f"{pass_dir}/*/*_content_list.json")
+    cl = [p for p in cl if not p.endswith("_content_list_v2.json")]
+    if not cl:
+        raise CloudError(f"no *_content_list.json under {pass_dir}")
+    with open(cl[0], encoding="utf-8") as f:
+        blocks = json.load(f)
+    imgdir = os.path.dirname(cl[0])
+    for b in blocks:
+        b["abs_page"] = int(b.get("page_idx", 0))
+        b["_imgdir"] = imgdir
+    return blocks
+
+
+def convert_book_cloud_merge(pdf_path: str, slug: str, out_root: str, *,
+                             cfg=None, timeout: int | None = None) -> tuple[bool, str]:
+    """Convert one book via TWO mineru.net Cloud passes (pipeline + vlm) merged locally with our
+    base-driven merge. Returns (ok, log_text). GPU-less, no local MinerU — full dual-backend quality
+    (clean code from pipeline tokens, indentation/tables/Mermaid from vlm). See
+    decision-pdf2wiki-cloud-dual-merge / research/2026-07-23-cloud-dual-merge-architecture.
+    """
+    import pymupdf
+
+    from ..config import load_config
+    from .merge import (collect_images, detect_watermarks, merge,
+                        normalize_chapters_from_toc, render, toc_level1)
+    cfg = cfg or load_config()
+    c = cfg.mineru_cloud
+
+    lines: list[str] = []
+
+    def say(msg):
+        print(msg)
+        lines.append(str(msg))
+
+    try:
+        token = _resolve_token(cfg)
+        pages = _check_pages(pdf_path, c.max_pages)
+        work = os.path.join(os.path.expanduser(out_root), slug)
+        say(f"cloud dual-pass merge ({pages}p): 2 API calls (pipeline + vlm) + local merge")
+
+        # Two cloud passes, kept in separate extraction dirs (distinct image hashes, distinct content_list).
+        base_dir = _run_cloud_pass(pdf_path, "pipeline", token, cfg,
+                                   os.path.join(work, "_cloud_pipeline"), say, timeout=timeout)
+        hyb_dir = _run_cloud_pass(pdf_path, "vlm", token, cfg,
+                                  os.path.join(work, "_cloud_vlm"), say, timeout=timeout)
+
+        base = _load_cloud_content_list(base_dir)   # code tokens (byte-clean, flat)
+        hybrid = _load_cloud_content_list(hyb_dir)   # indentation + tables/Mermaid (corrupts code)
+
+        wm = detect_watermarks(base, pages)
+        if wm:
+            say(f"watermark(s) auto-detected: {[w[:50] for w in wm]}")
+        final, stats = merge(base, hybrid, wm, tiny_px2=cfg.convert.tiny_px2)
+
+        toc_l1 = toc_level1(pymupdf.open(pdf_path))   # PDF is local (we uploaded it) → ToC available
+        if toc_l1:
+            final, toc_stats = normalize_chapters_from_toc(final, toc_l1)
+            say(f"chapter normalize from ToC: {toc_stats}")
+
+        os.makedirs(work, exist_ok=True)
+        collect_images(final, work)   # copies base(pipeline) images; rewrites img_path -> images/<hash>.jpg
+        md = "\n\n".join(render(b) for b in final)
+        for w in wm:
+            md = md.replace(w, " ")
+        with open(os.path.join(work, f"{slug}.md"), "w", encoding="utf-8") as f:
+            f.write(md)
+        with open(os.path.join(work, "blocks.json"), "w", encoding="utf-8") as f:
+            json.dump(final, f, indent=1, default=str)
+        say(f"graft stats: {stats}")
+        say(f"wrote {work}/{slug}.md ({len(md)} chars)")
+        return True, "\n".join(lines)
+    except CloudError as e:
+        say(f"FAILED (mineru.net Cloud merge): {e}")
         return False, "\n".join(lines)

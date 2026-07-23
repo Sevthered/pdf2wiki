@@ -21,10 +21,11 @@ code is left alone, so real code is never stripped). Never touches ```mermaid. B
 heading, so chapter-split boundaries / ToC are unaffected. Idempotent (an unwrapped caption is
 plain text and no longer matches the fence regex).
 """
+
 import re
 
-FENCE = re.compile(r'^(```)([a-zA-Z]*)\n(.*?)^```[ \t]*$', re.S | re.M)
-CAPTION = re.compile(r'^(Listing|Figure|Table|Example)\s+(\d+(?:\.\d+)*)\s+(.+?)\s*$')
+FENCE = re.compile(r"^(```)([a-zA-Z]*)\n(.*?)^```[ \t]*$", re.S | re.M)
+CAPTION = re.compile(r"^(Listing|Figure|Table|Example)\s+(\d+(?:\.\d+)*)\s+(.+?)\s*$")
 
 
 def unbleed(md: str) -> tuple[str, list[str]]:
@@ -40,18 +41,18 @@ def unbleed(md: str) -> tuple[str, list[str]]:
         if not nonempty:
             return mo.group(0)
         m = CAPTION.match(nonempty[0].strip())
-        if not m:                                # first content line isn't a caption -> leave alone
+        if not m:  # first content line isn't a caption -> leave alone
             return mo.group(0)
         label, num, rest = m.group(1), m.group(2), m.group(3)
         cap = f"**{label} {num}** {rest}"
         changes.append(f"{label} {num}")
-        if len(nonempty) == 1:                    # caption-ONLY fence -> drop the fence entirely
+        if len(nonempty) == 1:  # caption-ONLY fence -> drop the fence entirely
             return f"{cap}\n"
         # caption is line 1 with real code below -> lift caption out, keep the code fence intact
         out_lines, removed = [], False
         for l in raw:
             if not removed and l.strip() == nonempty[0].strip():
-                removed = True                    # drop exactly the caption line
+                removed = True  # drop exactly the caption line
                 continue
             out_lines.append(l)
         new_body = "\n".join(out_lines).lstrip("\n")

@@ -7,11 +7,12 @@ where en/em-dashes are legitimate punctuation) and never inside ```mermaid. Cons
   - lone minus sign U+2212                                               -> `-`
 Idempotent.
 """
+
 import re
 
-FENCE = re.compile(r'^(```)([a-zA-Z]*)\n(.*?)^```', re.S | re.M)
-FLAG_DASH = re.compile(r'(?<=\s)[–—](?=[A-Za-z])')   # en/em dash as a long-flag prefix
-MINUS = '−'
+FENCE = re.compile(r"^(```)([a-zA-Z]*)\n(.*?)^```", re.S | re.M)
+FLAG_DASH = re.compile(r"(?<=\s)[–—](?=[A-Za-z])")  # en/em dash as a long-flag prefix
+MINUS = "−"
 
 
 def _fix_body(body: str) -> tuple[str, list[tuple[str, str]]]:

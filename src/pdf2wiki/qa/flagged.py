@@ -3,6 +3,7 @@ sample. Pure read over a converted book's blocks.json (no converter or schema ch
 set during merge in convert/merge.py: `_code_flag` = the hybrid/VLM code diverged from the byte-clean
 text layer (output shows the pipeline tokens); `_indent_flag` = tokens agreed but the hybrid
 indentation failed a Python ast sanity check. These are exactly the places worth eyeballing."""
+
 import json
 import os
 
@@ -32,11 +33,21 @@ def flagged_report(blocks_path: str, name: str | None = None) -> dict:
             continue
         body = str(b.get("code_body") or "")
         snippet = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")[:80]
-        flagged.append({"page": int(b.get("abs_page", 0)) + 1, "lang": b.get("sub_type") or "",
-                        "flag": flag, "snippet": snippet})
+        flagged.append(
+            {
+                "page": int(b.get("abs_page", 0)) + 1,
+                "lang": b.get("sub_type") or "",
+                "flag": flag,
+                "snippet": snippet,
+            }
+        )
 
     flagged.sort(key=lambda e: e["page"])
-    return {"name": name, "code_blocks": code_blocks, "flagged": len(flagged),
-            "diverged": sum(1 for e in flagged if e["flag"] == "diverged"),
-            "indent_suspect": sum(1 for e in flagged if e["flag"] == "indent"),
-            "blocks": flagged}
+    return {
+        "name": name,
+        "code_blocks": code_blocks,
+        "flagged": len(flagged),
+        "diverged": sum(1 for e in flagged if e["flag"] == "diverged"),
+        "indent_suspect": sum(1 for e in flagged if e["flag"] == "indent"),
+        "blocks": flagged,
+    }

@@ -1,4 +1,5 @@
 """Unit tests for the converter's pure functions (no MinerU / GPU needed)."""
+import json
 import os
 import subprocess
 import sys
@@ -346,3 +347,35 @@ def test_render_emits_code_verify_flag():
     out = render(flagged)
     assert out.startswith("<!-- code-verify:")
     assert "private_key" in out
+
+
+def test_run_mineru_passes_absolute_paths_to_mineru(tmp_path, monkeypatch):
+    # MinerU runs in clean_cwd, NOT pdf2wiki's cwd. If run_mineru hands it a relative -o/-p, MinerU's
+    # output lands under clean_cwd and pdf2wiki's glob (against its own cwd) misses it -> the remote-mode
+    # "no content_list.json" bug. run_mineru must absolutize the paths it hands MinerU.
+    proj = tmp_path / "proj"; proj.mkdir()
+    clean = tmp_path / "clean"; clean.mkdir()          # a DIFFERENT cwd, as clean_cwd would be on the box
+    monkeypatch.chdir(proj)                            # pdf2wiki's cwd
+    (proj / "in.pdf").write_bytes(b"%PDF-1.4")
+    captured = {}
+
+    class FakeProc:
+        pid = 4321
+        def __init__(self, cmd, cwd):
+            captured["cmd"] = cmd
+            odir = cmd[cmd.index("-o") + 1]
+            # simulate MinerU resolving its -o against ITS cwd (clean_cwd) when relative
+            base = odir if os.path.isabs(odir) else os.path.join(cwd, odir)
+            dst = os.path.join(base, "in", "txt"); os.makedirs(dst, exist_ok=True)
+            with open(os.path.join(dst, "in_content_list.json"), "w") as f:
+                json.dump([{"type": "text", "page_idx": 0, "bbox": [0, 0, 1, 1], "text": "x"}], f)
+        def wait(self, timeout=None): return 0
+
+    monkeypatch.setattr(merge_mod.subprocess, "Popen",
+                        lambda cmd, **k: FakeProc(cmd, k.get("cwd")))
+    blocks, _ = run_mineru("mineru", "in.pdf", 0, 1, "pipeline", ["-m", "txt"],
+                           "reldir", str(clean), {}, label="pipeline 0-1", timeout=60)
+    oi, pi = captured["cmd"].index("-o"), captured["cmd"].index("-p")
+    assert os.path.isabs(captured["cmd"][oi + 1]), "MinerU -o must be absolute"
+    assert os.path.isabs(captured["cmd"][pi + 1]), "MinerU -p must be absolute"
+    assert blocks and blocks[0]["text"] == "x"          # found the content_list MinerU 'wrote'

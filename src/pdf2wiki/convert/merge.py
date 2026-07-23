@@ -179,7 +179,12 @@ def run_mineru(mineru_bin, pdf, a, b, backend, extra, outdir, clean_cwd, env,
     cl = glob.glob(f"{outdir}/*/*/*content_list.json")
     if not (os.path.exists(done) and cl):
         os.makedirs(outdir, exist_ok=True)
-        cmd = [mineru_bin, "-p", pdf, "-o", outdir, "-b", backend, "-s", str(a), "-e", str(b)] + extra
+        # MinerU runs with cwd=clean_cwd (stdlib-shadow-safe), NOT pdf2wiki's cwd — so any relative path
+        # handed to it resolves against the wrong directory and its output lands where our glob can't see
+        # it (remote mode passes a home-relative --out). Absolutize the paths MinerU receives; abspath is
+        # idempotent for already-absolute (local) paths. See bug-pdf2wiki-remote-relative-outdir.
+        cmd = ([mineru_bin, "-p", os.path.abspath(pdf), "-o", os.path.abspath(outdir),
+                "-b", backend, "-s", str(a), "-e", str(b)] + extra)
         print("  run:", " ".join(cmd[3:]))
         with open(f"{outdir}.log", "w", encoding="utf-8") as log:
             # start_new_session=True puts MinerU in its own process group so a timeout can SIGKILL the

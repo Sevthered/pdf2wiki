@@ -13,6 +13,18 @@ from .config import load_config
 
 def _cmd_convert(a, cfg):
     from .executor import LocalExecutor, SSHExecutor
+    if a.mineru_cloud:
+        # Fully-managed cloud path (no GPU, no local MinerU): uploads the PDF to mineru.net. Mutually
+        # exclusive with the local/remote/offload modes. See improvement-pdf2wiki-mineru-cloud-adapter.
+        if a.remote or a.hybrid_server_url:
+            print("error: --mineru-cloud cannot combine with --remote or --hybrid-server-url "
+                  "(it runs the whole conversion in the mineru.net cloud). Pick one.", file=sys.stderr)
+            return 2
+        from .convert import convert_book_cloud
+        if a.cloud_model:
+            cfg.mineru_cloud.model_version = a.cloud_model
+        ok, log = convert_book_cloud(a.pdf, a.name, a.out or cfg.convert.out_root, cfg=cfg)
+        return 0 if ok else 1
     if a.hybrid_server_url:
         cfg.mineru.hybrid_server_url = a.hybrid_server_url
     if a.remote or cfg.remote.host:
@@ -111,6 +123,13 @@ def main(argv=None):
     p.add_argument("--hybrid-server-url", default=None,
                    help="offload only the hybrid VLM pass to this OpenAI-compatible MinerU server "
                         "(pipeline stays local); BYO server, no auth. Mutually exclusive with --remote")
+    p.add_argument("--mineru-cloud", action="store_true",
+                   help="convert via the fully-managed mineru.net cloud (no GPU / no local MinerU). "
+                        "Uploads the PDF to a third-party cloud — needs a token (env MINERU_API_TOKEN "
+                        "or [mineru_cloud]). Mutually exclusive with --remote/--hybrid-server-url")
+    p.add_argument("--cloud-model", default=None, choices=["pipeline", "vlm", "MinerU-HTML"],
+                   help="mineru.net model_version for --mineru-cloud (default: pipeline = code-safe; "
+                        "vlm adds indent/tables but CORRUPTS code)")
     p.set_defaults(fn=_cmd_convert)
 
     p = sub.add_parser("phase5", help="post-process a converted .md (dry-run by default)")

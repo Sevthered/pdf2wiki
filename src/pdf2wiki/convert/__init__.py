@@ -13,6 +13,7 @@ Output layout (consumed by phase5, qa.review, batch):
     <out_root>/<slug>/blocks.json   per-block records with abs_page (for QA review)
     <out_root>/<slug>/*.log         per-pass MinerU logs (never suppressed)
 """
+from .cloud import convert_book_cloud
 from .merge import convert_book
 
-__all__ = ["convert_book"]
+__all__ = ["convert_book", "convert_book_cloud"]

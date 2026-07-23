@@ -20,6 +20,9 @@ classifiers = [
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
 
+[project.optional-dependencies]
+cloud = ["requests>=2.28"]     # only for `convert --mineru-cloud` (mineru.net Cloud API)
+
 [project.urls]
 Homepage = "https://github.com/Sevthered/pdf2wiki"
 Repository = "https://github.com/Sevthered/pdf2wiki"

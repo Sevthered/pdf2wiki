@@ -68,6 +68,23 @@ class RemoteConfig:
 
 
 @dataclass
+class MineruCloudConfig:
+    # Fully-managed mineru.net Cloud converter (`--mineru-cloud`). No GPU, no local MinerU — the PDF is
+    # uploaded to the OpenDataLab cloud and parsed there. See decision/improvement notes on data egress.
+    token: str = ""                     # empty -> read env MINERU_API_TOKEN, then token_file
+    token_file: str = ""                # optional path to a file holding the Bearer token (kept out of VCS)
+    base_url: str = "https://mineru.net/api/v4"
+    # pipeline (default) = text-layer, byte-clean code but FLAT indent. vlm = indent + tables/Mermaid but
+    # CORRUPTS code (Qwen2-VL Chinese-token drift, e.g. orElseThrow -> "二等奖", findFirst -> "找到了";
+    # A/B-proven 2026-07-22, bug-vlm-code-hallucination). Default pipeline for code safety.
+    model_version: str = "pipeline"     # pipeline | vlm | MinerU-HTML
+    language: str = "en"                # mineru.net default is "ch"; our books are English
+    extra_formats: list = field(default_factory=list)   # e.g. ["latex"] for formula-heavy books
+    poll_timeout: int = 1800            # seconds to wait for the cloud task
+    max_pages: int = 200                # mineru.net Precision hard limit per file
+
+
+@dataclass
 class OutputConfig:
     vault: str = ""                     # optional: final placement root (e.g. an Obsidian vault)
 
@@ -75,6 +92,7 @@ class OutputConfig:
 @dataclass
 class Config:
     mineru: MineruConfig = field(default_factory=MineruConfig)
+    mineru_cloud: MineruCloudConfig = field(default_factory=MineruCloudConfig)
     convert: ConvertConfig = field(default_factory=ConvertConfig)
     qa: QaConfig = field(default_factory=QaConfig)
     remote: RemoteConfig = field(default_factory=RemoteConfig)
@@ -104,7 +122,7 @@ def load_config(explicit_path: str | None = None) -> Config:
             continue
         with open(path, "rb") as f:
             data = tomllib.load(f)
-        for section_name in ("mineru", "convert", "qa", "remote", "output"):
+        for section_name in ("mineru", "mineru_cloud", "convert", "qa", "remote", "output"):
             if section_name in data:
                 _apply_section(getattr(cfg, section_name), data[section_name])
     return cfg

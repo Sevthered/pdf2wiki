@@ -72,7 +72,8 @@ def test_config_reads_hybrid_server_url(tmp_path, monkeypatch):
 
 def _convert_args(**over):
     from types import SimpleNamespace
-    base = dict(pdf="b.pdf", name="slug", out=None, remote=None, hybrid_server_url=None)
+    base = dict(pdf="b.pdf", name="slug", out=None, remote=None, hybrid_server_url=None,
+                mineru_cloud=False, cloud_model=None)
     base.update(over)
     return SimpleNamespace(**base)
 

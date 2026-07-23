@@ -7,6 +7,8 @@ indentation failed a Python ast sanity check. These are exactly the places worth
 import json
 import os
 
+from ..convert.block import Block
+
 
 def flagged_report(blocks_path: str, name: str | None = None) -> dict:
     """Summarize the flagged code blocks in one book's blocks.json.
@@ -16,27 +18,26 @@ def flagged_report(blocks_path: str, name: str | None = None) -> dict:
     """
     path = os.path.expanduser(blocks_path)
     with open(path, encoding="utf-8") as f:
-        blocks = json.load(f)
+        blocks = [Block.from_dict(b) for b in json.load(f)]
     name = name or os.path.basename(os.path.dirname(os.path.abspath(path)))
 
     code_blocks = 0
     flagged = []
     for b in blocks:
-        if b.get("type") != "code":
+        if b.type != "code":
             continue
         code_blocks += 1
-        if b.get("_code_flag"):
+        if b.code_flag:
             flag = "diverged"
-        elif b.get("_indent_flag"):
+        elif b.indent_flag:
             flag = "indent"
         else:
             continue
-        body = str(b.get("code_body") or "")
-        snippet = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")[:80]
+        snippet = next((ln.strip() for ln in b.code_body.splitlines() if ln.strip()), "")[:80]
         flagged.append(
             {
-                "page": int(b.get("abs_page", 0)) + 1,
-                "lang": b.get("sub_type") or "",
+                "page": b.abs_page + 1,
+                "lang": b.sub_type,
                 "flag": flag,
                 "snippet": snippet,
             }

@@ -6,7 +6,11 @@ version = 1
 [[annotations]]
 path = [
     "docs/**",
-    "*.md",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "GOVERNANCE.md",
     "*.toml",
     "*.lock",
     "*.yaml",
@@ -28,3 +32,10 @@ path = ["plugin/**"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Sevthered <Sevthered@users.noreply.github.com>"
 SPDX-License-Identifier = "MIT"
+
+# The Code of Conduct is the Contributor Covenant 2.1, licensed CC-BY-4.0 (not the repo's AGPL).
+[[annotations]]
+path = ["CODE_OF_CONDUCT.md"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "The Contributor Covenant contributors"
+SPDX-License-Identifier = "CC-BY-4.0"

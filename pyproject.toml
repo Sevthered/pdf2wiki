@@ -43,6 +43,7 @@ dev = [
     "pytest>=8",
     "ruff>=0.15",
     "syrupy>=4",
+    "hypothesis>=6",
 ]
 
 [tool.ruff]

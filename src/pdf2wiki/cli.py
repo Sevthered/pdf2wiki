@@ -99,6 +99,19 @@ def _cmd_qa_review(a, cfg):
     return 0
 
 
+def _cmd_qa_flagged(a, cfg):
+    from .qa.flagged import flagged_report
+    reports = sorted((flagged_report(p) for p in a.blocks), key=lambda r: r["flagged"], reverse=True)
+    print(f"{'flagged':>7} {'diverged':>8} {'indent':>6} {'code':>5}  book")
+    for r in reports:
+        print(f"{r['flagged']:>7} {r['diverged']:>8} {r['indent_suspect']:>6} {r['code_blocks']:>5}  {r['name']}")
+    if len(reports) == 1:                    # single book -> also list the blocks to eyeball
+        print()
+        for e in reports[0]["blocks"]:
+            print(f"  p{e['page']:<4} [{e['lang'] or '?'}] {e['flag']}: {e['snippet']}")
+    return 0
+
+
 def _cmd_scan(a, cfg):
     from .scan import scan_dir
     print(json.dumps(scan_dir(a.directory), indent=1))
@@ -166,6 +179,10 @@ def main(argv=None):
     p.add_argument("name")
     p.add_argument("--blocks", default=None, help="explicit blocks.json path")
     p.set_defaults(fn=_cmd_qa_review)
+    p = qsub.add_parser("flags", help="report code blocks the VLM diverged on (from blocks.json), "
+                                      "ranked across books — the highest-signal QA sample")
+    p.add_argument("blocks", nargs="+", help="one or more converted-book blocks.json paths")
+    p.set_defaults(fn=_cmd_qa_flagged)
 
     p = sub.add_parser("scan", help="scan a directory of PDFs -> title/year guesses (JSON)")
     p.add_argument("directory")

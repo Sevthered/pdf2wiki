@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """pdf2wiki — convert technical books (native-text PDFs) into clean, chapter-split,
 LLM-ready Markdown, built on a dual-pass MinerU pipeline.
 

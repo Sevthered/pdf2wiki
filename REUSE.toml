@@ -1,0 +1,30 @@
+version = 1
+
+# Files that cannot carry an inline SPDX header — docs, root markdown, config, generated
+# snapshots, the empty py.typed marker, and the LICENSE text itself — are licensed here.
+# The repo core is AGPL-3.0-or-later; the shipped plugin/ subtree is MIT (see the block below).
+[[annotations]]
+path = [
+    "docs/**",
+    "*.md",
+    "*.toml",
+    "*.lock",
+    "*.yaml",
+    "*.yml",
+    ".gitignore",
+    ".github/**",
+    ".claude-plugin/**",
+    "src/pdf2wiki/py.typed",
+    "tests/__snapshots__/**",
+    "LICENSE",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Sevthered <Sevthered@users.noreply.github.com>"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+# The llm-wiki plugin ships standalone under MIT (frontmatter .md + .json can't hold a header).
+[[annotations]]
+path = ["plugin/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Sevthered <Sevthered@users.noreply.github.com>"
+SPDX-License-Identifier = "MIT"

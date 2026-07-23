@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """pdf2wiki command-line interface.
 
 Convention: every mutating command is DRY-RUN by default and requires --apply to write

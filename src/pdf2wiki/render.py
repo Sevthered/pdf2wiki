@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Render converter block records (blocks.json entries) to markdown snippets.
 
 Single shared implementation — the converter's full renderer and the QA review renderer must not

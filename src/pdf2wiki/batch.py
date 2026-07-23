@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Manifest-driven batch conversion: convert -> (fetch) -> phase5 -> optional vault placement.
 
 The book list is a user-supplied TOML file — never code:

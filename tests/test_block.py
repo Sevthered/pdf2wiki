@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Block adapter round-trip identity — the foundation the Stage-6 typed-Block refactor rests on.
 
 The raw-dict-backed `Block` must be transparent: `to_dict()` returns exactly the dict it was built

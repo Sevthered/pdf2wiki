@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Dual-pass converter (MinerU pipeline + hybrid merge).
 
 Base-driven merge: the pipeline `-m txt` pass gives a byte-perfect skeleton from the PDF's

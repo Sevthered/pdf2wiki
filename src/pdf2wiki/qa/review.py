@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Split converted blocks by sample page -> per-page markdown, aligned with the rendered PNGs
 from qa.sample, for manual side-by-side back-checks."""
 

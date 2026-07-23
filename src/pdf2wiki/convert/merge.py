@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Dual-pass production converter — pipeline skeleton + hybrid table/image graft.
 
 The MinerU pipeline pass over the whole range gives byte-perfect code/text/structure from the

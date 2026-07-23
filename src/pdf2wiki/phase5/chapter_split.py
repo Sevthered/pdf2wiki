@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Split a converted book .md into per-chapter files + inject YAML frontmatter.
 
 Boundaries = fence-aware H1 lines (`# ...`), PLUS an H2 `## Appendix X. ...` line when the

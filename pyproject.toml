@@ -48,6 +48,7 @@ dev = [
     "types-requests>=2.28",
     "reuse>=5",
     "pre-commit>=4.6.1",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.ruff]

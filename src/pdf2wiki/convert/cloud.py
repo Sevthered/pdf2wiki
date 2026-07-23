@@ -410,6 +410,7 @@ def convert_book_cloud_merge(
     import pymupdf
 
     from ..config import load_config
+    from .block import Block
     from .merge import (
         collect_images,
         detect_watermarks,
@@ -465,7 +466,7 @@ def convert_book_cloud_merge(
         collect_images(
             final, work
         )  # copies base(pipeline) images; rewrites img_path -> images/<hash>.jpg
-        md = "\n\n".join(render(b) for b in final)
+        md = "\n\n".join(render(Block.from_dict(b)) for b in final)
         for w in wm:
             md = md.replace(w, " ")
         with open(os.path.join(work, f"{slug}.md"), "w", encoding="utf-8") as f:

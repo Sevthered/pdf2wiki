@@ -26,6 +26,8 @@ import subprocess
 import textwrap
 from collections import Counter, defaultdict
 
+from .block import Block
+
 # ---------- environment ----------
 
 
@@ -467,6 +469,8 @@ DROP = ("header", "page_number", "footer")  # footer = per-page DRM watermark
 
 
 def merge(base, hybrid, wm, tiny_px2=2500):
+    base = [Block.from_dict(b) for b in base]
+    hybrid = [Block.from_dict(h) for h in hybrid]
     hy = {
         "table": {},
         "image": {},
@@ -475,25 +479,25 @@ def merge(base, hybrid, wm, tiny_px2=2500):
         "code": {},
     }  # type -> {page: [blocks]}
     for h in hybrid:
-        t = h.get("type")
+        t = h.type
         if t == "table":
-            hy["table"].setdefault(h["abs_page"], []).append(h)
-        elif t == "image" and "mermaid" in str(h.get("content", "")):
-            hy["image"].setdefault(h["abs_page"], []).append(h)
-        elif t == "equation" and h.get("text"):
-            hy["equation"].setdefault(h["abs_page"], []).append(h)
-        elif t == "chart" and str(h.get("content", "")).strip():
-            hy["chart"].setdefault(h["abs_page"], []).append(h)
-        elif t == "code" and h.get("code_body"):
-            hy["code"].setdefault(h["abs_page"], []).append(h)
+            hy["table"].setdefault(h.abs_page, []).append(h)
+        elif t == "image" and "mermaid" in h.content:
+            hy["image"].setdefault(h.abs_page, []).append(h)
+        elif t == "equation" and h.text:
+            hy["equation"].setdefault(h.abs_page, []).append(h)
+        elif t == "chart" and h.content.strip():
+            hy["chart"].setdefault(h.abs_page, []).append(h)
+        elif t == "code" and h.code_body:
+            hy["code"].setdefault(h.abs_page, []).append(h)
 
     def best(cands, b, contain_ok=False):
-        m = max(cands, key=lambda h: iou(bbox(b), bbox(h)), default=None)
-        if m and iou(bbox(b), bbox(m)) > 0.3:
+        m = max(cands, key=lambda h: iou(b.bbox, h.bbox), default=None)
+        if m and iou(b.bbox, m.bbox) > 0.3:
             return m
         if contain_ok and cands:  # fallback: near-full containment, not just IoU
-            m2 = max(cands, key=lambda h: overlap_coef(bbox(b), bbox(h)), default=None)
-            if m2 and overlap_coef(bbox(b), bbox(m2)) > 0.8:
+            m2 = max(cands, key=lambda h: overlap_coef(b.bbox, h.bbox), default=None)
+            if m2 and overlap_coef(b.bbox, m2.bbox) > 0.8:
                 return m2
         return None
 
@@ -514,73 +518,74 @@ def merge(base, hybrid, wm, tiny_px2=2500):
         code_indent_flagged=0,
     )
     for b in base:
-        t = b.get("type")
+        t = b.type
         if t in DROP:
             continue
-        if isinstance(b.get("text"), str) and b["text"].strip() in wm:
+        bt = b.text
+        if isinstance(bt, str) and bt.strip() in wm:
             st["noise_dropped"] += 1
             continue  # per-page watermark (auto-detected)
-        b = dict(b)
-        b["_src"] = "base"  # _imgdir already set per-pass in run_mineru
+        b = b.copy()
+        b.src = "base"  # _imgdir already set per-pass in run_mineru
         if t == "table":
-            m = best(hy["table"].get(b["abs_page"], []), b)
+            m = best(hy["table"].get(b.abs_page, []), b)
             if m:
-                b["table_body"] = m.get("table_body", b.get("table_body"))
+                b.table_body = m.raw.get("table_body", b.table_body)
                 st["table_swapped"] += 1
             else:
                 st["table_kept"] += 1
         elif t == "equation":
-            m = best(hy["equation"].get(b["abs_page"], []), b)  # hybrid LaTeX is cleaner
+            m = best(hy["equation"].get(b.abs_page, []), b)  # hybrid LaTeX is cleaner
             if m:
-                b["text"] = m["text"]
+                b.text = m.raw["text"]
                 st["eq_swapped"] += 1
             else:
                 st["eq_kept"] += 1
         elif t == "code":
             # base `b` = pipeline block (byte-correct tokens); `m` = hybrid match (correct indentation).
-            m = best(hy["code"].get(b["abs_page"], []), b, contain_ok=True)
+            m = best(hy["code"].get(b.abs_page, []), b, contain_ok=True)
             if m:
-                hy_body = m.get("code_body", "")
-                pi_body = b.get("code_body", "")
-                b["sub_type"] = m.get("sub_type", b.get("sub_type"))
+                hy_body = m.code_body
+                pi_body = b.code_body
+                b.sub_type = m.raw.get("sub_type", b.raw.get("sub_type"))
                 if norm_code(pi_body) == norm_code(hy_body):
-                    b["code_body"] = hy_body
-                    b["_code_path"] = "verified"
+                    b.code_body = hy_body
+                    b.code_path = "verified"
                     if indent_suspect(hy_body):  # tokens agree but hybrid indent may be wrong
-                        b["_indent_flag"] = True  # no reliable auto-repair -> flag only
+                        b.indent_flag = True  # no reliable auto-repair -> flag only
                         st["code_indent_flagged"] += 1
                     st["code_verified"] += 1  # agree -> hybrid (keeps indentation)
                 else:
                     # genuine divergence -> pipeline tokens win (hybrid VLM hallucinates: _->., dropped chars).
                     disp, reindented = transplant_indent(hy_body, pi_body)
-                    b["code_body"] = disp
-                    b["_code_flag"] = True
-                    b["_reindented"] = reindented
-                    b["_code_path"] = "flagged"
+                    b.code_body = disp
+                    b.code_flag = True
+                    b.reindented = reindented
+                    b.code_path = "flagged"
                     st["code_flagged"] += 1
             else:  # no hybrid on this page: pipeline only, strip noise
-                b["code_body"] = strip_callouts(strip_listing_numbers(b.get("code_body", "")))
-                b["_code_path"] = "pipeline_only"
+                b.code_body = strip_callouts(strip_listing_numbers(b.code_body))
+                b.code_path = "pipeline_only"
                 st["code_pipeline_only"] += 1
         elif t == "chart":
-            m = best(hy["chart"].get(b["abs_page"], []), b)  # hybrid transcribes chart data
+            m = best(hy["chart"].get(b.abs_page, []), b)  # hybrid transcribes chart data
             if m:
-                b["content"] = m.get("content", "")
+                b.content = m.content
                 st["chart_enriched"] += 1
             st["charts"] += 1
         elif t == "image":
-            bb = bbox(b)
+            bb = b.bbox
             area = (bb[2] - bb[0]) * (bb[3] - bb[1]) if bb else 0
-            cap = b.get("image_caption") or []
+            cap = b.image_caption
             if not any(cap) and area < tiny_px2:  # caption-less tiny image = decorative noise
                 st["noise_dropped"] += 1
                 continue
-            m = best(hy["image"].get(b["abs_page"], []), b)
+            m = best(hy["image"].get(b.abs_page, []), b)
             if m:
-                b["content"] = m.get("content", "")
+                b.content = m.content
                 st["mermaid_attached"] += 1
             st["images"] += 1
-        final.append(b)
+        final.append(b.to_dict())
     return final, st
 
 
@@ -676,46 +681,44 @@ def normalize_chapters_from_toc(final, toc_l1):
 # ---------- render ----------
 
 
-def render(b):
-    t = b["type"]
+def render(b: Block) -> str:
+    t = b.type
     if t == "text":
-        lvl = b.get("text_level")
-        return ("#" * int(lvl) + " " if lvl else "") + b.get("text", "")
+        lvl = b.text_level
+        return ("#" * int(lvl) + " " if lvl else "") + (b.text or "")
     if t == "code":
-        body = b.get("code_body", "") or ""
+        body = b.code_body
         flag = ""
-        if b.get("_code_flag"):  # divergence: displayed body is now the pipeline (correct) tokens
+        if b.code_flag:  # divergence: displayed body is now the pipeline (correct) tokens
             how = (
-                "re-indented from hybrid"
-                if b.get("_reindented")
-                else "verbatim (indentation approximate)"
+                "re-indented from hybrid" if b.reindented else "verbatim (indentation approximate)"
             )
             flag = f"<!-- code-verify: hybrid VLM diverged from text layer; showing pipeline tokens {how}. -->\n"
-        elif b.get(
-            "_indent_flag"
+        elif (
+            b.indent_flag
         ):  # tokens matched, but hybrid indentation looks broken (ast-parse failed)
             flag = "<!-- code-verify: hybrid indentation may be broken (failed a Python indent sanity check); verify manually. -->\n"
         if body.lstrip().startswith("```"):  # MinerU already fenced it (with a language)
             return flag + body
-        return flag + f"```{b.get('sub_type', '') or ''}\n{body}\n```"
+        return flag + f"```{b.sub_type}\n{body}\n```"
     if t == "list":
-        return "\n".join("- " + str(x) for x in b.get("list_items", []))
+        return "\n".join("- " + str(x) for x in b.list_items)
     if t == "equation":
-        return b.get("text", "")  # already $$...$$ LaTeX
+        return b.text or ""  # already $$...$$ LaTeX
     if t == "chart":
-        cap = " ".join(b.get("chart_caption", []) or [])
-        out = f"![]({b.get('img_path') or ''})" + (f"\n\n*{cap}*" if cap else "")
-        c = b.get("content", "")
+        cap = " ".join(b.chart_caption)
+        out = f"![]({b.img_path or ''})" + (f"\n\n*{cap}*" if cap else "")
+        c = b.content
         if c and c.strip():
             out += f"\n\n<details><summary>chart data</summary>\n\n{c}\n\n</details>"
         return out
     if t == "table":
-        cap = " ".join(b.get("table_caption", []) or [])
-        return (b.get("table_body") or "") + (f"\n\n*{cap}*" if cap else "")
+        cap = " ".join(b.table_caption)
+        return (b.table_body or "") + (f"\n\n*{cap}*" if cap else "")
     if t == "image":
-        cap = " ".join(b.get("image_caption", []) or [])
-        out = f"![]({b.get('img_path') or ''})" + (f"\n\n*{cap}*" if cap else "")
-        c = b.get("content", "")
+        cap = " ".join(b.image_caption)
+        out = f"![]({b.img_path or ''})" + (f"\n\n*{cap}*" if cap else "")
+        c = b.content
         if c and "mermaid" in c:
             out += f"\n\n<details><summary>diagram (mermaid)</summary>\n\n{c}\n\n</details>"
         return out
@@ -860,7 +863,7 @@ def convert_book(
             final, toc_stats = normalize_chapters_from_toc(final, toc_l1)
             say(f"chapter normalize from ToC: {toc_stats}")
         collect_images(final, work)
-        md = "\n\n".join(render(b) for b in final)
+        md = "\n\n".join(render(Block.from_dict(b)) for b in final)
         for w in wm:  # scrub watermark embedded in captions/merged text
             md = md.replace(w, " ")
         with open(f"{work}/{slug}.md", "w", encoding="utf-8") as f:

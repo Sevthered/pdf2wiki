@@ -7,6 +7,7 @@ extraction from real books is too varied to fully automate reliably."""
 import glob
 import os
 import re
+from typing import Any
 
 YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 COPYRIGHT_RE = re.compile(r"copyright\s*(?:\xa9|\(c\)|©)?\s*(?:19|20)\d{2}", re.I)
@@ -51,7 +52,7 @@ def guess_year(pages_text: list[str]) -> tuple[int | None, str]:
     return None, "none-found"
 
 
-def scan_one(path: str) -> dict:
+def scan_one(path: str) -> dict[str, Any]:
     import pymupdf  # lazy
 
     try:
@@ -73,5 +74,5 @@ def scan_one(path: str) -> dict:
     }
 
 
-def scan_dir(directory: str) -> list[dict]:
+def scan_dir(directory: str) -> list[dict[str, Any]]:
     return [scan_one(p) for p in sorted(glob.glob(os.path.join(directory, "*.pdf")))]

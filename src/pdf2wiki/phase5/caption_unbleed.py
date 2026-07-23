@@ -32,7 +32,7 @@ def unbleed(md: str) -> tuple[str, list[str]]:
     """Return (new_md, list of unwrapped caption labels)."""
     changes: list[str] = []
 
-    def repl(mo):
+    def repl(mo: re.Match[str]) -> str:
         tag, body = mo.group(2), mo.group(3)
         if tag == "mermaid":
             return mo.group(0)

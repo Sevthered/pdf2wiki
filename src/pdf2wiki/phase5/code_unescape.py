@@ -35,7 +35,7 @@ def unescape(md: str) -> tuple[str, list[tuple[str, str, str]]]:
     """Return (new_md, list of (fence_tag, old_line, new_line))."""
     allchanges: list[tuple[str, str, str]] = []
 
-    def repl(mo):
+    def repl(mo: re.Match[str]) -> str:
         tag, body = mo.group(2), mo.group(3)
         if tag == "mermaid":
             return mo.group(0)

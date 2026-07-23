@@ -6,11 +6,12 @@ indentation failed a Python ast sanity check. These are exactly the places worth
 
 import json
 import os
+from typing import Any
 
 from ..convert.block import Block
 
 
-def flagged_report(blocks_path: str, name: str | None = None) -> dict:
+def flagged_report(blocks_path: str, name: str | None = None) -> dict[str, Any]:
     """Summarize the flagged code blocks in one book's blocks.json.
 
     Returns {name, code_blocks, flagged, diverged, indent_suspect, blocks} where `blocks` is the
@@ -22,7 +23,7 @@ def flagged_report(blocks_path: str, name: str | None = None) -> dict:
     name = name or os.path.basename(os.path.dirname(os.path.abspath(path)))
 
     code_blocks = 0
-    flagged = []
+    flagged: list[dict[str, Any]] = []
     for b in blocks:
         if b.type != "code":
             continue

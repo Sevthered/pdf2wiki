@@ -68,11 +68,11 @@ def issues(body: str) -> int:
     return n
 
 
-def repair(md: str) -> tuple[str, dict]:
+def repair(md: str) -> tuple[str, dict[str, int]]:
     """Return (new_md, stats dict: blocks_changed, score_before, score_after)."""
     state = {"blocks_changed": 0, "score_before": 0, "score_after": 0}
 
-    def repl(mo):
+    def repl(mo: re.Match[str]) -> str:
         body = mo.group(2)
         b0 = issues(body)
         nb = _fix_block(body)

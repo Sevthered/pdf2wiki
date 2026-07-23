@@ -212,12 +212,12 @@ def detect(cur_tag: str, body: str) -> tuple[str, str]:
 FENCE = re.compile(r"^(```)([a-zA-Z]*)\n(.*?)^```", re.S | re.M)
 
 
-def retag(md: str) -> tuple[str, list[tuple[str, str, str, str]], collections.Counter]:
+def retag(md: str) -> tuple[str, list[tuple[str, str, str, str]], collections.Counter[str]]:
     """Return (new_md, changes as (old, new, why, snippet), decision stats)."""
     changes: list[tuple[str, str, str, str]] = []
-    stats: collections.Counter = collections.Counter()
+    stats: collections.Counter[str] = collections.Counter()
 
-    def repl(mo):
+    def repl(mo: re.Match[str]) -> str:
         tag, body = mo.group(2), mo.group(3)
         if tag == "mermaid" or not body.strip():
             return mo.group(0)

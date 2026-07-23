@@ -14,6 +14,7 @@ the batch. Sequential only — a single GPU cannot run concurrent VLM passes.
 
 A STOP file next to the status manifest halts cleanly between books (it is consumed on halt).
 """
+
 from __future__ import annotations
 
 import json
@@ -23,7 +24,7 @@ import sys
 import time
 import tomllib
 
-from .executor import ExecutionError, LocalExecutor, SSHExecutor
+from .executor import LocalExecutor, SSHExecutor
 from .phase5 import run_chain
 
 
@@ -39,8 +40,10 @@ def _breaker_trips(ex, consec: int, threshold: int) -> bool:
     try:
         ex.check()
     except Exception as e:
-        print(f"ABORT: executor unreachable after {consec} consecutive failures (circuit breaker): {e}",
-              file=sys.stderr)
+        print(
+            f"ABORT: executor unreachable after {consec} consecutive failures (circuit breaker): {e}",
+            file=sys.stderr,
+        )
         return True
     print("  executor still healthy — failures look content-related, continuing.", file=sys.stderr)
     return False
@@ -56,9 +59,15 @@ def load_books(books_toml: str) -> list[dict]:
     return books
 
 
-def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
-              max_books: int | None = None, only: str | None = None,
-              vault: str | None = None) -> dict:
+def run_batch(
+    books_toml: str,
+    cfg,
+    stage_dir: str,
+    remote: str | None = None,
+    max_books: int | None = None,
+    only: str | None = None,
+    vault: str | None = None,
+) -> dict:
     """Run the batch. Returns the final status manifest."""
     stage = os.path.expanduser(stage_dir)
     os.makedirs(stage, exist_ok=True)
@@ -74,7 +83,7 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             raise SystemExit(
                 f"status manifest {manifest_path} is corrupt ({e}). "
                 f"Repair or delete it (deleting restarts every book) and re-run."
-            )
+            ) from e
 
     def save():
         # atomic: a kill mid-dump must never truncate the manifest (it's the resume backbone)
@@ -84,23 +93,31 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
         os.replace(tmp, manifest_path)
 
     if remote:
-        ex = SSHExecutor(remote, cfg.remote.books_dir, cfg.remote.workdir,
-                         cfg.remote.connect_timeout, cfg.remote.convert_timeout,
-                         cfg.remote.fetch_timeout, cfg.remote.reap_grace)
+        ex = SSHExecutor(
+            remote,
+            cfg.remote.books_dir,
+            cfg.remote.workdir,
+            cfg.remote.connect_timeout,
+            cfg.remote.convert_timeout,
+            cfg.remote.fetch_timeout,
+            cfg.remote.reap_grace,
+        )
     else:
         ex = LocalExecutor()
     ex.check()  # fail fast before touching any book
 
     books = load_books(books_toml)
     attempted = 0
-    consec = 0                                       # consecutive failures, for the circuit breaker
+    consec = 0  # consecutive failures, for the circuit breaker
     threshold = cfg.remote.max_consec_fail
     for b in books:
         slug, domain = b["slug"], b.get("domain", "")
         if only is not None and slug != only:
             continue
         if max_books is not None and attempted >= max_books:
-            print(f"--max-books {max_books} reached — stopping cleanly (done books skip on re-run).")
+            print(
+                f"--max-books {max_books} reached — stopping cleanly (done books skip on re-run)."
+            )
             break
         if os.path.exists(stop_file):
             print(f"STOP file present ({stop_file}) — halting cleanly between books.")
@@ -121,8 +138,12 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             ok, log = ex.convert(b["pdf"], slug, cfg.convert.out_root, timeout)
         except Exception as e:
             print(f"  CONVERT ERROR: {slug}: {e}")
-            manifest[slug] = {"status": "convert_failed", "domain": domain, "error": str(e),
-                              "error_class": type(e).__name__}
+            manifest[slug] = {
+                "status": "convert_failed",
+                "domain": domain,
+                "error": str(e),
+                "error_class": type(e).__name__,
+            }
             save()
             consec += 1
             if _breaker_trips(ex, consec, threshold):
@@ -130,7 +151,11 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             continue
         if not ok:
             print(f"  CONVERT FAILED: {slug} — log tail:\n{log[-2000:]}")
-            manifest[slug] = {"status": "convert_failed", "domain": domain, "error_class": "permanent"}
+            manifest[slug] = {
+                "status": "convert_failed",
+                "domain": domain,
+                "error_class": "permanent",
+            }
             save()
             consec += 1
             if _breaker_trips(ex, consec, threshold):
@@ -142,8 +167,12 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             fetched = ex.fetch(slug, cfg.convert.out_root, work, cfg.remote.fetch_timeout)
         except Exception as e:
             print(f"  FETCH ERROR: {slug}: {e}")
-            manifest[slug] = {"status": "fetch_failed", "domain": domain, "error": str(e),
-                              "error_class": type(e).__name__}
+            manifest[slug] = {
+                "status": "fetch_failed",
+                "domain": domain,
+                "error": str(e),
+                "error_class": type(e).__name__,
+            }
             save()
             consec += 1
             if _breaker_trips(ex, consec, threshold):
@@ -161,8 +190,13 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
 
         md = os.path.join(work, f"{slug}.md")
         try:
-            run_chain(md, slug, out_dir=os.path.join(work, "chapters"),
-                      source_name=os.path.basename(b["pdf"]), apply=True)
+            run_chain(
+                md,
+                slug,
+                out_dir=os.path.join(work, "chapters"),
+                source_name=os.path.basename(b["pdf"]),
+                apply=True,
+            )
         except Exception as e:
             print(f"  PHASE5 FAILED: {slug}: {e}")
             manifest[slug] = {"status": "phase5_failed", "domain": domain, "error_class": "phase5"}
@@ -179,11 +213,14 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             for f in os.listdir(img_src):
                 shutil.copy(os.path.join(img_src, f), os.path.join(img_dst, f))
 
-        consec = 0                                   # a success resets the circuit breaker
+        consec = 0  # a success resets the circuit breaker
         entry = {"status": "done", "domain": domain, "minutes": round((time.time() - t0) / 60, 1)}
         if vault:
-            dest = os.path.join(os.path.expanduser(vault), domain, slug) if domain \
+            dest = (
+                os.path.join(os.path.expanduser(vault), domain, slug)
+                if domain
                 else os.path.join(os.path.expanduser(vault), slug)
+            )
             shutil.copytree(os.path.join(work, "chapters"), dest, dirs_exist_ok=True)
             entry["vault_path"] = dest
             print(f"  DONE {slug} -> {dest} ({entry['minutes']} min)")

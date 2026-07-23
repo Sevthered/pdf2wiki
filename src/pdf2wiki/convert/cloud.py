@@ -20,6 +20,7 @@ because the OSS pre-signed upload URL is signed with NO Content-Type header, and
 → SignatureDoesNotMatch; requests sends the raw body without it. Token is read from config, then env
 MINERU_API_TOKEN, then a token_file; it is never written to disk or logged.
 """
+
 import glob
 import json
 import os
@@ -60,8 +61,10 @@ def _require_https(u: str, what: str) -> str:
     a server-supplied URL)."""
     scheme = urlparse(u).scheme
     if scheme != "https":
-        raise CloudError(f"refusing to use non-HTTPS {what} URL ({scheme or 'no'}-scheme): the "
-                         f"Bearer token / PDF must not travel unencrypted")
+        raise CloudError(
+            f"refusing to use non-HTTPS {what} URL ({scheme or 'no'}-scheme): the "
+            f"Bearer token / PDF must not travel unencrypted"
+        )
     return u
 
 
@@ -75,7 +78,9 @@ def _safe_extract(zbytes: bytes, dest_dir: str) -> None:
         for name in z.namelist():
             target = os.path.realpath(os.path.join(dest_dir, name))
             if target != dest_real and not target.startswith(dest_real + os.sep):
-                raise CloudError(f"refusing to extract unsafe zip member '{name}' (escapes {dest_dir})")
+                raise CloudError(
+                    f"refusing to extract unsafe zip member '{name}' (escapes {dest_dir})"
+                )
         z.extractall(dest_dir)
 
 
@@ -90,8 +95,10 @@ def _retry(what: str, fn, *, tries: int, base_delay: float, say):
             if not (getattr(e, "transient", False) and attempt < tries):
                 raise
             delay = min(30.0, base_delay * (2 ** (attempt - 1)))
-            delay = random.uniform(0, delay)          # full jitter
-            say(f"  transient {what} error (attempt {attempt}/{tries}), retrying in {delay:.1f}s: {e}")
+            delay = random.uniform(0, delay)  # full jitter
+            say(
+                f"  transient {what} error (attempt {attempt}/{tries}), retrying in {delay:.1f}s: {e}"
+            )
             time.sleep(delay)
 
 
@@ -139,10 +146,12 @@ def _api(url, token, method="GET", body=None, timeout=60):
     except requests.RequestException as e:
         raise CloudError(f"{method} {url} unreachable: {e}", transient=True) from e
     if r.status_code != 200:
-        raise CloudError(f"{method} {url} -> HTTP {r.status_code}: {r.text[:200].replace(chr(10), ' ')}",
-                         transient=_transient_status(r.status_code))
+        raise CloudError(
+            f"{method} {url} -> HTTP {r.status_code}: {r.text[:200].replace(chr(10), ' ')}",
+            transient=_transient_status(r.status_code),
+        )
     payload = r.json()
-    if payload.get("code") != 0:                       # API-level error (bad request, quota) = permanent
+    if payload.get("code") != 0:  # API-level error (bad request, quota) = permanent
         raise CloudError(f"{method} {url} -> API code {payload.get('code')}: {payload.get('msg')}")
     return payload["data"]
 
@@ -156,11 +165,14 @@ def _put_file(upload_url, pdf_path, timeout=300):
         try:
             r = requests.put(upload_url, data=f, timeout=timeout)
         except requests.RequestException as e:
-            raise CloudError(f"upload PUT to {_redact_url(upload_url)} unreachable: {e}",
-                             transient=True) from e
+            raise CloudError(
+                f"upload PUT to {_redact_url(upload_url)} unreachable: {e}", transient=True
+            ) from e
     if r.status_code != 200:
-        raise CloudError(f"upload PUT -> HTTP {r.status_code}: {r.text[:200].replace(chr(10), ' ')}",
-                         transient=_transient_status(r.status_code))
+        raise CloudError(
+            f"upload PUT -> HTTP {r.status_code}: {r.text[:200].replace(chr(10), ' ')}",
+            transient=_transient_status(r.status_code),
+        )
 
 
 def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=None) -> str:
@@ -174,15 +186,23 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     # if it and the extracted artifacts are already present (Idempotent-Message-Handling: check before
     # doing work). Cheap and avoids re-uploading + re-paying for a pass that already succeeded.
     done_marker = os.path.join(dest_dir, ".done")
-    existing = (glob.glob(f"{dest_dir}/full.md") + glob.glob(f"{dest_dir}/*/full.md")
-                + glob.glob(f"{dest_dir}/*_content_list.json") + glob.glob(f"{dest_dir}/*/*_content_list.json"))
+    existing = (
+        glob.glob(f"{dest_dir}/full.md")
+        + glob.glob(f"{dest_dir}/*/full.md")
+        + glob.glob(f"{dest_dir}/*_content_list.json")
+        + glob.glob(f"{dest_dir}/*/*_content_list.json")
+    )
     if os.path.exists(done_marker) and existing:
-        say(f"[{model_version}] reusing cached cloud pass in {dest_dir} (.done present) — no re-upload")
+        say(
+            f"[{model_version}] reusing cached cloud pass in {dest_dir} (.done present) — no re-upload"
+        )
         return dest_dir
 
     _require_https(c.base_url, "API base")
-    say(f"⚠ mineru.net Cloud: uploading '{name}' to a THIRD-PARTY cloud "
-        f"(model_version={model_version}, lang={c.language}). Data leaves this machine.")
+    say(
+        f"⚠ mineru.net Cloud: uploading '{name}' to a THIRD-PARTY cloud "
+        f"(model_version={model_version}, lang={c.language}). Data leaves this machine."
+    )
 
     # Step 1: request a pre-signed upload URL for this file (retry transient network/5xx).
     body = {
@@ -194,17 +214,27 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     }
     if c.extra_formats:
         body["extra_formats"] = list(c.extra_formats)
-    sub = _retry("submit", lambda: _api(f"{c.base_url}/file-urls/batch", token, method="POST", body=body),
-                 tries=c.retries, base_delay=c.retry_base_delay, say=say)
-    try:                                               # treat the API response as untrusted input
+    sub = _retry(
+        "submit",
+        lambda: _api(f"{c.base_url}/file-urls/batch", token, method="POST", body=body),
+        tries=c.retries,
+        base_delay=c.retry_base_delay,
+        say=say,
+    )
+    try:  # treat the API response as untrusted input
         batch_id = sub["batch_id"]
         upload_url = sub["file_urls"][0]
     except (KeyError, IndexError, TypeError) as e:
         raise CloudError(f"unexpected submit response shape ({model_version}): {e}") from e
 
     # Step 2: upload the bytes (retry transient; _put_file enforces https on the presigned URL).
-    _retry("upload", lambda: _put_file(upload_url, pdf_path),
-           tries=c.retries, base_delay=c.retry_base_delay, say=say)
+    _retry(
+        "upload",
+        lambda: _put_file(upload_url, pdf_path),
+        tries=c.retries,
+        base_delay=c.retry_base_delay,
+        say=say,
+    )
     say(f"[{model_version}] uploaded; batch={batch_id}; polling…")
 
     # Step 3: poll until this file is done (or failed). Tolerate a bounded run of transient poll
@@ -218,8 +248,10 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
         except CloudError as e:
             if e.transient and transient_fails < c.poll_max_transient:
                 transient_fails += 1
-                say(f"  [{model_version}] transient poll error ({transient_fails}/{c.poll_max_transient}), "
-                    f"backing off: {e}")
+                say(
+                    f"  [{model_version}] transient poll error ({transient_fails}/{c.poll_max_transient}), "
+                    f"backing off: {e}"
+                )
                 time.sleep(min(30, 6 * transient_fails))
                 continue
             raise
@@ -233,12 +265,18 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
                     raise CloudError(f"cloud reported done but no full_zip_url ({model_version})")
                 break
             if state == "failed":
-                raise CloudError(f"cloud parse failed for '{name}' ({model_version}): {item.get('err_msg')}")
+                raise CloudError(
+                    f"cloud parse failed for '{name}' ({model_version}): {item.get('err_msg')}"
+                )
             prog = item.get("extract_progress", {})
-            say(f"  [{model_version}] state={state} {prog.get('extracted_pages', '?')}/{prog.get('total_pages', '?')}")
+            say(
+                f"  [{model_version}] state={state} {prog.get('extracted_pages', '?')}/{prog.get('total_pages', '?')}"
+            )
         time.sleep(6)
     if not zip_url:
-        raise CloudError(f"timed out after {timeout or c.poll_timeout}s waiting for batch {batch_id} ({model_version})")
+        raise CloudError(
+            f"timed out after {timeout or c.poll_timeout}s waiting for batch {batch_id} ({model_version})"
+        )
     _require_https(zip_url, "result-download")
 
     # Step 4: download the result ZIP (retry transient) and extract it with zip-slip guarding.
@@ -247,22 +285,27 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
         try:
             resp = requests.get(zip_url, timeout=300)
         except requests.RequestException as e:
-            raise CloudError(f"result download from {_redact_url(zip_url)} failed ({model_version}): {e}",
-                             transient=True) from e
+            raise CloudError(
+                f"result download from {_redact_url(zip_url)} failed ({model_version}): {e}",
+                transient=True,
+            ) from e
         if resp.status_code != 200:
-            raise CloudError(f"result download -> HTTP {resp.status_code} ({model_version})",
-                             transient=_transient_status(resp.status_code))
+            raise CloudError(
+                f"result download -> HTTP {resp.status_code} ({model_version})",
+                transient=_transient_status(resp.status_code),
+            )
         return resp.content
 
     zbytes = _retry("download", _download, tries=c.retries, base_delay=c.retry_base_delay, say=say)
     _safe_extract(zbytes, dest_dir)
     with open(done_marker, "w", encoding="utf-8") as f:
-        f.write("ok\n")        # mark complete only after a successful extract — guards partial reuse
+        f.write("ok\n")  # mark complete only after a successful extract — guards partial reuse
     return dest_dir
 
 
 def _check_pages(pdf_path, max_pages) -> int:
     import pymupdf
+
     try:
         pages = pymupdf.open(pdf_path).page_count
     except Exception as e:
@@ -275,9 +318,15 @@ def _check_pages(pdf_path, max_pages) -> int:
     return pages
 
 
-def convert_book_cloud(pdf_path: str, slug: str, out_root: str, *,
-                       cfg=None, model_version: str | None = None,
-                       timeout: int | None = None) -> tuple[bool, str]:
+def convert_book_cloud(
+    pdf_path: str,
+    slug: str,
+    out_root: str,
+    *,
+    cfg=None,
+    model_version: str | None = None,
+    timeout: int | None = None,
+) -> tuple[bool, str]:
     """Convert one book via a SINGLE mineru.net Cloud pass. Returns (ok, log_text).
 
     Accepts the cloud's `full.md` verbatim. Output: <out_root>/<slug>/<slug>.md plus images/ — the same
@@ -285,6 +334,7 @@ def convert_book_cloud(pdf_path: str, slug: str, out_root: str, *,
     For dual-backend merge quality see convert_book_cloud_merge (`--cloud-model merge`).
     """
     from ..config import load_config
+
     cfg = cfg or load_config()
     c = cfg.mineru_cloud
     model_version = model_version or c.model_version
@@ -300,10 +350,14 @@ def convert_book_cloud(pdf_path: str, slug: str, out_root: str, *,
         pages = _check_pages(pdf_path, c.max_pages)
         work = os.path.join(os.path.expanduser(out_root), slug)
         say(f"single cloud pass ({pages}p, model_version={model_version})")
-        pass_dir = _run_cloud_pass(pdf_path, model_version, token, cfg,
-                                   os.path.join(work, "_cloud"), say, timeout=timeout)
+        pass_dir = _run_cloud_pass(
+            pdf_path, model_version, token, cfg, os.path.join(work, "_cloud"), say, timeout=timeout
+        )
 
-        md_member = next((n for n in (glob.glob(f"{pass_dir}/full.md") + glob.glob(f"{pass_dir}/*/full.md"))), None)
+        md_member = next(
+            (n for n in (glob.glob(f"{pass_dir}/full.md") + glob.glob(f"{pass_dir}/*/full.md"))),
+            None,
+        )
         if not md_member:
             raise CloudError(f"result has no full.md under {pass_dir}")
         with open(md_member, encoding="utf-8") as f:
@@ -330,7 +384,9 @@ def _load_cloud_content_list(pass_dir: str):
     """Load a cloud pass's `*_content_list.json` and adapt it to what merge() consumes:
     inject `abs_page` (cloud page_idx is already whole-doc absolute — no per-chunk offset) and
     `_imgdir` (this pass's extraction dir, for collect_images). Returns the block list."""
-    cl = glob.glob(f"{pass_dir}/*_content_list.json") + glob.glob(f"{pass_dir}/*/*_content_list.json")
+    cl = glob.glob(f"{pass_dir}/*_content_list.json") + glob.glob(
+        f"{pass_dir}/*/*_content_list.json"
+    )
     cl = [p for p in cl if not p.endswith("_content_list_v2.json")]
     if not cl:
         raise CloudError(f"no *_content_list.json under {pass_dir}")
@@ -343,8 +399,9 @@ def _load_cloud_content_list(pass_dir: str):
     return blocks
 
 
-def convert_book_cloud_merge(pdf_path: str, slug: str, out_root: str, *,
-                             cfg=None, timeout: int | None = None) -> tuple[bool, str]:
+def convert_book_cloud_merge(
+    pdf_path: str, slug: str, out_root: str, *, cfg=None, timeout: int | None = None
+) -> tuple[bool, str]:
     """Convert one book via TWO mineru.net Cloud passes (pipeline + vlm) merged locally with our
     base-driven merge. Returns (ok, log_text). GPU-less, no local MinerU — full dual-backend quality
     (clean code from pipeline tokens, indentation/tables/Mermaid from vlm). See
@@ -353,8 +410,15 @@ def convert_book_cloud_merge(pdf_path: str, slug: str, out_root: str, *,
     import pymupdf
 
     from ..config import load_config
-    from .merge import (collect_images, detect_watermarks, merge,
-                        normalize_chapters_from_toc, render, toc_level1)
+    from .merge import (
+        collect_images,
+        detect_watermarks,
+        merge,
+        normalize_chapters_from_toc,
+        render,
+        toc_level1,
+    )
+
     cfg = cfg or load_config()
     c = cfg.mineru_cloud
 
@@ -371,26 +435,36 @@ def convert_book_cloud_merge(pdf_path: str, slug: str, out_root: str, *,
         say(f"cloud dual-pass merge ({pages}p): 2 API calls (pipeline + vlm) + local merge")
 
         # Two cloud passes, kept in separate extraction dirs (distinct image hashes, distinct content_list).
-        base_dir = _run_cloud_pass(pdf_path, "pipeline", token, cfg,
-                                   os.path.join(work, "_cloud_pipeline"), say, timeout=timeout)
-        hyb_dir = _run_cloud_pass(pdf_path, "vlm", token, cfg,
-                                  os.path.join(work, "_cloud_vlm"), say, timeout=timeout)
+        base_dir = _run_cloud_pass(
+            pdf_path,
+            "pipeline",
+            token,
+            cfg,
+            os.path.join(work, "_cloud_pipeline"),
+            say,
+            timeout=timeout,
+        )
+        hyb_dir = _run_cloud_pass(
+            pdf_path, "vlm", token, cfg, os.path.join(work, "_cloud_vlm"), say, timeout=timeout
+        )
 
-        base = _load_cloud_content_list(base_dir)   # code tokens (byte-clean, flat)
-        hybrid = _load_cloud_content_list(hyb_dir)   # indentation + tables/Mermaid (corrupts code)
+        base = _load_cloud_content_list(base_dir)  # code tokens (byte-clean, flat)
+        hybrid = _load_cloud_content_list(hyb_dir)  # indentation + tables/Mermaid (corrupts code)
 
         wm = detect_watermarks(base, pages)
         if wm:
             say(f"watermark(s) auto-detected: {[w[:50] for w in wm]}")
         final, stats = merge(base, hybrid, wm, tiny_px2=cfg.convert.tiny_px2)
 
-        toc_l1 = toc_level1(pymupdf.open(pdf_path))   # PDF is local (we uploaded it) → ToC available
+        toc_l1 = toc_level1(pymupdf.open(pdf_path))  # PDF is local (we uploaded it) → ToC available
         if toc_l1:
             final, toc_stats = normalize_chapters_from_toc(final, toc_l1)
             say(f"chapter normalize from ToC: {toc_stats}")
 
         os.makedirs(work, exist_ok=True)
-        collect_images(final, work)   # copies base(pipeline) images; rewrites img_path -> images/<hash>.jpg
+        collect_images(
+            final, work
+        )  # copies base(pipeline) images; rewrites img_path -> images/<hash>.jpg
         md = "\n\n".join(render(b) for b in final)
         for w in wm:
             md = md.replace(w, " ")

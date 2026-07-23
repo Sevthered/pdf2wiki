@@ -4,6 +4,7 @@ Regression: `.get(k, default)` only defaults MISSING keys; a JSON null returns N
 `None.strip()`, `"# " + None`, and returning None (breaking review.py's join) all crashed when
 the converter emitted an explicit null.
 """
+
 import os
 import sys
 
@@ -28,6 +29,9 @@ def test_null_content_and_captions():
 
 
 def test_normal_values_still_render():
-    assert render_block({"type": "code", "code_body": "x = 1", "sub_type": "py"}) == "```py\nx = 1\n```"
+    assert (
+        render_block({"type": "code", "code_body": "x = 1", "sub_type": "py"})
+        == "```py\nx = 1\n```"
+    )
     out = render_block({"type": "image", "content": "mermaid\ngraph TD", "img_path": "i.png"})
     assert "[IMAGE i.png]" in out and "[+MERMAID]" in out

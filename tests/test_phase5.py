@@ -1,15 +1,22 @@
 """Golden-file style tests for the Phase 5 fixers. All fixtures are synthetic."""
+
 import os
 import sys
 import textwrap
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pdf2wiki.phase5 import (caption_unbleed, chapter_split, code_unescape, dash_normalize,
-                             lang_retag, mermaid_repair)
-
+from pdf2wiki.phase5 import (
+    caption_unbleed,
+    chapter_split,
+    code_unescape,
+    dash_normalize,
+    lang_retag,
+    mermaid_repair,
+)
 
 # ---------- caption_unbleed ----------
+
 
 def test_caption_only_fence_unwrapped():
     md = textwrap.dedent("""\
@@ -26,7 +33,7 @@ def test_caption_only_fence_unwrapped():
     out, changes = caption_unbleed.unbleed(md)
     assert "**Listing 1.2** Widget.java: a sample widget" in out
     assert "```text" not in out
-    assert "public class Widget {}" in out           # real code untouched
+    assert "public class Widget {}" in out  # real code untouched
     assert changes == ["Listing 1.2"]
 
 
@@ -53,6 +60,7 @@ def test_unbleed_idempotent():
 
 
 # ---------- lang_retag ----------
+
 
 def test_file_hint_wins():
     md = '```text\n# file: app.py\nprint("hi")\n```\n'
@@ -88,6 +96,7 @@ def test_mermaid_never_retagged():
 
 # ---------- dash_normalize ----------
 
+
 def test_endash_flag_fixed_in_code_only():
     md = "prose with – dash stays\n\n```bash\nuv add –dev pytest\n```\n"
     out, changes = dash_normalize.normalize(md)
@@ -103,6 +112,7 @@ def test_unicode_minus_fixed():
 
 
 # ---------- mermaid_repair ----------
+
 
 def test_mermaid_quotes_and_brackets_sanitized():
     md = '```mermaid\ngraph TD\nA["{"key": "value"}"] --> B\n```\n'
@@ -126,6 +136,7 @@ def test_non_mermaid_untouched_by_repair():
 
 # ---------- code_unescape ----------
 
+
 def test_code_unescape_strips_markdown_punct_in_code():
     md = "```bash\n\\$ go run \\*main.go\n```\n"
     out, changes = code_unescape.unescape(md)
@@ -137,8 +148,8 @@ def test_code_unescape_keeps_real_escapes():
     # \n \t \d \s \" and escaped-backslash must survive
     md = '```go\nfmt.Printf("%d\\n\\t", x)\nr := regexp.MustCompile("[^\\\\s]+\\\\d")\n```\n'
     out, _ = code_unescape.unescape(md)
-    assert '%d\\n\\t' in out
-    assert '[^\\\\s]+\\\\d' in out
+    assert "%d\\n\\t" in out
+    assert "[^\\\\s]+\\\\d" in out
 
 
 def test_code_unescape_leaves_regex_metachars():
@@ -152,8 +163,8 @@ def test_code_unescape_leaves_regex_metachars():
 def test_code_unescape_prose_untouched():
     md = "cost was US\\$4.24 million and a \\* footnote\n\n```sh\n\\$ ls\n```\n"
     out, _ = code_unescape.unescape(md)
-    assert "US\\$4.24" in out          # prose escape kept
-    assert "$ ls" in out               # code escape stripped
+    assert "US\\$4.24" in out  # prose escape kept
+    assert "$ ls" in out  # code escape stripped
 
 
 def test_code_unescape_skips_mermaid():
@@ -171,6 +182,7 @@ def test_code_unescape_idempotent():
 
 # ---------- chapter_split ----------
 
+
 def _write(tmp_path, content):
     p = tmp_path / "book.md"
     p.write_text(content)
@@ -184,7 +196,7 @@ def test_split_basic(tmp_path):
     assert names == ["00-front-matter.md", "01-chapter-one.md", "02-chapter-two.md"]
     ch1 = (tmp_path / "ch" / "01-chapter-one.md").read_text()
     assert ch1.startswith("---\n")
-    assert 'book: "testbook"' in ch1               # json.dumps -> quoted YAML scalar
+    assert 'book: "testbook"' in ch1  # json.dumps -> quoted YAML scalar
     assert "# Chapter One" in ch1
 
 
@@ -192,12 +204,13 @@ def test_split_frontmatter_is_valid_yaml_with_hostile_title(tmp_path):
     # repr()/raw interpolation emitted invalid YAML on mixed quotes, backslashes, and a
     # source filename with `: ` or a leading flow char. json.dumps always yields a valid scalar.
     md = _write(tmp_path, 'preface\n\n# It\'s a "test": C:\\path & [x]\nbody\n')
-    chapter_split.split(md, "book: with colon", out_dir=str(tmp_path / "ch"),
-                        source_name="[weird]: file #1.pdf")
+    chapter_split.split(
+        md, "book: with colon", out_dir=str(tmp_path / "ch"), source_name="[weird]: file #1.pdf"
+    )
     ch1 = (tmp_path / "ch" / "01-its-a-test-cpath-x.md").read_text()
     fm = ch1.split("---\n")[1]
     try:
-        import yaml                                  # if PyYAML present, prove it round-trips
+        import yaml  # if PyYAML present, prove it round-trips
     except ImportError:
         assert 'title: "' in fm and 'source: "' in fm
         return
@@ -218,7 +231,7 @@ def test_split_appendix_h2_promoted(tmp_path):
     written, bounds = chapter_split.split(md, "b", out_dir=str(tmp_path / "ch"))
     assert len(bounds) == 2
     appendix = (tmp_path / "ch" / "02-appendix-a-extra-stuff.md").read_text()
-    assert "# Appendix A. Extra stuff" in appendix   # normalized to H1
+    assert "# Appendix A. Extra stuff" in appendix  # normalized to H1
 
 
 def test_split_dry_run_writes_nothing(tmp_path):

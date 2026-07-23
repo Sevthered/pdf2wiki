@@ -1,4 +1,5 @@
 """Unit tests for the converter's pure functions (no MinerU / GPU needed)."""
+
 import json
 import os
 import subprocess
@@ -7,14 +8,27 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pdf2wiki.convert.merge as merge_mod
-from pdf2wiki.convert.merge import (PassFailed, cap_runs, detect_watermarks, group_runs,
-                                    indent_suspect, iou, merge, norm_code,
-                                    normalize_chapters_from_toc, overlap_coef, render,
-                                    run_mineru, strip_callouts, strip_listing_numbers,
-                                    toc_level1, transplant_indent)
-
+from pdf2wiki.convert.merge import (
+    PassFailed,
+    cap_runs,
+    detect_watermarks,
+    group_runs,
+    indent_suspect,
+    iou,
+    merge,
+    norm_code,
+    normalize_chapters_from_toc,
+    overlap_coef,
+    render,
+    run_mineru,
+    strip_callouts,
+    strip_listing_numbers,
+    toc_level1,
+    transplant_indent,
+)
 
 # ---------- code normal form ----------
+
 
 def test_norm_code_ignores_fences_captions_callouts():
     a = "```java\nListing 3.1 Foo.java\npublic class Foo {①\n}\n```"
@@ -30,7 +44,7 @@ def test_norm_code_collapses_long_blobs():
 
 def test_norm_code_flags_dot_for_underscore_hallucination():
     a = "serialization.load_pem_private_key(data)"
-    b = "serialization.load.pem.private.key(data)"   # classic VLM `_`->`.` hallucination
+    b = "serialization.load.pem.private.key(data)"  # classic VLM `_`->`.` hallucination
     assert norm_code(a) != norm_code(b)
 
 
@@ -49,6 +63,7 @@ def test_strip_callouts_preserves_code_without_circled_digits():
 
 # ---------- listing line numbers ----------
 
+
 def test_strip_listing_numbers_monotonic_block():
     src = "10 // comment\n11 type Strategy interface {\n12   NextEndpoint() url.URL\n13 }"
     out = strip_listing_numbers(src)
@@ -58,7 +73,7 @@ def test_strip_listing_numbers_monotonic_block():
 def test_strip_listing_numbers_keeps_wrapped_continuation_lines():
     src = "59 func f(rw http.ResponseWriter, r\n*http.Request) {\n60   body()\n61 }\n62 x"
     out = strip_listing_numbers(src)
-    assert "*http.Request) {" in out          # unnumbered wrap preserved
+    assert "*http.Request) {" in out  # unnumbered wrap preserved
     assert "func f(rw http.ResponseWriter, r" in out
     assert "59" not in out
 
@@ -69,9 +84,9 @@ def test_strip_listing_numbers_blank_numbered_lines():
 
 
 def test_strip_listing_numbers_refuses_data_matrix():
-    src = "1 2 3\n4 5 6"                       # too few rows -> untouched
+    src = "1 2 3\n4 5 6"  # too few rows -> untouched
     assert strip_listing_numbers(src) == src
-    src2 = "9 8 7\n5 4 3\n2 1 0"               # decreasing -> not line numbers -> untouched
+    src2 = "9 8 7\n5 4 3\n2 1 0"  # decreasing -> not line numbers -> untouched
     assert strip_listing_numbers(src2) == src2
 
 
@@ -88,6 +103,7 @@ def test_norm_code_equates_numbered_and_unnumbered():
 
 
 # ---------- indent checks ----------
+
 
 def test_indent_suspect_broken_python():
     # needs a PY_MARK keyword (def/class/import/...) to be treated as confidently-Python
@@ -134,7 +150,7 @@ def test_transplant_indent_python_recovers_on_line_mismatch():
     # the pipeline tokens are valid Python once hybrid's indentation is fuzzy-aligned back on — so we
     # recover the structure instead of emitting a flat (broken) body.
     hy = "def f():\n    return 1\n"
-    pipe = "def f():\nreturn 1\n"          # pipeline flattened the body indent
+    pipe = "def f():\nreturn 1\n"  # pipeline flattened the body indent
     disp, reindented = transplant_indent(hy, pipe)
     assert reindented is True
     assert disp == "def f():\n    return 1"
@@ -147,7 +163,7 @@ def test_transplant_indent_preserves_code_escapes():
     hy = '  fmt.Printf("Cap: %d, length: %d\\n", cap(s), len(s))\n'
     disp, reindented = transplant_indent(hy, pipe)
     assert reindented is True
-    assert '%d\\n' in disp
+    assert "%d\\n" in disp
     # markdown-escaped underscore is still unescaped
     disp2, _ = transplant_indent("  load_pem\n", "load\\_pem\n")
     assert "load_pem" in disp2 and "\\_" not in disp2
@@ -157,10 +173,11 @@ def test_transplant_indent_preserves_code_escapes():
     disp4, _ = transplant_indent("  \\$ ls \\~/d\n", "\\$ ls \\~/d\n")
     assert "$ ls ~/d" in disp4
     disp5, _ = transplant_indent('  re("[^\\\\s]+")\n', 're("[^\\\\s]+")\n')
-    assert '[^\\\\s]+' in disp5   # escaped-backslash kept
+    assert "[^\\\\s]+" in disp5  # escaped-backslash kept
 
 
 # ---------- MinerU pass failure handling ----------
+
 
 def test_run_mineru_timeout_becomes_passfailed(tmp_path, monkeypatch):
     # a slow MinerU pass must surface as a clean PassFailed (documented hard-stop), not a raw
@@ -170,27 +187,42 @@ def test_run_mineru_timeout_becomes_passfailed(tmp_path, monkeypatch):
 
     class FakeProc:
         pid = 4321
-        def __init__(self): self._calls = 0
+
+        def __init__(self):
+            self._calls = 0
+
         def wait(self, timeout=None):
             self._calls += 1
-            if self._calls == 1:                      # first wait (with timeout) trips
+            if self._calls == 1:  # first wait (with timeout) trips
                 raise subprocess.TimeoutExpired(cmd="mineru", timeout=7200)
-            return -9                                 # post-kill reap
+            return -9  # post-kill reap
 
     monkeypatch.setattr(merge_mod.subprocess, "Popen", lambda *a, **k: FakeProc())
     monkeypatch.setattr(merge_mod.os, "getpgid", lambda pid: pid)
     monkeypatch.setattr(merge_mod.os, "killpg", lambda pgid, sig: killed.setdefault("pgid", pgid))
     outdir = str(tmp_path / "pass")
     try:
-        run_mineru("mineru", "book.pdf", 0, 1, "pipeline", ["-m", "txt"],
-                   outdir, str(tmp_path), {}, label="pipeline 0-1", timeout=7200)
+        run_mineru(
+            "mineru",
+            "book.pdf",
+            0,
+            1,
+            "pipeline",
+            ["-m", "txt"],
+            outdir,
+            str(tmp_path),
+            {},
+            label="pipeline 0-1",
+            timeout=7200,
+        )
         assert False, "expected PassFailed"
     except PassFailed as e:
         assert "timed out" in str(e)
-    assert killed["pgid"] == 4321                     # the whole process group was SIGKILLed
+    assert killed["pgid"] == 4321  # the whole process group was SIGKILLed
 
 
 # ---------- geometry / runs ----------
+
 
 def test_iou_and_overlap():
     assert iou([0, 0, 10, 10], [0, 0, 10, 10]) == 1.0
@@ -207,6 +239,7 @@ def test_group_and_cap_runs():
 
 # ---------- watermarks ----------
 
+
 def test_detect_watermarks():
     base = []
     for pg in range(20):
@@ -222,31 +255,70 @@ def test_detect_watermarks_buckets_by_abs_page_across_chunks():
     # 0.6*100=60 threshold -> never detected. Bucketing by abs_page sees all 100 distinct pages.
     base = []
     for abs_page in range(100):
-        base.append({"type": "text", "text": "DRM footer — do not distribute",
-                     "page_idx": abs_page % 40, "abs_page": abs_page})
+        base.append(
+            {
+                "type": "text",
+                "text": "DRM footer — do not distribute",
+                "page_idx": abs_page % 40,
+                "abs_page": abs_page,
+            }
+        )
     assert detect_watermarks(base, 100) == {"DRM footer — do not distribute"}
 
 
 # ---------- merge ----------
 
+
 def _base():
     return [
         {"type": "header", "text": "hdr", "abs_page": 1, "bbox": [0, 0, 10, 5], "_imgdir": "/x"},
-        {"type": "table", "table_body": "<table>bad</table>", "abs_page": 1,
-         "bbox": [0, 30, 100, 80], "_imgdir": "/x"},
-        {"type": "code", "code_body": "def f():\n    return 1\n", "abs_page": 2,
-         "bbox": [0, 0, 100, 50], "_imgdir": "/x"},
-        {"type": "code", "code_body": "x = private_key\n", "abs_page": 3,
-         "bbox": [0, 0, 100, 50], "_imgdir": "/x"},
-        {"type": "image", "image_caption": [], "img_path": "tiny.jpg", "abs_page": 3,
-         "bbox": [0, 0, 10, 10], "_imgdir": "/x"},
-        {"type": "text", "text": "WM LINE", "abs_page": 5, "bbox": [0, 90, 100, 99], "_imgdir": "/x"},
+        {
+            "type": "table",
+            "table_body": "<table>bad</table>",
+            "abs_page": 1,
+            "bbox": [0, 30, 100, 80],
+            "_imgdir": "/x",
+        },
+        {
+            "type": "code",
+            "code_body": "def f():\n    return 1\n",
+            "abs_page": 2,
+            "bbox": [0, 0, 100, 50],
+            "_imgdir": "/x",
+        },
+        {
+            "type": "code",
+            "code_body": "x = private_key\n",
+            "abs_page": 3,
+            "bbox": [0, 0, 100, 50],
+            "_imgdir": "/x",
+        },
+        {
+            "type": "image",
+            "image_caption": [],
+            "img_path": "tiny.jpg",
+            "abs_page": 3,
+            "bbox": [0, 0, 10, 10],
+            "_imgdir": "/x",
+        },
+        {
+            "type": "text",
+            "text": "WM LINE",
+            "abs_page": 5,
+            "bbox": [0, 90, 100, 99],
+            "_imgdir": "/x",
+        },
     ]
 
 
 HYBRID = [
     {"type": "table", "table_body": "<table>good</table>", "abs_page": 1, "bbox": [0, 30, 100, 80]},
-    {"type": "code", "code_body": "def f():\n    return 1\n", "abs_page": 2, "bbox": [0, 0, 95, 50]},
+    {
+        "type": "code",
+        "code_body": "def f():\n    return 1\n",
+        "abs_page": 2,
+        "bbox": [0, 0, 95, 50],
+    },
     {"type": "code", "code_body": "x = private.key\n", "abs_page": 3, "bbox": [0, 0, 95, 50]},
 ]
 
@@ -255,15 +327,16 @@ def test_merge_grafts_and_flags():
     final, st = merge(_base(), [dict(h) for h in HYBRID], {"WM LINE"}, tiny_px2=2500)
     assert st["table_swapped"] == 1
     assert st["code_verified"] == 1
-    assert st["code_flagged"] == 1                     # `_`->`.` divergence caught
-    assert st["noise_dropped"] == 2                    # watermark line + tiny caption-less image
+    assert st["code_flagged"] == 1  # `_`->`.` divergence caught
+    assert st["noise_dropped"] == 2  # watermark line + tiny caption-less image
     types = [b["type"] for b in final]
-    assert "header" not in types                       # DROP list applied
+    assert "header" not in types  # DROP list applied
     flagged = [b for b in final if b.get("_code_flag")]
-    assert flagged and "private_key" in flagged[0]["code_body"]   # pipeline tokens won
+    assert flagged and "private_key" in flagged[0]["code_body"]  # pipeline tokens won
 
 
 # ---------- ToC chapter normalization ----------
+
 
 def _txt(text, page, lvl=None):
     b = {"type": "text", "text": text, "abs_page": page, "_imgdir": "/x"}
@@ -274,27 +347,31 @@ def _txt(text, page, lvl=None):
 
 def _toc_fixture():
     return [
-        _txt("Introduction to Things", 10, lvl=1),      # ch1: correct H1, bare title
+        _txt("Introduction to Things", 10, lvl=1),  # ch1: correct H1, bare title
         _txt("body", 11),
-        _txt("Common Patterns", 40, lvl=2),             # ch2: mistagged H2
+        _txt("Common Patterns", 40, lvl=2),  # ch2: mistagged H2
         _txt("body2", 41),
-        _txt("Removing a container", 45, lvl=1),        # spurious section H1
-        _txt("summary prose only", 70),                 # ch3 heading dropped by layout model
+        _txt("Removing a container", 45, lvl=1),  # spurious section H1
+        _txt("summary prose only", 70),  # ch3 heading dropped by layout model
         _txt("body3", 71),
         _txt("Index", 90, lvl=2),
     ]
 
 
-TOC = [("Chapter 1: Introduction to Things", 10), ("Chapter 2: Common Patterns", 40),
-       ("Chapter 3: Testing", 70), ("Index", 90)]
+TOC = [
+    ("Chapter 1: Introduction to Things", 10),
+    ("Chapter 2: Common Patterns", 40),
+    ("Chapter 3: Testing", 70),
+    ("Index", 90),
+]
 
 
 def test_toc_promotes_and_canonicalizes():
     final, stats = normalize_chapters_from_toc(_toc_fixture(), TOC)
     lvl1 = [b["text"] for b in final if b.get("text_level") == 1]
-    assert "Chapter 1: Introduction to Things" in lvl1     # promoted + canonical ToC title
-    assert "Chapter 2: Common Patterns" in lvl1            # H2 -> H1
-    assert stats["toc_matched"] == 3                       # ch1, ch2, Index
+    assert "Chapter 1: Introduction to Things" in lvl1  # promoted + canonical ToC title
+    assert "Chapter 2: Common Patterns" in lvl1  # H2 -> H1
+    assert stats["toc_matched"] == 3  # ch1, ch2, Index
 
 
 def test_toc_inserts_dropped_heading():
@@ -322,20 +399,26 @@ def test_toc_no_demotion_below_evidence_gate():
 
 
 def test_toc_skips_textless_cover_pages():
-    blocks = [{"type": "image", "img_path": "c.jpg", "abs_page": 0, "_imgdir": "/x"},
-              _txt("Introduction to Things", 10, lvl=1)]
+    blocks = [
+        {"type": "image", "img_path": "c.jpg", "abs_page": 0, "_imgdir": "/x"},
+        _txt("Introduction to Things", 10, lvl=1),
+    ]
     final, stats = normalize_chapters_from_toc(
-        blocks, [("Cover", 0), ("Chapter 1: Introduction to Things", 10)])
-    assert stats["toc_inserted"] == 0                      # no synthetic heading on image-only page
+        blocks, [("Cover", 0), ("Chapter 1: Introduction to Things", 10)]
+    )
+    assert stats["toc_inserted"] == 0  # no synthetic heading on image-only page
 
 
 def test_toc_level1_drops_destinationless_bookmarks():
     class Doc:
         def get_toc(self):
-            return [[1, "Chapter One", 10],     # real dest -> kept, 0-based 9
-                    [1, "Broken Bookmark", -1], # destination-less -> get_toc returns -1 -> DROP
-                    [2, "A Section", 12],        # not level 1 -> ignored
-                    [1, "Chapter Two", 30]]
+            return [
+                [1, "Chapter One", 10],  # real dest -> kept, 0-based 9
+                [1, "Broken Bookmark", -1],  # destination-less -> get_toc returns -1 -> DROP
+                [2, "A Section", 12],  # not level 1 -> ignored
+                [1, "Chapter Two", 30],
+            ]
+
     assert toc_level1(Doc()) == [("Chapter One", 9), ("Chapter Two", 29)]
     # regression: the dropped entry must not become page -2 (which injects a spurious H1 at top)
     assert all(p >= 0 for _, p in toc_level1(Doc()))
@@ -353,29 +436,45 @@ def test_run_mineru_passes_absolute_paths_to_mineru(tmp_path, monkeypatch):
     # MinerU runs in clean_cwd, NOT pdf2wiki's cwd. If run_mineru hands it a relative -o/-p, MinerU's
     # output lands under clean_cwd and pdf2wiki's glob (against its own cwd) misses it -> the remote-mode
     # "no content_list.json" bug. run_mineru must absolutize the paths it hands MinerU.
-    proj = tmp_path / "proj"; proj.mkdir()
-    clean = tmp_path / "clean"; clean.mkdir()          # a DIFFERENT cwd, as clean_cwd would be on the box
-    monkeypatch.chdir(proj)                            # pdf2wiki's cwd
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    clean = tmp_path / "clean"
+    clean.mkdir()  # a DIFFERENT cwd, as clean_cwd would be on the box
+    monkeypatch.chdir(proj)  # pdf2wiki's cwd
     (proj / "in.pdf").write_bytes(b"%PDF-1.4")
     captured = {}
 
     class FakeProc:
         pid = 4321
+
         def __init__(self, cmd, cwd):
             captured["cmd"] = cmd
             odir = cmd[cmd.index("-o") + 1]
             # simulate MinerU resolving its -o against ITS cwd (clean_cwd) when relative
             base = odir if os.path.isabs(odir) else os.path.join(cwd, odir)
-            dst = os.path.join(base, "in", "txt"); os.makedirs(dst, exist_ok=True)
+            dst = os.path.join(base, "in", "txt")
+            os.makedirs(dst, exist_ok=True)
             with open(os.path.join(dst, "in_content_list.json"), "w") as f:
                 json.dump([{"type": "text", "page_idx": 0, "bbox": [0, 0, 1, 1], "text": "x"}], f)
-        def wait(self, timeout=None): return 0
 
-    monkeypatch.setattr(merge_mod.subprocess, "Popen",
-                        lambda cmd, **k: FakeProc(cmd, k.get("cwd")))
-    blocks, _ = run_mineru("mineru", "in.pdf", 0, 1, "pipeline", ["-m", "txt"],
-                           "reldir", str(clean), {}, label="pipeline 0-1", timeout=60)
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(merge_mod.subprocess, "Popen", lambda cmd, **k: FakeProc(cmd, k.get("cwd")))
+    blocks, _ = run_mineru(
+        "mineru",
+        "in.pdf",
+        0,
+        1,
+        "pipeline",
+        ["-m", "txt"],
+        "reldir",
+        str(clean),
+        {},
+        label="pipeline 0-1",
+        timeout=60,
+    )
     oi, pi = captured["cmd"].index("-o"), captured["cmd"].index("-p")
     assert os.path.isabs(captured["cmd"][oi + 1]), "MinerU -o must be absolute"
     assert os.path.isabs(captured["cmd"][pi + 1]), "MinerU -p must be absolute"
-    assert blocks and blocks[0]["text"] == "x"          # found the content_list MinerU 'wrote'
+    assert blocks and blocks[0]["text"] == "x"  # found the content_list MinerU 'wrote'

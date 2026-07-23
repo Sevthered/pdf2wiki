@@ -42,7 +42,7 @@ class Block:
         return str(self.raw.get("sub_type", "") or "")
 
     @sub_type.setter
-    def sub_type(self, v: str) -> None:
+    def sub_type(self, v: str | None) -> None:
         self.raw["sub_type"] = v
 
     @property
@@ -97,19 +97,19 @@ class Block:
         return self.raw.get("img_path")
 
     @property
-    def image_caption(self) -> list:
+    def image_caption(self) -> list[Any]:
         return self.raw.get("image_caption") or []
 
     @property
-    def table_caption(self) -> list:
+    def table_caption(self) -> list[Any]:
         return self.raw.get("table_caption") or []
 
     @property
-    def chart_caption(self) -> list:
+    def chart_caption(self) -> list[Any]:
         return self.raw.get("chart_caption") or []
 
     @property
-    def list_items(self) -> list:
+    def list_items(self) -> list[Any]:
         return self.raw.get("list_items") or []
 
     # ---- pdf2wiki-injected keys ----

@@ -9,6 +9,8 @@ markdown-punct escapes inside code fences last (both merge paths). Re-run whenev
 output changes upstream — do not reuse stale artifacts.
 """
 
+from typing import Any
+
 from . import (
     caption_unbleed,
     chapter_split,
@@ -25,14 +27,14 @@ def run_chain(
     out_dir: str | None = None,
     source_name: str | None = None,
     apply: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Run the full chain on md_path. With apply=False (dry-run), computes and reports every
     step in memory and writes NOTHING (the split step reports planned files only).
     Returns a report dict.
     """
     with open(md_path, encoding="utf-8") as f:
         md = f.read()
-    report: dict = {}
+    report: dict[str, Any] = {}
 
     md, captions = caption_unbleed.unbleed(md)
     report["caption_unbleed"] = {"unwrapped": len(captions), "captions": captions}

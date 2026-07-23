@@ -27,7 +27,10 @@ import os
 import random
 import time
 import zipfile
+from collections.abc import Callable
 from io import BytesIO
+from types import ModuleType
+from typing import Any
 from urllib.parse import urlparse
 
 
@@ -39,7 +42,7 @@ class CloudError(RuntimeError):
     retry every error.
     """
 
-    def __init__(self, msg, *, transient=False):
+    def __init__(self, msg: str, *, transient: bool = False) -> None:
         super().__init__(msg)
         self.transient = transient
 
@@ -84,7 +87,14 @@ def _safe_extract(zbytes: bytes, dest_dir: str) -> None:
         z.extractall(dest_dir)
 
 
-def _retry(what: str, fn, *, tries: int, base_delay: float, say):
+def _retry(
+    what: str,
+    fn: Callable[[], Any],
+    *,
+    tries: int,
+    base_delay: float,
+    say: Callable[[str], None],
+) -> Any:
     """Call fn(); on a *transient* CloudError retry up to `tries` times with exponential backoff +
     full jitter. Permanent CloudErrors re-raise immediately. Backoff-Retries + MicroProfile-Fault-
     Tolerance (jitter so parallel retries don't synchronize; retry can worsen an outage → bounded)."""
@@ -102,7 +112,7 @@ def _retry(what: str, fn, *, tries: int, base_delay: float, say):
             time.sleep(delay)
 
 
-def _requests():
+def _requests() -> ModuleType:
     try:
         import requests
     except ModuleNotFoundError as e:
@@ -113,10 +123,10 @@ def _requests():
     return requests
 
 
-def _resolve_token(cfg) -> str:
+def _resolve_token(cfg: Any) -> str:
     c = cfg.mineru_cloud
     if c.token.strip():
-        return c.token.strip()
+        return str(c.token.strip())
     env = os.environ.get("MINERU_API_TOKEN", "")
     if env.strip():
         return env.strip()
@@ -136,7 +146,13 @@ def _transient_status(code: int) -> bool:
     return code == 429 or 500 <= code < 600
 
 
-def _api(url, token, method="GET", body=None, timeout=60):
+def _api(
+    url: str,
+    token: str,
+    method: str = "GET",
+    body: dict[str, Any] | None = None,
+    timeout: int = 60,
+) -> Any:
     """One JSON API call to mineru.net. Returns the `data` payload; raises CloudError on HTTP/API error.
     Network drops and 429/5xx are flagged transient (retryable); other errors are permanent."""
     requests = _requests()
@@ -156,7 +172,7 @@ def _api(url, token, method="GET", body=None, timeout=60):
     return payload["data"]
 
 
-def _put_file(upload_url, pdf_path, timeout=300):
+def _put_file(upload_url: str, pdf_path: str, timeout: int = 300) -> None:
     """Upload the PDF to a mineru.net pre-signed URL. PUT with NO Content-Type (the URL is signed
     without one; adding one breaks the OSS signature)."""
     requests = _requests()
@@ -175,7 +191,15 @@ def _put_file(upload_url, pdf_path, timeout=300):
         )
 
 
-def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=None) -> str:
+def _run_cloud_pass(
+    pdf_path: str,
+    model_version: str,
+    token: str,
+    cfg: Any,
+    dest_dir: str,
+    say: Callable[[str], None],
+    timeout: int | None = None,
+) -> str:
     """Run ONE cloud parse pass (submit → presigned PUT → poll → download → unzip). Extracts the whole
     result ZIP (full.md + *_content_list.json + images/ + *.json) into `dest_dir` and returns it.
     Raises CloudError on any failure (fail-fast, loud)."""
@@ -205,7 +229,7 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     )
 
     # Step 1: request a pre-signed upload URL for this file (retry transient network/5xx).
-    body = {
+    body: dict[str, Any] = {
         "files": [{"name": name, "is_ocr": False}],
         "model_version": model_version,
         "enable_formula": True,
@@ -240,7 +264,7 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     # Step 3: poll until this file is done (or failed). Tolerate a bounded run of transient poll
     # errors (a network blip mid-poll must NOT fail an otherwise-healthy parse) — Backoff-Retries.
     deadline = time.monotonic() + (timeout or c.poll_timeout)
-    zip_url = None
+    zip_url: str | None = None
     transient_fails = 0
     while time.monotonic() < deadline:
         try:
@@ -280,7 +304,7 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     _require_https(zip_url, "result-download")
 
     # Step 4: download the result ZIP (retry transient) and extract it with zip-slip guarding.
-    def _download():
+    def _download() -> Any:  # requests is Any-typed at the _requests() boundary
         requests = _requests()
         try:
             resp = requests.get(zip_url, timeout=300)
@@ -303,11 +327,11 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     return dest_dir
 
 
-def _check_pages(pdf_path, max_pages) -> int:
+def _check_pages(pdf_path: str, max_pages: int) -> int:
     import pymupdf
 
     try:
-        pages = pymupdf.open(pdf_path).page_count
+        pages = int(pymupdf.open(pdf_path).page_count)
     except Exception as e:
         raise CloudError(f"cannot open PDF '{pdf_path}': {e}") from e
     if pages > max_pages:
@@ -323,7 +347,7 @@ def convert_book_cloud(
     slug: str,
     out_root: str,
     *,
-    cfg=None,
+    cfg: Any = None,
     model_version: str | None = None,
     timeout: int | None = None,
 ) -> tuple[bool, str]:
@@ -341,7 +365,7 @@ def convert_book_cloud(
 
     lines: list[str] = []
 
-    def say(msg):
+    def say(msg: str) -> None:
         print(msg)
         lines.append(str(msg))
 
@@ -380,7 +404,7 @@ def convert_book_cloud(
         return False, "\n".join(lines)
 
 
-def _load_cloud_content_list(pass_dir: str):
+def _load_cloud_content_list(pass_dir: str) -> list[dict[str, Any]]:
     """Load a cloud pass's `*_content_list.json` and adapt it to what merge() consumes:
     inject `abs_page` (cloud page_idx is already whole-doc absolute — no per-chunk offset) and
     `_imgdir` (this pass's extraction dir, for collect_images). Returns the block list."""
@@ -391,7 +415,7 @@ def _load_cloud_content_list(pass_dir: str):
     if not cl:
         raise CloudError(f"no *_content_list.json under {pass_dir}")
     with open(cl[0], encoding="utf-8") as f:
-        blocks = json.load(f)
+        blocks: list[dict[str, Any]] = json.load(f)
     imgdir = os.path.dirname(cl[0])
     for b in blocks:
         b["abs_page"] = int(b.get("page_idx", 0))
@@ -400,7 +424,7 @@ def _load_cloud_content_list(pass_dir: str):
 
 
 def convert_book_cloud_merge(
-    pdf_path: str, slug: str, out_root: str, *, cfg=None, timeout: int | None = None
+    pdf_path: str, slug: str, out_root: str, *, cfg: Any = None, timeout: int | None = None
 ) -> tuple[bool, str]:
     """Convert one book via TWO mineru.net Cloud passes (pipeline + vlm) merged locally with our
     base-driven merge. Returns (ok, log_text). GPU-less, no local MinerU — full dual-backend quality
@@ -425,7 +449,7 @@ def convert_book_cloud_merge(
 
     lines: list[str] = []
 
-    def say(msg):
+    def say(msg: str) -> None:
         print(msg)
         lines.append(str(msg))
 

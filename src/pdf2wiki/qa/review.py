@@ -3,12 +3,13 @@ from qa.sample, for manual side-by-side back-checks."""
 
 import json
 import os
+from typing import Any
 
 from ..convert.block import Block
 from ..render import render_block
 
 
-def build_review(qa_dir: str, name: str, blocks_path: str | None = None) -> dict:
+def build_review(qa_dir: str, name: str, blocks_path: str | None = None) -> dict[str, Any]:
     qa = os.path.expanduser(qa_dir)
     blocks_path = blocks_path or os.path.join(qa, "out", f"{name}_sample", "blocks.json")
     with open(blocks_path, encoding="utf-8") as f:

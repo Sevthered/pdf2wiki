@@ -4,11 +4,12 @@ Reproducible via seed. Used for manual conversion back-checks against the source
 import json
 import os
 import random
+from typing import Any
 
 
 def sample_pages(
     pdf_path: str, name: str, qa_root: str, n: int = 20, seed: int = 42, dpi: int = 140
-) -> dict:
+) -> dict[str, Any]:
     import pymupdf  # lazy: keep import cost out of CLI startup
 
     qa = os.path.join(os.path.expanduser(qa_root), name)

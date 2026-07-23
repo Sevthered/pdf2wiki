@@ -23,12 +23,13 @@ import shutil
 import sys
 import time
 import tomllib
+from typing import Any
 
 from .executor import LocalExecutor, SSHExecutor
 from .phase5 import run_chain
 
 
-def _breaker_trips(ex, consec: int, threshold: int) -> bool:
+def _breaker_trips(ex: LocalExecutor | SSHExecutor, consec: int, threshold: int) -> bool:
     """Circuit-Breaker-Pattern: after `threshold` consecutive book failures, re-probe executor health.
     A dead SSH host / GPU box makes every remaining book fast-fail (the start-only preflight can't catch
     a mid-batch death — the '17 books failed in minutes' failure mode), so abort instead of hammering.
@@ -49,10 +50,10 @@ def _breaker_trips(ex, consec: int, threshold: int) -> bool:
     return False
 
 
-def load_books(books_toml: str) -> list[dict]:
+def load_books(books_toml: str) -> list[dict[str, Any]]:
     with open(books_toml, "rb") as f:
         data = tomllib.load(f)
-    books = data.get("book", [])
+    books: list[dict[str, Any]] = data.get("book", [])
     for b in books:
         if "pdf" not in b or "slug" not in b:
             raise ValueError(f"each [[book]] needs `pdf` and `slug`: {b}")
@@ -61,20 +62,20 @@ def load_books(books_toml: str) -> list[dict]:
 
 def run_batch(
     books_toml: str,
-    cfg,
+    cfg: Any,
     stage_dir: str,
     remote: str | None = None,
     max_books: int | None = None,
     only: str | None = None,
     vault: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Run the batch. Returns the final status manifest."""
     stage = os.path.expanduser(stage_dir)
     os.makedirs(stage, exist_ok=True)
     manifest_path = os.path.join(stage, "manifest.json")
     stop_file = os.path.join(stage, "STOP")
 
-    manifest: dict = {}
+    manifest: dict[str, Any] = {}
     if os.path.exists(manifest_path):
         try:
             with open(manifest_path, encoding="utf-8") as f:
@@ -85,13 +86,14 @@ def run_batch(
                 f"Repair or delete it (deleting restarts every book) and re-run."
             ) from e
 
-    def save():
+    def save() -> None:
         # atomic: a kill mid-dump must never truncate the manifest (it's the resume backbone)
         tmp = manifest_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=1)
         os.replace(tmp, manifest_path)
 
+    ex: LocalExecutor | SSHExecutor  # no shared base; both satisfy the calls used below
     if remote:
         ex = SSHExecutor(
             remote,
@@ -210,11 +212,15 @@ def run_batch(
         img_dst = os.path.join(work, "chapters", "images")
         if os.path.isdir(img_src):
             os.makedirs(img_dst, exist_ok=True)
-            for f in os.listdir(img_src):
-                shutil.copy(os.path.join(img_src, f), os.path.join(img_dst, f))
+            for img in os.listdir(img_src):
+                shutil.copy(os.path.join(img_src, img), os.path.join(img_dst, img))
 
         consec = 0  # a success resets the circuit breaker
-        entry = {"status": "done", "domain": domain, "minutes": round((time.time() - t0) / 60, 1)}
+        entry: dict[str, Any] = {
+            "status": "done",
+            "domain": domain,
+            "minutes": round((time.time() - t0) / 60, 1),
+        }
         if vault:
             dest = (
                 os.path.join(os.path.expanduser(vault), domain, slug)

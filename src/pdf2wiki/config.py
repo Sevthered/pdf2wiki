@@ -15,6 +15,7 @@ import os
 import shutil
 import tomllib
 from dataclasses import dataclass, field, fields
+from typing import Any
 
 
 @dataclass
@@ -87,7 +88,7 @@ class MineruCloudConfig:
     # A/B-proven 2026-07-22, bug-vlm-code-hallucination). Default pipeline for code safety.
     model_version: str = "pipeline"  # pipeline | vlm | MinerU-HTML
     language: str = "en"  # mineru.net default is "ch"; our books are English
-    extra_formats: list = field(default_factory=list)  # e.g. ["latex"] for formula-heavy books
+    extra_formats: list[str] = field(default_factory=list)  # e.g. ["latex"] for formula-heavy books
     poll_timeout: int = 1800  # seconds to wait for the cloud task
     max_pages: int = 200  # mineru.net Precision hard limit per file
     retries: int = 3  # attempts for each one-shot HTTP call (submit/upload/download)
@@ -110,7 +111,7 @@ class Config:
     output: OutputConfig = field(default_factory=OutputConfig)
 
 
-def _apply_section(obj, data: dict):
+def _apply_section(obj: Any, data: dict[str, Any]) -> None:
     valid = {f.name for f in fields(obj)}
     for k, v in data.items():
         if k in valid:

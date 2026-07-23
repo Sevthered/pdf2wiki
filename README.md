@@ -78,6 +78,7 @@ Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://dia
 - **Reference** — [CLI](docs/reference/cli.md) · [configuration](docs/reference/configuration.md) · [pipeline stages](docs/reference/pipeline-stages.md) · [phase 5 steps](docs/reference/phase5-steps.md) · [output layout](docs/reference/output-layout.md)
 - **Explanation** — [why dual-backend](docs/explanation/why-dual-backend.md) · [how the merge works](docs/explanation/how-the-merge-works.md) · [design principles](docs/explanation/design-principles.md)
 - **Architecture** — [overview with C4 diagrams](docs/architecture/architecture.md)
+- **Decisions** — [ADR log (MADR)](docs/decisions/): why two backends, code token-verification, AGPL/MIT + subprocess, the executor port, remote hardening
 - **Plugin** — [llm-wiki (query/review a vault)](docs/llm-wiki/)
 
 ## Status

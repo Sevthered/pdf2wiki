@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-07-23
+
+### Fixed
+- **Remote convert produced no output** (`no content_list.json`). `run_mineru` handed MinerU a
+  *relative* `-o`/`-p`, but MinerU runs with a different working directory (the stdlib-shadow-safe
+  `clean_cwd`), so its output landed where pdf2wiki couldn't find it. Only surfaced in `--remote` mode,
+  where `--out` is passed home-relative. Now the paths handed to MinerU are absolutized
+  (`os.path.abspath`) — idempotent for the already-absolute local case. Found by the first real
+  end-to-end remote run; +1 regression test reproducing the cwd divergence.
+
 ## [0.2.3] - 2026-07-23
 
 QA + diagnostics from an external review of the repo. No breaking changes; +4 tests (103 → 107).

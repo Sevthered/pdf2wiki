@@ -14,14 +14,16 @@ produces them inside a single block.
 
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from pdf2wiki.phase5 import (
     caption_unbleed,
+    chapter_split,
     code_unescape,
     dash_normalize,
     lang_retag,
@@ -174,3 +176,61 @@ def test_mermaid_repair_never_worsens_score(md: str) -> None:
     # repair's validation proxy is a parse-breaker score; sanitizing a label must never raise it.
     _, stats = mermaid_repair.repair(md)
     assert stats["score_after"] <= stats["score_before"]
+
+
+# ---- chapter_split: fence-aware boundaries + no content dropped ----
+# Build a document from labeled elements so the expected boundary count is known: an H1 element is a
+# real chapter boundary; a fenced block is not (even when it contains a `# ...` code comment line);
+# prose is not. Titles are pre-stripped (alphabet can't spell Appendix, so no accidental H2 boundary).
+
+_TITLE = st.text(alphabet="abcXYZ 012", min_size=1, max_size=15).map(str.strip).filter(bool)
+_H1_EL = _TITLE.map(lambda t: ("h1", [f"# {t}"]))
+_PROSE_EL = _PLAIN.filter(lambda s: not s.startswith("#")).map(lambda s: ("prose", [s]))
+_FENCE_EL = st.builds(
+    lambda tag, inner: ("fence", [f"```{tag}", *inner, "```"]),
+    _TAG,
+    st.lists(st.one_of(_CODE_LINE, _TITLE.map(lambda t: f"# {t}")), max_size=3),
+)
+_ELEMENTS = st.lists(st.one_of(_H1_EL, _PROSE_EL, _FENCE_EL), max_size=8)
+
+
+@settings(max_examples=300)
+@given(_ELEMENTS)
+def test_boundaries_are_exactly_outside_fence_h1s(elements: list) -> None:
+    lines: list[str] = []
+    expected = 0
+    for kind, ls in elements:
+        if kind == "h1":
+            expected += 1
+        lines.extend(ls)
+    bounds = chapter_split.find_boundaries(lines)
+    assert len(bounds) == expected  # fence-aware: `# ...` lines inside a fence are never boundaries
+    for i, _title in bounds:
+        assert lines[i].startswith("# ")  # every reported boundary is a real outside-fence H1
+
+
+@settings(max_examples=150, deadline=None)
+@given(_ELEMENTS)
+def test_split_preserves_all_nonblank_content(elements: list) -> None:
+    lines: list[str] = []
+    for _kind, ls in elements:
+        lines.extend(ls)
+    assume(chapter_split.find_boundaries(lines))  # a boundary-less doc raises (covered by fixtures)
+    md = "\n".join(lines)
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "book.md")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(md)
+        written, _ = chapter_split.split(p, "b", out_dir=os.path.join(d, "ch"))
+        body_lines: set[str] = set()
+        for path in written:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+            # drop the injected frontmatter (--- fields --- ) via maxsplit=2 so a body `---` survives
+            parts = content.split("---\n", 2)
+            body = parts[2] if len(parts) == 3 else content
+            body_lines.update(ln for ln in body.split("\n") if ln.strip())
+    # every non-blank input line lands in some chapter (boundary H1s are re-emitted verbatim)
+    for ln in lines:
+        if ln.strip():
+            assert ln in body_lines

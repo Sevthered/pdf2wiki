@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pdf2wiki.convert.merge as merge_mod
+from pdf2wiki.convert.block import Block
 from pdf2wiki.convert.merge import (
     PassFailed,
     cap_runs,
@@ -427,7 +428,7 @@ def test_toc_level1_drops_destinationless_bookmarks():
 def test_render_emits_code_verify_flag():
     final, _ = merge(_base(), [dict(h) for h in HYBRID], set(), tiny_px2=2500)
     flagged = next(b for b in final if b.get("_code_flag"))
-    out = render(flagged)
+    out = render(Block.from_dict(flagged))
     assert out.startswith("<!-- code-verify:")
     assert "private_key" in out
 

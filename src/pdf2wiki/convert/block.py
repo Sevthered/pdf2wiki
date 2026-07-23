@@ -69,6 +69,22 @@ class Block:
     def img_path(self) -> str | None:
         return self.raw.get("img_path")
 
+    @property
+    def image_caption(self) -> list:
+        return self.raw.get("image_caption") or []
+
+    @property
+    def table_caption(self) -> list:
+        return self.raw.get("table_caption") or []
+
+    @property
+    def chart_caption(self) -> list:
+        return self.raw.get("chart_caption") or []
+
+    @property
+    def list_items(self) -> list:
+        return self.raw.get("list_items") or []
+
     # ---- pdf2wiki-injected keys ----
     @property
     def abs_page(self) -> int:
@@ -101,3 +117,7 @@ class Block:
     @indent_flag.setter
     def indent_flag(self, v: bool) -> None:
         self.raw["_indent_flag"] = v
+
+    @property
+    def reindented(self) -> bool:
+        return bool(self.raw.get("_reindented", False))

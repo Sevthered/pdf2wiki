@@ -26,6 +26,8 @@ import subprocess
 import textwrap
 from collections import Counter, defaultdict
 
+from .block import Block
+
 # ---------- environment ----------
 
 
@@ -676,46 +678,44 @@ def normalize_chapters_from_toc(final, toc_l1):
 # ---------- render ----------
 
 
-def render(b):
-    t = b["type"]
+def render(b: Block) -> str:
+    t = b.type
     if t == "text":
-        lvl = b.get("text_level")
-        return ("#" * int(lvl) + " " if lvl else "") + b.get("text", "")
+        lvl = b.text_level
+        return ("#" * int(lvl) + " " if lvl else "") + (b.text or "")
     if t == "code":
-        body = b.get("code_body", "") or ""
+        body = b.code_body
         flag = ""
-        if b.get("_code_flag"):  # divergence: displayed body is now the pipeline (correct) tokens
+        if b.code_flag:  # divergence: displayed body is now the pipeline (correct) tokens
             how = (
-                "re-indented from hybrid"
-                if b.get("_reindented")
-                else "verbatim (indentation approximate)"
+                "re-indented from hybrid" if b.reindented else "verbatim (indentation approximate)"
             )
             flag = f"<!-- code-verify: hybrid VLM diverged from text layer; showing pipeline tokens {how}. -->\n"
-        elif b.get(
-            "_indent_flag"
+        elif (
+            b.indent_flag
         ):  # tokens matched, but hybrid indentation looks broken (ast-parse failed)
             flag = "<!-- code-verify: hybrid indentation may be broken (failed a Python indent sanity check); verify manually. -->\n"
         if body.lstrip().startswith("```"):  # MinerU already fenced it (with a language)
             return flag + body
-        return flag + f"```{b.get('sub_type', '') or ''}\n{body}\n```"
+        return flag + f"```{b.sub_type}\n{body}\n```"
     if t == "list":
-        return "\n".join("- " + str(x) for x in b.get("list_items", []))
+        return "\n".join("- " + str(x) for x in b.list_items)
     if t == "equation":
-        return b.get("text", "")  # already $$...$$ LaTeX
+        return b.text or ""  # already $$...$$ LaTeX
     if t == "chart":
-        cap = " ".join(b.get("chart_caption", []) or [])
-        out = f"![]({b.get('img_path') or ''})" + (f"\n\n*{cap}*" if cap else "")
-        c = b.get("content", "")
+        cap = " ".join(b.chart_caption)
+        out = f"![]({b.img_path or ''})" + (f"\n\n*{cap}*" if cap else "")
+        c = b.content
         if c and c.strip():
             out += f"\n\n<details><summary>chart data</summary>\n\n{c}\n\n</details>"
         return out
     if t == "table":
-        cap = " ".join(b.get("table_caption", []) or [])
-        return (b.get("table_body") or "") + (f"\n\n*{cap}*" if cap else "")
+        cap = " ".join(b.table_caption)
+        return (b.table_body or "") + (f"\n\n*{cap}*" if cap else "")
     if t == "image":
-        cap = " ".join(b.get("image_caption", []) or [])
-        out = f"![]({b.get('img_path') or ''})" + (f"\n\n*{cap}*" if cap else "")
-        c = b.get("content", "")
+        cap = " ".join(b.image_caption)
+        out = f"![]({b.img_path or ''})" + (f"\n\n*{cap}*" if cap else "")
+        c = b.content
         if c and "mermaid" in c:
             out += f"\n\n<details><summary>diagram (mermaid)</summary>\n\n{c}\n\n</details>"
         return out
@@ -860,7 +860,7 @@ def convert_book(
             final, toc_stats = normalize_chapters_from_toc(final, toc_l1)
             say(f"chapter normalize from ToC: {toc_stats}")
         collect_images(final, work)
-        md = "\n\n".join(render(b) for b in final)
+        md = "\n\n".join(render(Block.from_dict(b)) for b in final)
         for w in wm:  # scrub watermark embedded in captions/merged text
             md = md.replace(w, " ")
         with open(f"{work}/{slug}.md", "w", encoding="utf-8") as f:

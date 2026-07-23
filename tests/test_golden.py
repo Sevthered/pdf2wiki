@@ -14,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from pdf2wiki.convert.block import Block
 from pdf2wiki.convert.merge import merge, render
 
 # A small fixture that exercises the paths that matter: code that MATCHES (take hybrid indentation),
@@ -87,7 +88,7 @@ WATERMARKS = ["CONFIDENTIAL"]
 def test_merge_golden(snapshot):
     final, stats = merge([dict(b) for b in BASE], [dict(b) for b in HYBRID], WATERMARKS)
     blocks_json = json.dumps(final, indent=1, default=str, ensure_ascii=False)
-    rendered_md = "\n\n".join(render(b) for b in final)
+    rendered_md = "\n\n".join(render(Block.from_dict(b)) for b in final)
 
     assert stats == snapshot(name="graft_stats")
     assert blocks_json == snapshot(name="blocks_json")

@@ -22,6 +22,8 @@ For when you already know the tool and need to accomplish something.
 - [Run a batch](how-to/run-a-batch.md)
 - [QA a conversion](how-to/qa-a-conversion.md)
 - [Set up a remote GPU host](how-to/set-up-remote-gpu.md) *(experimental)*
+- [Offload the hybrid pass to a server](how-to/offload-hybrid-to-a-server.md) — no local GPU
+- [Convert in the cloud](how-to/convert-in-the-cloud.md) — no GPU, no MinerU *(sends the PDF to a third-party cloud)*
 - [Troubleshooting](how-to/troubleshoot.md)
 
 ## [Reference](reference/) — look up the facts

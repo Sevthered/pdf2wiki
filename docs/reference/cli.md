@@ -20,7 +20,8 @@ directories — they never modify existing files in place.
 Convert one PDF into merged Markdown with the [dual-pass pipeline](../explanation/how-the-merge-works.md).
 
 ```
-pdf2wiki convert <pdf> --name <slug> [--out DIR] [--remote HOST]
+pdf2wiki convert <pdf> --name <slug> [--out DIR]
+                       [--remote HOST | --hybrid-server-url URL | --mineru-cloud [--cloud-model MODEL]]
 ```
 
 | Argument | Required | Default | Description |
@@ -28,10 +29,16 @@ pdf2wiki convert <pdf> --name <slug> [--out DIR] [--remote HOST]
 | `pdf` | yes | — | Path to the source PDF (local mode), or a filename under the remote `books_dir` when `--remote` is used. |
 | `--name` | yes | — | Output slug; names the output folder and the `.md` file. |
 | `--out` | no | `convert.out_root` (`~/pdf2wiki/out`) | Output root; the book lands in `<out>/<slug>/`. |
-| `--remote` | no | `remote.host` from config | SSH host to run the conversion on (experimental — see [set up a remote GPU host](../how-to/set-up-remote-gpu.md)). |
+| `--remote` | no | `remote.host` from config | SSH host to run the *whole* conversion on (experimental — see [set up a remote GPU host](../how-to/set-up-remote-gpu.md)). |
+| `--hybrid-server-url` | no | `mineru.hybrid_server_url` from config | Offload **only** the hybrid VLM pass to a BYO OpenAI-compatible MinerU server; the pipeline pass stays local (runs on CPU). Preserves `--effort` (Mermaid/chart transcription). See [offload the hybrid pass](../how-to/offload-hybrid-to-a-server.md). |
+| `--mineru-cloud` | no | off | Convert via the fully-managed [mineru.net](https://mineru.net) Cloud — **no GPU, no local MinerU**, token only. Uploads the PDF to a third-party cloud. Needs the `cloud` extra. See [convert in the cloud](../how-to/convert-in-the-cloud.md). |
+| `--cloud-model` | no | `mineru_cloud.model_version` (`pipeline`) | Cloud parse model, only with `--mineru-cloud`: `pipeline` (code-safe, flat indent) · `vlm` (indent/tables but corrupts code) · `MinerU-HTML` · `merge` (runs both `pipeline`+`vlm` in the cloud and splices locally = clean code **and** indent/tables, GPU-less; costs 2× quota). |
+
+`--remote`, `--hybrid-server-url`, and `--mineru-cloud` are **mutually exclusive** convert strategies —
+passing more than one exits with code `2` and a message naming the conflict rather than silently choosing.
 
 Writes `<out>/<slug>/<slug>.md`, `images/`, and `blocks.json` — see [output layout](output-layout.md).
-Exit code `0` on success, `1` on failure (a MinerU pass failed, or the [coverage gate](../explanation/how-the-merge-works.md#the-coverage-gate) hard-stopped).
+Exit code `0` on success, `1` on failure (a MinerU/cloud pass failed, or the [coverage gate](../explanation/how-the-merge-works.md#the-coverage-gate) hard-stopped), `2` on a mutually-exclusive-flag misuse.
 
 ## `phase5`
 

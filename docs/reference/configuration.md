@@ -46,6 +46,7 @@ vault = "~/Obsidian/MyVault"
 | `binary` | string | `""` | Path to the `mineru` executable. Empty means discover `mineru` on `PATH`. |
 | `model_source` | string | `"huggingface"` | Sets `MINERU_MODEL_SOURCE` for the MinerU subprocess. |
 | `effort` | string | `"high"` | Hybrid/VLM effort. `high` enables image/chart/diagram analysis. |
+| `hybrid_server_url` | string | `""` | Offload the hybrid VLM pass to this OpenAI-compatible MinerU server (`hybrid-http-client -u URL`); the pipeline pass stays local. Empty = local hybrid. Set by `--hybrid-server-url`. See [offload the hybrid pass](../how-to/offload-hybrid-to-a-server.md). |
 
 ## `[convert]`
 
@@ -80,6 +81,24 @@ Experimental — SSH-driven remote conversion. See [set up a remote GPU host](..
 | `connect_timeout` | int (s) | `8` | SSH connect timeout for the one-time connectivity check. |
 | `convert_timeout` | int (s) | `7200` | Timeout for a remote conversion. |
 
+## `[mineru_cloud]`
+
+Fully-managed [mineru.net](https://mineru.net) Cloud conversion (`--mineru-cloud`) — no GPU, no local
+MinerU. **⚠ Uploads the PDF to a third-party cloud (OpenDataLab, CN-hosted); do not use for material you
+cannot send offsite.** Needs the `cloud` extra (`pip install 'pdf2wiki[cloud]'`). See
+[convert in the cloud](../how-to/convert-in-the-cloud.md).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `token` | string | `""` | Bearer token. Empty → falls back to env `MINERU_API_TOKEN`, then `token_file`. **Prefer env/file so the token never lands in a committed config.** |
+| `token_file` | string | `""` | Path to a file holding the token (e.g. `~/.mineru_net_token`), kept out of VCS. |
+| `base_url` | string | `"https://mineru.net/api/v4"` | Precision API base URL. |
+| `model_version` | string | `"pipeline"` | Default cloud model when `--cloud-model` is not given: `pipeline` (code-safe, flat indent) · `vlm` (indent/tables, corrupts code) · `MinerU-HTML`. (`merge` is a CLI-only pseudo-model, not a config value.) |
+| `language` | string | `"en"` | OCR language hint (mineru.net defaults to `ch`). |
+| `extra_formats` | list | `[]` | Extra output formats to request, e.g. `["latex"]` for formula-heavy books. |
+| `poll_timeout` | int (s) | `1800` | How long to wait for a cloud task before failing. |
+| `max_pages` | int | `200` | Per-file page cap (mineru.net Precision limit); larger PDFs fail fast rather than truncate. |
+
 ## `[output]`
 
 | Field | Type | Default | Description |
@@ -91,3 +110,7 @@ Experimental — SSH-driven remote conversion. See [set up a remote GPU host](..
 pdf2wiki sets `MINERU_MODEL_SOURCE` (from `[mineru] model_source`) for the MinerU subprocess and
 otherwise inherits your environment. There is no environment-variable override layer for the config
 fields above — use a config file or CLI flags.
+
+One exception: **`MINERU_API_TOKEN`** is read for `--mineru-cloud` when `[mineru_cloud] token` is empty
+(precedence: config `token` → env `MINERU_API_TOKEN` → `token_file`). The token is never logged or written
+to disk by pdf2wiki.

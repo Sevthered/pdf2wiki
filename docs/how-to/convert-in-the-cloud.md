@@ -15,6 +15,40 @@ result, and lays it out exactly like the local converter (`<out>/<slug>/<slug>.m
 > **⚠ Data egress.** This sends your PDF to a third-party cloud (OpenDataLab, CN-hosted). Do **not** use
 > it for material you cannot send offsite. The command logs the upload loudly every run.
 
+## Data usage & privacy — read before uploading
+
+Using `--mineru-cloud` uploads your **entire source PDF** to servers operated by **OpenDataLab** (a
+[Shanghai AI Laboratory](https://opendatalab.com) project; infrastructure is China-hosted). pdf2wiki is
+an unaffiliated client — it does not control, and cannot speak for, what mineru.net does with your files.
+
+**What we could verify (as of 2026-07, from the official site/docs):**
+
+- mineru.net publishes a **User Service Agreement (用户服务协议)** and a **Privacy Policy (隐私政策)**,
+  linked in the footer of <https://mineru.net> — but **only in Chinese**, and their machine-readable text
+  is not publicly indexed. **You are responsible for reading them before uploading anything.**
+- The API docs state only operational facts: an upload link is valid for **24 hours**, and there are
+  per-file/size and daily quotas (see below). We found **no public English statement** about **how long
+  uploaded files are retained, whether they are deleted after parsing, or whether they may be used to
+  train models.** **Do not assume** uploads are deleted or excluded from training — the policy is silent
+  where we can read it.
+- For specifics beyond the published policy, OpenDataLab's listed contact is `OpenDataLab@pjlab.org.cn`.
+
+**Practical guidance:**
+
+- **Copyrighted books, licensed material, confidential or personal documents → do not use this path.**
+  Uploading may breach the material's license or your obligations, independent of mineru.net's own terms.
+  Use the [local converter](convert-a-book.md), a [remote GPU host](set-up-remote-gpu.md), or
+  [offload only the hybrid pass](offload-hybrid-to-a-server.md) to a server you control — all keep the PDF
+  on hardware you own.
+- Reserve `--mineru-cloud` for **public or self-owned, non-sensitive PDFs** where sending a copy offsite
+  is acceptable to you.
+- This is a **per-book, explicit** decision. Never wire `--mineru-cloud` into an unattended batch over a
+  corpus you have not individually cleared for egress.
+
+*This section summarizes what pdf2wiki's maintainers could independently confirm; it is not legal advice
+and is not a statement on OpenDataLab's behalf. Their published policy is the authority — verify it
+yourself, as terms may have changed since this was written.*
+
 ## Requirements
 
 - The `cloud` extra: `pip install 'pdf2wiki[cloud]'` (adds `requests`).
@@ -72,6 +106,14 @@ extra_formats = ["latex"]            # optional; e.g. LaTeX for formula-heavy bo
 - **Fail fast, loud.** Any API error (bad token, oversized file, parse failure, unreachable) aborts
   naming the cause; there is no silent fallback to a local converter.
 - The token is read from config/env/file and is **never logged or written to disk** by pdf2wiki.
+- **`merge` costs 2×** — it submits the PDF twice (`pipeline` + `vlm`), so it burns 2× the daily page
+  quota and doubles egress. Budget accordingly on large books.
+- **Cloud output is not byte-identical to the local converter.** mineru.net runs its own (evolving)
+  MinerU version, so block boundaries and a few merge decisions differ from an on-box run. `merge` keeps
+  code *clean* (pipeline tokens win), which is what matters, but don't expect a bit-for-bit match.
+- **Math not yet validated on this path.** The `equation` LaTeX field has not been fidelity-checked
+  through the cloud; for formula-heavy books try `extra_formats = ["latex"]` and **verify the output**.
+- **No automatic chunking.** Books over the per-file page cap must be split by hand before uploading.
 
 ## When to prefer the local converter
 

@@ -4,6 +4,7 @@ from qa.sample, for manual side-by-side back-checks."""
 import json
 import os
 
+from ..convert.block import Block
 from ..render import render_block
 
 
@@ -11,16 +12,16 @@ def build_review(qa_dir: str, name: str, blocks_path: str | None = None) -> dict
     qa = os.path.expanduser(qa_dir)
     blocks_path = blocks_path or os.path.join(qa, "out", f"{name}_sample", "blocks.json")
     with open(blocks_path, encoding="utf-8") as f:
-        blocks = json.load(f)
+        blocks = [Block.from_dict(b) for b in json.load(f)]
     with open(os.path.join(qa, "mapping.json"), encoding="utf-8") as f:
         mapping = {m["sample_idx"]: m["orig_page"] for m in json.load(f)}
 
     # NOTE: blocks.json here comes from converting the SAMPLE pdf, so abs_page IS the sample
     # index (the sample pdf's pages are 0..N-1). mapping only translates it back to the original
     # book page for display. Do not "fix" this to key by original page.
-    bypage: dict[int, list] = {}
+    bypage: dict[int, list[Block]] = {}
     for b in blocks:
-        bypage.setdefault(int(b.get("abs_page", 0)), []).append(b)
+        bypage.setdefault(b.abs_page, []).append(b)
 
     out = []
     for si in sorted(mapping):

@@ -102,3 +102,29 @@ def test_cmd_qa_flags_ranks_books(tmp_path, capsys):
     assert cli.main(["qa", "flags", a, b]) == 0
     out = capsys.readouterr().out
     assert out.index("beta") < out.index("alpha")  # most-flagged book ranked first
+
+
+# ---------- qa.review: per-sample-page rendered review (build_review) ----------
+from pdf2wiki.qa.review import build_review
+
+
+def test_build_review_renders_by_sample_page(tmp_path):
+    qa = tmp_path / "qa"
+    sampledir = qa / "out" / "bk_sample"
+    os.makedirs(sampledir)
+    blocks = [
+        {"type": "text", "abs_page": 0, "text_level": 1, "text": "Title"},
+        {"type": "code", "abs_page": 0, "sub_type": "py", "code_body": "x = 1"},
+        {"type": "text", "abs_page": 1, "text": "Body"},
+    ]
+    with open(sampledir / "blocks.json", "w", encoding="utf-8") as f:
+        json.dump(blocks, f)
+    with open(qa / "mapping.json", "w", encoding="utf-8") as f:
+        json.dump([{"sample_idx": 0, "orig_page": 12}, {"sample_idx": 1, "orig_page": 40}], f)
+
+    r = build_review(str(qa), "bk")
+    assert r["pages_with_content"] == 2 and r["sampled"] == 2
+    with open(r["review"], encoding="utf-8") as f:
+        txt = f.read()
+    assert "original page 12" in txt and "original page 40" in txt
+    assert "# Title" in txt and "```py\nx = 1\n```" in txt and "Body" in txt

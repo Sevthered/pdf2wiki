@@ -125,3 +125,17 @@ def test_no_breaker_when_executor_stays_healthy(tmp_path, monkeypatch):
     failed = [s for s, e in manifest.items() if e["status"] == "convert_failed"]
     assert len(failed) == 5                            # all attempted, no premature abort
     assert manifest["book-0"]["error_class"] == "permanent"
+
+
+def test_cmd_batch_rolls_up_error_class(monkeypatch, capsys):
+    # a partial batch must aggregate error_class so a cluster of same-kind failures reads as one line.
+    monkeypatch.setattr(batch, "run_batch",
+                        lambda *a, **k: {"book-a": {"status": "done"},
+                                         "book-b": {"status": "convert_failed", "error_class": "permanent"},
+                                         "book-c": {"status": "convert_failed", "error_class": "permanent"},
+                                         "book-d": {"status": "convert_failed", "error_class": "TimeoutExpired"}})
+    assert cli.main(["batch", "books.toml"]) == 1
+    err = capsys.readouterr().err
+    assert "3 book(s) not done" in err
+    assert "permanent×2" in err and "TimeoutExpired×1" in err
+    assert "not done:" in err                        # slug detail retained

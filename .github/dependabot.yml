@@ -12,3 +12,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Keep upload/download-artifact as a matched v4 pair. Their major bumps only run in publish.yml
+      # (never exercised by PR CI) and mixing majors risks a broken Trusted-Publishing release; bump
+      # both together, deliberately, and verify at a release if ever needed.
+      - dependency-name: "actions/upload-artifact"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "actions/download-artifact"
+        update-types: ["version-update:semver-major"]

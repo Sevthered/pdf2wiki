@@ -83,7 +83,9 @@ Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://dia
 
 **Alpha.** All stages are functional; the converter was ported from a production deployment validated
 on several full technical books, and the coverage gate hard-stops rather than silently dropping
-content. Remote mode is **experimental** — no full public end-to-end run yet; prefer local mode.
+content. Remote (SSH) and cloud (`--mineru-cloud`) modes now have a verified end-to-end run on a real
+GPU box — a single-book conversion over SSH and a cloud dual-pass merge — but have not yet been
+exercised at full-book batch scale, so prefer local mode for large runs.
 
 ## License
 

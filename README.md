@@ -84,6 +84,12 @@ Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://dia
 - **Decisions** — [ADR log (MADR)](docs/decisions/): why two backends, code token-verification, AGPL/MIT + subprocess, the executor port, remote hardening
 - **Plugin** — [llm-wiki (query/review a vault)](docs/llm-wiki/)
 
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions,
+[GOVERNANCE.md](GOVERNANCE.md) for how the project is run and who maintains it, and the
+[Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately per [SECURITY.md](SECURITY.md).
+
 ## Status
 
 **Alpha.** All stages are functional; the converter was ported from a production deployment validated

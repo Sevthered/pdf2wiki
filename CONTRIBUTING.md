@@ -1,7 +1,8 @@
 # Contributing to pdf2wiki
 
 Thanks for your interest. This guide covers the development setup and the conventions the project
-follows.
+follows. By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md); see
+[GOVERNANCE.md](GOVERNANCE.md) for how decisions are made and who maintains the project.
 
 ## Development setup
 

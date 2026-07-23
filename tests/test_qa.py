@@ -42,3 +42,53 @@ def test_sample_normal_book_unchanged(tmp_path):
     r = sample_pages(pdf, "big", str(tmp_path / "qa"), n=20)
     assert len(r["pages"]) == 20
     assert all(5 <= p < 95 for p in r["pages"])
+
+
+# ---------- qa.flagged: per-book flagged-block report (T3) ----------
+import json
+
+import pdf2wiki.cli as cli
+from pdf2wiki.qa.flagged import flagged_report
+
+
+def _write_blocks(dirpath, specs):
+    """specs: list of (type, flag) where flag in {None, '_code_flag', '_indent_flag'}."""
+    os.makedirs(dirpath, exist_ok=True)
+    blocks = []
+    for i, (t, flag) in enumerate(specs):
+        b = {"type": t, "abs_page": i, "sub_type": "python", "code_body": f"line_{i} = {i}\nmore"}
+        if flag:
+            b[flag] = True
+        blocks.append(b)
+    p = os.path.join(dirpath, "blocks.json")
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(blocks, f)
+    return p
+
+
+def test_flagged_report_counts(tmp_path):
+    p = _write_blocks(str(tmp_path / "mybook"), [
+        ("code", None), ("code", "_code_flag"), ("code", "_indent_flag"),
+        ("code", "_code_flag"), ("text", None)])
+    r = flagged_report(p)
+    assert r["name"] == "mybook"
+    assert r["code_blocks"] == 4                       # 4 code blocks, the text block ignored
+    assert r["diverged"] == 2 and r["indent_suspect"] == 1 and r["flagged"] == 3
+    assert [e["flag"] for e in r["blocks"]] == ["diverged", "indent", "diverged"]  # page-sorted
+    assert r["blocks"][0]["page"] == 2 and r["blocks"][0]["lang"] == "python"       # abs_page 1 -> pg 2
+    assert r["blocks"][0]["snippet"].startswith("line_1")
+
+
+def test_flagged_report_empty(tmp_path):
+    p = _write_blocks(str(tmp_path / "clean"), [("code", None), ("code", None), ("text", None)])
+    r = flagged_report(p)
+    assert r["flagged"] == 0 and r["blocks"] == [] and r["code_blocks"] == 2
+
+
+def test_cmd_qa_flags_ranks_books(tmp_path, capsys):
+    a = _write_blocks(str(tmp_path / "alpha"), [("code", "_code_flag"), ("code", None)])          # 1 flag
+    b = _write_blocks(str(tmp_path / "beta"),
+                      [("code", "_code_flag"), ("code", "_code_flag"), ("code", "_indent_flag")])  # 3 flags
+    assert cli.main(["qa", "flags", a, b]) == 0
+    out = capsys.readouterr().out
+    assert out.index("beta") < out.index("alpha")      # most-flagged book ranked first

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Typed view over one MinerU/merge content block.
 
 A block is a `content_list.json` record (plus pdf2wiki-injected keys). It is modelled as a thin,

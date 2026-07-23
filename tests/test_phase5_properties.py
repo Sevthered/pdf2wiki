@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Hypothesis property tests for the Phase 5 transformers (Stage 7).
 
 These generalize the example-based tests in test_phase5.py: instead of a handful of fixtures, a

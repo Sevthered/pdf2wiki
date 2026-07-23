@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Batch isolation tests: one book's convert/fetch error must NOT abort the whole run.
 
 Regression: ex.convert/ex.fetch were called outside any try — a TimeoutExpired (SSHExecutor

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Sample N random pages from a book, build a sample PDF, render each to PNG.
 Reproducible via seed. Used for manual conversion back-checks against the source pages."""
 

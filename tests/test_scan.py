@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """scan_one resilience: a page-level error must yield {file, error}, not abort the dir scan.
 
 Regression: only pymupdf.open was inside the try; d.page_count / d[i].get_text() ran outside it,

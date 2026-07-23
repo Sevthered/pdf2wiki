@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """render_block must tolerate explicit JSON-null field values (not just missing keys).
 
 Regression: `.get(k, default)` only defaults MISSING keys; a JSON null returns None, so

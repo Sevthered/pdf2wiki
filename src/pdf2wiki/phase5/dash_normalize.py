@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Normalize typographic dashes INSIDE code blocks of a converted book .md.
 
 Books typeset CLI `--flag` as an en-dash ligature (`uv add –dev` should be `uv add --dev`), and a

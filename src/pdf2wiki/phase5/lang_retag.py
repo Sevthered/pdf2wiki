@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Re-tag code fences in a converted book .md.
 
 MinerU's fence language ID is unreliable (Java->swift/erlang, many bare ```code). Pygments

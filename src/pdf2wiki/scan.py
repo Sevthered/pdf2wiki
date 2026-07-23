@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Batch-scan a directory of book PDFs: extract a title guess + publication year from each PDF's
 first ~10 pages (title/copyright page). Does NOT trust filenames as ground truth — only as a
 fallback when the text layer is too thin to find a title line. Output is one record per book

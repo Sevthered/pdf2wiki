@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Un-bleed figure/listing captions that MinerU wrapped in their own code fence.
 
 MinerU sometimes emits a bare caption line as a *caption-only* code fence, separate from the real

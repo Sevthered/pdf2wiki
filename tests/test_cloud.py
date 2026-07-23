@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Tests for the mineru.net Cloud converter (--mineru-cloud). No live API — HTTP is mocked."""
 
 import io

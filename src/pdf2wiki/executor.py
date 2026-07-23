@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Execution backends: run the converter and fetch its artifacts, locally or over SSH.
 
 LocalExecutor runs everything on this machine (the default — single machine with a local GPU).

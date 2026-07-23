@@ -46,6 +46,8 @@ dev = [
     "hypothesis>=6",
     "mypy>=1.11",
     "types-requests>=2.28",
+    "reuse>=5",
+    "pre-commit>=4.6.1",
 ]
 
 [tool.ruff]

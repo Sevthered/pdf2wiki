@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Per-book flagged-block report: which code blocks the VLM diverged on — the highest-signal QA
 sample. Pure read over a converted book's blocks.json (no converter or schema change). The flags are
 set during merge in convert/merge.py: `_code_flag` = the hybrid/VLM code diverged from the byte-clean

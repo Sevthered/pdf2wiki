@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Phase 5 post-processing chain — fixed order, each step sees the previous step's output:
 
     caption_unbleed -> lang_retag -> dash_normalize -> mermaid_repair -> code_unescape -> chapter_split

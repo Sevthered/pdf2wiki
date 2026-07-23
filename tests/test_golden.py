@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Golden snapshot of the merge → blocks.json + rendered-markdown output.
 
 This is a behavior-lock: a representative base(pipeline) + hybrid(vlm) block pair is run through the

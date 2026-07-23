@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Fully-managed mineru.net Cloud converter (`--mineru-cloud`).
 
 No GPU and no local MinerU: the PDF is uploaded to the OpenDataLab cloud (mineru.net Precision API),

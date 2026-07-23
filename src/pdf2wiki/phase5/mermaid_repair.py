@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Repair VLM-transcribed Mermaid blocks so they render (and stay searchable).
 
 The hybrid/VLM pass stuffs request/response JSON into node labels, producing parse-breakers:

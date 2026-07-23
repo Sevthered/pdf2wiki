@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Strip spurious markdown-punctuation backslash-escapes INSIDE code blocks of a converted book .md.
 
 MinerU's markdown emitter escapes bare special chars from the text/VLM layer (`$`->`\\$`, `*`->`\\*`,

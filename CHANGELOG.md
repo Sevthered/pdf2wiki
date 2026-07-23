@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-07-23
+
+### Fixed
+- **Long remote conversions no longer drop the SSH control channel.** During a long MinerU pass all
+  output goes to a remote log file, so the SSH channel is silent for minutes; a NAT/idle timeout
+  (common with WSL2 mirrored networking) could drop it, and the batch would then mislabel a
+  still-running convert as `convert_failed` while the remote job kept going. All remote ssh/scp calls
+  now send keepalives (`ServerAliveInterval=30`, `ServerAliveCountMax=240` ≈ 2 h of tolerated silence).
+  If a drop still happens, a re-run resumes from cached (`.done`) passes. Found by the first full-book
+  (354-page) remote run.
+
 ## [0.2.4] - 2026-07-23
 
 ### Fixed

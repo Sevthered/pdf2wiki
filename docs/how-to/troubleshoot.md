@@ -70,6 +70,21 @@ ssh <host> echo ok
 Fix your `~/.ssh/config` / keys until that prints `ok` with no password prompt, then retry. See
 [set up a remote GPU host](set-up-remote-gpu.md).
 
+## Remote convert marked failed but the box kept working
+
+**Symptom:** a long remote `convert`/`batch` reports `convert_failed` (and the log tail shows an
+`ssh: … Operation timed out` when fetching the remote log), yet the converter is still running on the
+host and eventually finishes.
+
+**Why:** during a long MinerU pass all output goes to a remote log file, so the SSH channel is silent
+for minutes; a NAT/idle timeout (common with WSL2 mirrored networking) can drop that silent connection.
+pdf2wiki now sends SSH keepalives (`ServerAliveInterval`) on every remote call to hold the channel open,
+which prevents this in almost all cases.
+
+**Fix / recovery:** if it still drops, just re-run — completed conversion passes are cached with a
+`.done` sentinel, so the re-run resumes rather than restarting. If your network is especially aggressive,
+raise `ServerAliveInterval`/`ServerAliveCountMax` via a `Host` block in `~/.ssh/config` for the box.
+
 ## Corrupt batch manifest
 
 **Symptom:** `batch` exits telling you the manifest could not be parsed.

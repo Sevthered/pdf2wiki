@@ -48,4 +48,6 @@ of words like "error" and "failed". If a book fails, read its remote log
 
 - **Connectivity check fails** — see [troubleshooting](troubleshoot.md#ssh-connectivity-check-fails).
 - A mid-run SSH drop does not necessarily kill a detached remote job; on reconnect, check before
-  assuming the work was lost.
+  assuming the work was lost. pdf2wiki sends SSH keepalives on every remote call to hold the control
+  channel open across long silent conversion passes; if a drop still happens, re-running resumes from
+  the cached (`.done`) passes. See [remote convert marked failed but the box kept working](troubleshoot.md#remote-convert-marked-failed-but-the-box-kept-working).

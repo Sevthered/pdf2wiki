@@ -102,3 +102,11 @@ def test_convert_remote_and_hybrid_url_mutually_exclusive(capsys):
         _convert_args(remote="gpu-box", hybrid_server_url="http://box:8000/v1"), cfg)
     assert rc == 2
     assert "mutually exclusive" in capsys.readouterr().err
+
+
+def test_ssh_opts_include_keepalive():
+    # long silent MinerU passes must not drop the ssh control channel (else the batch mislabels a
+    # still-running convert as failed). Every ssh/scp call goes through _ssh_opts.
+    opts = SSHExecutor("h", "~/b", "~/w")._ssh_opts()
+    assert "ServerAliveInterval=30" in opts and "ServerAliveCountMax=240" in opts
+    assert "BatchMode=yes" in opts and any(o.startswith("ConnectTimeout=") for o in opts)

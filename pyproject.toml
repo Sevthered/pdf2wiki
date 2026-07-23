@@ -1,6 +1,6 @@
 [project]
 name = "pdf2wiki"
-version = "0.2.4"
+version = "0.2.5"
 description = "Convert technical books (native-text PDFs) into clean, chapter-split, LLM-ready Markdown using a dual-pass MinerU pipeline plus fidelity-preserving post-processing."
 authors = [{ name = "Sevthered" }]
 readme = "README.md"

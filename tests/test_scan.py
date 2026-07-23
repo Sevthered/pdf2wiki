@@ -4,6 +4,7 @@ Regression: only pymupdf.open was inside the try; d.page_count / d[i].get_text()
 so a corrupt page raised out of scan_one and (via scan_dir's bare comprehension) killed scanning
 of every remaining PDF.
 """
+
 import os
 import sys
 
@@ -19,13 +20,13 @@ def test_scan_one_page_error_is_captured(monkeypatch):
         page_count = 3
 
         def __getitem__(self, i):
-            raise ValueError("bad page stream")   # was raised OUTSIDE the try before the fix
+            raise ValueError("bad page stream")  # was raised OUTSIDE the try before the fix
 
     monkeypatch.setattr(pymupdf, "open", lambda p: BadDoc())
     r = scan.scan_one("book.pdf")
     assert r["file"] == "book.pdf"
     assert "bad page stream" in r["error"]
-    assert "pages" not in r                        # no partial record
+    assert "pages" not in r  # no partial record
 
 
 def test_scan_one_open_error_still_captured(monkeypatch):

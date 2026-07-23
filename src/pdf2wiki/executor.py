@@ -5,6 +5,7 @@ SSHExecutor drives a remote GPU machine over SSH: the converter runs there, arti
 back with scp. Requirements for remote mode: an OpenSSH-reachable host with pdf2wiki + MinerU
 installed, key-based auth (no password prompts mid-batch).
 """
+
 from __future__ import annotations
 
 import os
@@ -20,11 +21,13 @@ class LocalExecutor:
     def check(self) -> None:
         pass  # nothing to verify locally
 
-    def convert(self, pdf_path: str, slug: str, out_root: str, timeout: int,
-                cfg=None) -> tuple[bool, str]:
+    def convert(
+        self, pdf_path: str, slug: str, out_root: str, timeout: int, cfg=None
+    ) -> tuple[bool, str]:
         """Run the converter locally. Returns (ok, log_text). `cfg` carries CLI overrides (e.g.
         --hybrid-server-url); when None, convert_book loads the default config."""
         from .convert import convert_book  # lazy: keep GPU-path imports out of CLI startup
+
         return convert_book(pdf_path, slug, out_root, timeout=timeout, cfg=cfg)
 
     def fetch(self, slug: str, out_root: str, dest_dir: str, timeout: int | None = None) -> bool:
@@ -45,9 +48,16 @@ def _remote_path(p: str) -> str:
 
 
 class SSHExecutor:
-    def __init__(self, host: str, books_dir: str, workdir: str,
-                 connect_timeout: int = 8, convert_timeout: int = 7200,
-                 fetch_timeout: int = 600, reap_grace: int = 120):
+    def __init__(
+        self,
+        host: str,
+        books_dir: str,
+        workdir: str,
+        connect_timeout: int = 8,
+        convert_timeout: int = 7200,
+        fetch_timeout: int = 600,
+        reap_grace: int = 120,
+    ):
         self.host = host
         self.books_dir = _remote_path(books_dir) if books_dir else books_dir
         self.workdir = _remote_path(workdir)
@@ -64,8 +74,16 @@ class SSHExecutor:
         # timeout (WSL2 mirrored networking is prone to this) would otherwise drop it — the batch
         # would then mislabel a still-running convert as failed. 30s ping × 240 = ~2h tolerated
         # silence, comfortably over one pass and inside the `timeout Ns` reaper.
-        return ["-o", f"ConnectTimeout={self.connect_timeout}", "-o", "BatchMode=yes",
-                "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=240"]
+        return [
+            "-o",
+            f"ConnectTimeout={self.connect_timeout}",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ServerAliveInterval=30",
+            "-o",
+            "ServerAliveCountMax=240",
+        ]
 
     def _run(self, cmd: list[str], timeout: int | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -75,14 +93,17 @@ class SSHExecutor:
         every book fail near-instantly (a connect-timeout, not a real conversion failure) and a
         batch loop would burn through the entire list in minutes, mislabeling every book as
         failed."""
-        r = self._run(["ssh", *self._ssh_opts(), self.host, "echo ok"],
-                      timeout=self.connect_timeout + 5)
+        r = self._run(
+            ["ssh", *self._ssh_opts(), self.host, "echo ok"], timeout=self.connect_timeout + 5
+        )
         if "ok" not in r.stdout:
             raise ExecutionError(
                 f"cannot reach {self.host} over SSH: {r.stderr.strip() or 'connect timeout'}"
             )
 
-    def convert(self, pdf_filename: str, slug: str, out_root: str, timeout: int | None = None) -> tuple[bool, str]:
+    def convert(
+        self, pdf_filename: str, slug: str, out_root: str, timeout: int | None = None
+    ) -> tuple[bool, str]:
         """Run pdf2wiki's converter on the remote host. pdf_filename is relative to books_dir.
         Returns (ok, remote_log_text)."""
         t = int(timeout or self.convert_timeout)
@@ -99,10 +120,14 @@ class SSHExecutor:
             f"--out {shlex.quote(out_root)} > {shlex.quote(log)} 2>&1; echo EXIT=$?"
         )
         r = self._run(["ssh", *self._ssh_opts(), self.host, inner], timeout=t + self.reap_grace)
-        logfetch = self._run(["ssh", *self._ssh_opts(), self.host, f"cat {shlex.quote(log)}"],
-                             timeout=60)
-        logtext = logfetch.stdout if logfetch.returncode == 0 else \
-            f"(could not fetch remote log {log}: {logfetch.stderr.strip()})"
+        logfetch = self._run(
+            ["ssh", *self._ssh_opts(), self.host, f"cat {shlex.quote(log)}"], timeout=60
+        )
+        logtext = (
+            logfetch.stdout
+            if logfetch.returncode == 0
+            else f"(could not fetch remote log {log}: {logfetch.stderr.strip()})"
+        )
         # the remote CLI's exit code is authoritative (pdf2wiki convert returns non-zero on any
         # failure) — do not scrape the log for failure words; book content may contain them
         ok = "EXIT=0" in r.stdout
@@ -117,13 +142,17 @@ class SSHExecutor:
         out_root = _remote_path(out_root)
         opts = self._ssh_opts()
         md = shlex.quote(f"{out_root}/{slug}/{slug}.md")
-        r1 = self._run(["scp", "-q", *opts, f"{self.host}:{md}",
-                        os.path.join(dest_dir, f"{slug}.md")], timeout=t)
+        r1 = self._run(
+            ["scp", "-q", *opts, f"{self.host}:{md}", os.path.join(dest_dir, f"{slug}.md")],
+            timeout=t,
+        )
         if r1.returncode != 0:
             return False
         imgs = shlex.quote(f"{out_root}/{slug}/images")
-        r2 = self._run(["scp", "-q", "-r", *opts, f"{self.host}:{imgs}",
-                        os.path.join(dest_dir, "images")], timeout=t)
+        r2 = self._run(
+            ["scp", "-q", "-r", *opts, f"{self.host}:{imgs}", os.path.join(dest_dir, "images")],
+            timeout=t,
+        )
         # a book with zero figures legitimately has no images dir — only the md is mandatory
         if r2.returncode != 0 and "No such file" not in (r2.stderr or ""):
             return False

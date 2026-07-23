@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-23
+
+### Added
+Three GPU-less / offload conversion paths, so a machine with no local GPU (or no MinerU at all) can still
+convert:
+- `convert --hybrid-server-url URL` — offload only the hybrid VLM pass to a BYO OpenAI-compatible MinerU
+  server; the pipeline pass stays local (runs on CPU). Effort / image-analysis (Mermaid, chart
+  transcription) is preserved. Mutually exclusive with `--remote`; fails fast (never silently falls back).
+- `convert --mineru-cloud` — fully-managed conversion via the mineru.net Precision API: no GPU, no MinerU
+  install, token only. `--cloud-model pipeline` (default, code-safe) | `vlm` | `MinerU-HTML`. Uploads the
+  PDF to a third-party cloud (loud data-egress warning), ≤200 pages/file, token never logged. Needs the
+  new `cloud` extra: `pip install 'pdf2wiki[cloud]'`.
+- `convert --mineru-cloud --cloud-model merge` — runs BOTH cloud passes (pipeline + vlm) and splices them
+  with pdf2wiki's own base-driven merge locally: byte-clean code (pipeline tokens) AND correct
+  indentation / tables / Mermaid (vlm), fully GPU-less. Costs 2× the daily page quota and 2× egress.
+- New `[mineru_cloud]` config section and `[mineru].hybrid_server_url` setting.
+- Docs: how-to guides for offloading the hybrid pass and converting in the cloud.
+
+### Fixed
+- The code-diverge merge path now recovers Python indentation from the hybrid pass (fuzzy `difflib`
+  re-indent) instead of emitting flat pipeline tokens — Python code with genuine token divergence keeps
+  its indentation.
+
 ## [0.1.2] - 2026-07-18
 
 ### Fixed

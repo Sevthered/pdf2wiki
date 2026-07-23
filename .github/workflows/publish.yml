@@ -1,0 +1,40 @@
+name: publish
+
+# Publish to PyPI via Trusted Publishing (OIDC, no stored token) on a GitHub Release.
+# The build job is kept separate from the publish job so the OIDC id-token permission is
+# isolated to the step that actually uploads — the build (running project/deps) never sees it.
+# PEP 740 provenance attestations are emitted automatically by the publish action.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff  # v6
+      - run: uv build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi          # must match the Trusted Publisher config on PyPI
+    permissions:
+      id-token: write          # OIDC — Trusted Publishing
+      attestations: write      # PEP 740 provenance
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@106e0b0b7c337fa67ed433972f777c6357f78598  # v1.13.0

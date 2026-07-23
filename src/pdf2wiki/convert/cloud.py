@@ -15,10 +15,10 @@ Two shapes:
 ⚠ DATA EGRESS: this uploads the source PDF to a third-party cloud. Only reachable behind the explicit
 `--mineru-cloud` opt-in, and it logs the upload loudly. Do not use for material you cannot send offsite.
 
-Uses `requests` (the `[cloud]` extra), lazy-imported so the core install stays dependency-light. It is
-required here because the OSS pre-signed upload URL is signed with NO Content-Type header, and urllib
-auto-adds one → SignatureDoesNotMatch; requests sends the raw body without it. Token is read from config,
-then env MINERU_API_TOKEN, then a token_file; it is never written to disk or logged.
+Uses `requests` (a core dependency), lazy-imported only to keep import time low. It is required here
+because the OSS pre-signed upload URL is signed with NO Content-Type header, and urllib auto-adds one
+→ SignatureDoesNotMatch; requests sends the raw body without it. Token is read from config, then env
+MINERU_API_TOKEN, then a token_file; it is never written to disk or logged.
 """
 import glob
 import json
@@ -37,8 +37,8 @@ def _requests():
         import requests
     except ModuleNotFoundError as e:
         raise CloudError(
-            "--mineru-cloud needs the 'requests' package: pip install 'pdf2wiki[cloud]' (or "
-            "pip install requests)."
+            "the 'requests' package is missing (it is a pdf2wiki dependency) — reinstall pdf2wiki, "
+            "or: pip install requests."
         ) from e
     return requests
 

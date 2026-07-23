@@ -31,11 +31,11 @@ VLM pass remote), use a [remote GPU](docs/how-to/set-up-remote-gpu.md), or — w
 ## Install
 
 ```bash
-uv tool install pdf2wiki                # or: pip install pdf2wiki
-uv tool install 'pdf2wiki[cloud]'       # + the --mineru-cloud converter (adds requests)
+uv tool install pdf2wiki        # or: pip install pdf2wiki
 ```
 
-Full steps: [install pdf2wiki](docs/how-to/install.md).
+Full steps: [install pdf2wiki](docs/how-to/install.md). The install includes every converter, cloud
+included — no separate extra.
 
 ## Quickstart
 

@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-23
+
+### Changed
+- `requests` is now a **core dependency**; the `cloud` optional extra introduced in 0.2.0 is removed.
+  `pip install pdf2wiki` includes the `--mineru-cloud` converter out of the box — install `pdf2wiki`,
+  not `pdf2wiki[cloud]`.
+
 ## [0.2.0] - 2026-07-23
 
 ### Added

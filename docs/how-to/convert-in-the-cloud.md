@@ -51,7 +51,7 @@ yourself, as terms may have changed since this was written.*
 
 ## Requirements
 
-- The `cloud` extra: `pip install 'pdf2wiki[cloud]'` (adds `requests`).
+- pdf2wiki itself (`pip install pdf2wiki`) — the cloud converter ships with the base package, no extra.
 - A mineru.net API token from <https://mineru.net/apiManage/token>. Provide it **without committing it**:
   - env: `export MINERU_API_TOKEN=...`, or
   - `[mineru_cloud].token_file = "~/.mineru_net_token"` (a file you keep out of version control), or

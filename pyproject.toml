@@ -1,6 +1,6 @@
 [project]
 name = "pdf2wiki"
-version = "0.2.0"
+version = "0.2.1"
 description = "Convert technical books (native-text PDFs) into clean, chapter-split, LLM-ready Markdown using a dual-pass MinerU pipeline plus fidelity-preserving post-processing."
 authors = [{ name = "Sevthered" }]
 readme = "README.md"
@@ -9,6 +9,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "pymupdf>=1.24",
+    "requests>=2.28",     # mineru.net Cloud API (convert --mineru-cloud)
 ]
 keywords = ["pdf", "markdown", "mineru", "obsidian", "knowledge-base", "book", "conversion"]
 classifiers = [
@@ -19,9 +20,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
-
-[project.optional-dependencies]
-cloud = ["requests>=2.28"]     # only for `convert --mineru-cloud` (mineru.net Cloud API)
 
 [project.urls]
 Homepage = "https://github.com/Sevthered/pdf2wiki"

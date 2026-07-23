@@ -31,7 +31,7 @@ pdf2wiki convert <pdf> --name <slug> [--out DIR]
 | `--out` | no | `convert.out_root` (`~/pdf2wiki/out`) | Output root; the book lands in `<out>/<slug>/`. |
 | `--remote` | no | `remote.host` from config | SSH host to run the *whole* conversion on (experimental — see [set up a remote GPU host](../how-to/set-up-remote-gpu.md)). |
 | `--hybrid-server-url` | no | `mineru.hybrid_server_url` from config | Offload **only** the hybrid VLM pass to a BYO OpenAI-compatible MinerU server; the pipeline pass stays local (runs on CPU). Preserves `--effort` (Mermaid/chart transcription). See [offload the hybrid pass](../how-to/offload-hybrid-to-a-server.md). |
-| `--mineru-cloud` | no | off | Convert via the fully-managed [mineru.net](https://mineru.net) Cloud — **no GPU, no local MinerU**, token only. Uploads the PDF to a third-party cloud. Needs the `cloud` extra. See [convert in the cloud](../how-to/convert-in-the-cloud.md). |
+| `--mineru-cloud` | no | off | Convert via the fully-managed [mineru.net](https://mineru.net) Cloud — **no GPU, no local MinerU**, token only. Uploads the PDF to a third-party cloud. See [convert in the cloud](../how-to/convert-in-the-cloud.md). |
 | `--cloud-model` | no | `mineru_cloud.model_version` (`pipeline`) | Cloud parse model, only with `--mineru-cloud`: `pipeline` (code-safe, flat indent) · `vlm` (indent/tables but corrupts code) · `MinerU-HTML` · `merge` (runs both `pipeline`+`vlm` in the cloud and splices locally = clean code **and** indent/tables, GPU-less; costs 2× quota). |
 
 `--remote`, `--hybrid-server-url`, and `--mineru-cloud` are **mutually exclusive** convert strategies —

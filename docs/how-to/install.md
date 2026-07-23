@@ -11,7 +11,7 @@ paths need neither:
 |---|---|---|---|
 | local (default), `--remote` | yes (host side) | yes | `build-essential` (below) |
 | `--hybrid-server-url` | no (client) | yes (pipeline runs on CPU) | a reachable MinerU server |
-| `--mineru-cloud` (incl. `--cloud-model merge`) | **no** | **no** | the `cloud` extra + a mineru.net token |
+| `--mineru-cloud` (incl. `--cloud-model merge`) | **no** | **no** | a mineru.net token |
 
 For **local / `--remote`** conversion you also need:
 
@@ -40,11 +40,7 @@ Or with pip:
 pip install pdf2wiki
 ```
 
-For the **cloud** converter (`--mineru-cloud`), install the `cloud` extra (adds `requests`):
-
-```bash
-pip install 'pdf2wiki[cloud]'      # or: uv tool install 'pdf2wiki[cloud]'
-```
+That single install includes the cloud converter (`--mineru-cloud`) — no extra needed.
 
 ## Verify
 

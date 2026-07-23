@@ -85,8 +85,7 @@ Experimental — SSH-driven remote conversion. See [set up a remote GPU host](..
 
 Fully-managed [mineru.net](https://mineru.net) Cloud conversion (`--mineru-cloud`) — no GPU, no local
 MinerU. **⚠ Uploads the PDF to a third-party cloud (OpenDataLab, CN-hosted); do not use for material you
-cannot send offsite.** Needs the `cloud` extra (`pip install 'pdf2wiki[cloud]'`). See
-[convert in the cloud](../how-to/convert-in-the-cloud.md).
+cannot send offsite.** See [convert in the cloud](../how-to/convert-in-the-cloud.md).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

@@ -1,5 +1,6 @@
 # pdf2wiki
 
+[![CI](https://github.com/Sevthered/pdf2wiki/actions/workflows/ci.yml/badge.svg)](https://github.com/Sevthered/pdf2wiki/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pdf2wiki)](https://pypi.org/project/pdf2wiki/)
 [![Python](https://img.shields.io/pypi/pyversions/pdf2wiki)](https://pypi.org/project/pdf2wiki/)
 [![License: AGPL-3.0](https://img.shields.io/pypi/l/pdf2wiki)](LICENSE)

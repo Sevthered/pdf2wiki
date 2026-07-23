@@ -65,13 +65,18 @@ class RemoteConfig:
     workdir: str = "~/pdf2wiki-remote"  # remote working directory (converter output lives under it)
     connect_timeout: int = 8
     convert_timeout: int = 7200
+    fetch_timeout: int = 600            # bound each scp artifact pull (Timeouts-Pattern: every remote call)
+    reap_grace: int = 120               # extra local wait over the remote `timeout Ns` reaper before SIGKILL
+    max_consec_fail: int = 3            # consecutive book failures before the batch circuit breaker re-probes
 
 
 @dataclass
 class MineruCloudConfig:
     # Fully-managed mineru.net Cloud converter (`--mineru-cloud`). No GPU, no local MinerU — the PDF is
     # uploaded to the OpenDataLab cloud and parsed there. See decision/improvement notes on data egress.
-    token: str = ""                     # empty -> read env MINERU_API_TOKEN, then token_file
+    token: str = ""                     # empty -> read env MINERU_API_TOKEN, then token_file. PREFER env
+    #                                     or token_file: an inline token in a project pdf2wiki.toml risks
+    #                                     being committed (pdf2wiki.toml is gitignored for this reason).
     token_file: str = ""                # optional path to a file holding the Bearer token (kept out of VCS)
     base_url: str = "https://mineru.net/api/v4"
     # pipeline (default) = text-layer, byte-clean code but FLAT indent. vlm = indent + tables/Mermaid but
@@ -82,6 +87,9 @@ class MineruCloudConfig:
     extra_formats: list = field(default_factory=list)   # e.g. ["latex"] for formula-heavy books
     poll_timeout: int = 1800            # seconds to wait for the cloud task
     max_pages: int = 200                # mineru.net Precision hard limit per file
+    retries: int = 3                    # attempts for each one-shot HTTP call (submit/upload/download)
+    retry_base_delay: float = 2.0       # exponential backoff base (s); jittered — Backoff-Retries
+    poll_max_transient: int = 5         # consecutive transient poll errors tolerated before giving up
 
 
 @dataclass

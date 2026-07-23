@@ -19,11 +19,31 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import time
 import tomllib
 
 from .executor import ExecutionError, LocalExecutor, SSHExecutor
 from .phase5 import run_chain
+
+
+def _breaker_trips(ex, consec: int, threshold: int) -> bool:
+    """Circuit-Breaker-Pattern: after `threshold` consecutive book failures, re-probe executor health.
+    A dead SSH host / GPU box makes every remaining book fast-fail (the start-only preflight can't catch
+    a mid-batch death — the '17 books failed in minutes' failure mode), so abort instead of hammering.
+    A healthy probe means the failures are content-related → continue. LocalExecutor.check() is a no-op,
+    so local batches never trip."""
+    if consec < threshold:
+        return False
+    print(f"  {consec} consecutive failures — re-checking executor health…", file=sys.stderr)
+    try:
+        ex.check()
+    except Exception as e:
+        print(f"ABORT: executor unreachable after {consec} consecutive failures (circuit breaker): {e}",
+              file=sys.stderr)
+        return True
+    print("  executor still healthy — failures look content-related, continuing.", file=sys.stderr)
+    return False
 
 
 def load_books(books_toml: str) -> list[dict]:
@@ -65,13 +85,16 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
 
     if remote:
         ex = SSHExecutor(remote, cfg.remote.books_dir, cfg.remote.workdir,
-                         cfg.remote.connect_timeout, cfg.remote.convert_timeout)
+                         cfg.remote.connect_timeout, cfg.remote.convert_timeout,
+                         cfg.remote.fetch_timeout, cfg.remote.reap_grace)
     else:
         ex = LocalExecutor()
     ex.check()  # fail fast before touching any book
 
     books = load_books(books_toml)
     attempted = 0
+    consec = 0                                       # consecutive failures, for the circuit breaker
+    threshold = cfg.remote.max_consec_fail
     for b in books:
         slug, domain = b["slug"], b.get("domain", "")
         if only is not None and slug != only:
@@ -98,26 +121,40 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             ok, log = ex.convert(b["pdf"], slug, cfg.convert.out_root, timeout)
         except Exception as e:
             print(f"  CONVERT ERROR: {slug}: {e}")
-            manifest[slug] = {"status": "convert_failed", "domain": domain, "error": str(e)}
+            manifest[slug] = {"status": "convert_failed", "domain": domain, "error": str(e),
+                              "error_class": type(e).__name__}
             save()
+            consec += 1
+            if _breaker_trips(ex, consec, threshold):
+                break
             continue
         if not ok:
             print(f"  CONVERT FAILED: {slug} — log tail:\n{log[-2000:]}")
-            manifest[slug] = {"status": "convert_failed", "domain": domain}
+            manifest[slug] = {"status": "convert_failed", "domain": domain, "error_class": "permanent"}
             save()
+            consec += 1
+            if _breaker_trips(ex, consec, threshold):
+                break
             continue
 
         work = os.path.join(stage, slug)
         try:
-            fetched = ex.fetch(slug, cfg.convert.out_root, work)
+            fetched = ex.fetch(slug, cfg.convert.out_root, work, cfg.remote.fetch_timeout)
         except Exception as e:
             print(f"  FETCH ERROR: {slug}: {e}")
-            manifest[slug] = {"status": "fetch_failed", "domain": domain, "error": str(e)}
+            manifest[slug] = {"status": "fetch_failed", "domain": domain, "error": str(e),
+                              "error_class": type(e).__name__}
             save()
+            consec += 1
+            if _breaker_trips(ex, consec, threshold):
+                break
             continue
         if not fetched:
-            manifest[slug] = {"status": "fetch_failed", "domain": domain}
+            manifest[slug] = {"status": "fetch_failed", "domain": domain, "error_class": "fetch"}
             save()
+            consec += 1
+            if _breaker_trips(ex, consec, threshold):
+                break
             continue
         if isinstance(ex, LocalExecutor):
             work = ex.artifacts_dir(slug, cfg.convert.out_root)
@@ -128,8 +165,11 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
                       source_name=os.path.basename(b["pdf"]), apply=True)
         except Exception as e:
             print(f"  PHASE5 FAILED: {slug}: {e}")
-            manifest[slug] = {"status": "phase5_failed", "domain": domain}
+            manifest[slug] = {"status": "phase5_failed", "domain": domain, "error_class": "phase5"}
             save()
+            consec += 1
+            if _breaker_trips(ex, consec, threshold):
+                break
             continue
         # chapters need the shared images/ dir next to them for relative refs to resolve
         img_src = os.path.join(work, "images")
@@ -139,6 +179,7 @@ def run_batch(books_toml: str, cfg, stage_dir: str, remote: str | None = None,
             for f in os.listdir(img_src):
                 shutil.copy(os.path.join(img_src, f), os.path.join(img_dst, f))
 
+        consec = 0                                   # a success resets the circuit breaker
         entry = {"status": "done", "domain": domain, "minutes": round((time.time() - t0) / 60, 1)}
         if vault:
             dest = os.path.join(os.path.expanduser(vault), domain, slug) if domain \

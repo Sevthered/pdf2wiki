@@ -45,7 +45,8 @@ def _cmd_convert(a, cfg):
             return 2
         host = a.remote or cfg.remote.host
         ex = SSHExecutor(host, cfg.remote.books_dir, cfg.remote.workdir,
-                         cfg.remote.connect_timeout, cfg.remote.convert_timeout)
+                         cfg.remote.connect_timeout, cfg.remote.convert_timeout,
+                         cfg.remote.fetch_timeout, cfg.remote.reap_grace)
         ex.check()
         ok, log = ex.convert(a.pdf, a.name, a.out or cfg.convert.out_root)
         print(log)               # remote log was captured on the remote host — show it

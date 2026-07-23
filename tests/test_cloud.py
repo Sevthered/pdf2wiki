@@ -81,6 +81,7 @@ def test_convert_cloud_happy_path(tmp_path, monkeypatch):
         calls["put"] += 1
 
     class FakeZipResp:
+        status_code = 200
         content = _fake_zip()
         def raise_for_status(self): pass
 
@@ -295,3 +296,85 @@ def test_cli_cloud_routes_to_cloud(monkeypatch):
     rc = cli._cmd_convert(_convert_args(mineru_cloud=True, cloud_model="pipeline"), load_config())
     assert rc == 0
     assert seen["called"] == ("b.pdf", "slug", "pipeline")   # flag overrode model_version
+
+
+# ---------- resilience + security hardening (tech-books review port) ----------
+
+def test_transient_status_classification():
+    assert cloud._transient_status(429) and cloud._transient_status(500) and cloud._transient_status(503)
+    assert not cloud._transient_status(400) and not cloud._transient_status(401) and not cloud._transient_status(404)
+
+
+def test_retry_retries_transient_then_succeeds(monkeypatch):
+    monkeypatch.setattr(cloud.time, "sleep", lambda *_: None)
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise cloud.CloudError("blip", transient=True)
+        return "ok"
+    assert cloud._retry("x", fn, tries=3, base_delay=0.01, say=lambda *_: None) == "ok"
+    assert calls["n"] == 2                       # retried once, then succeeded
+
+
+def test_retry_reraises_permanent_immediately(monkeypatch):
+    monkeypatch.setattr(cloud.time, "sleep", lambda *_: None)
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        raise cloud.CloudError("nope", transient=False)
+    with pytest.raises(cloud.CloudError, match="nope"):
+        cloud._retry("x", fn, tries=3, base_delay=0.01, say=lambda *_: None)
+    assert calls["n"] == 1                       # permanent error is NOT retried
+
+
+def test_retry_gives_up_after_tries(monkeypatch):
+    monkeypatch.setattr(cloud.time, "sleep", lambda *_: None)
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        raise cloud.CloudError("blip", transient=True)
+    with pytest.raises(cloud.CloudError):
+        cloud._retry("x", fn, tries=3, base_delay=0.01, say=lambda *_: None)
+    assert calls["n"] == 3                       # bounded: exactly `tries` attempts
+
+
+def test_require_https_rejects_http():
+    assert cloud._require_https("https://mineru.net/x", "up").startswith("https")
+    with pytest.raises(cloud.CloudError, match="non-HTTPS"):
+        cloud._require_https("http://mineru.net/x", "up")
+
+
+def test_safe_extract_blocks_zip_slip(tmp_path):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("../evil.txt", "pwned")       # member escapes dest_dir
+    with pytest.raises(cloud.CloudError, match="unsafe zip member"):
+        cloud._safe_extract(buf.getvalue(), str(tmp_path / "d"))
+    assert not (tmp_path / "evil.txt").exists()   # nothing written outside dest
+
+
+def test_safe_extract_allows_benign_zip(tmp_path):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("ok/full.md", "hi")
+    cloud._safe_extract(buf.getvalue(), str(tmp_path / "d2"))
+    assert (tmp_path / "d2" / "ok" / "full.md").read_text() == "hi"
+
+
+def test_run_cloud_pass_resumes_from_done(tmp_path, monkeypatch):
+    cfg = load_config()
+    cfg.mineru_cloud.token = "t"
+    dest = tmp_path / "_cloud_pipeline"
+    dest.mkdir()
+    (dest / ".done").write_text("ok\n")
+    (dest / "full.md").write_text("cached")
+    def boom(*a, **k):
+        raise AssertionError("must not touch the network on resume")
+    monkeypatch.setattr(cloud, "_api", boom)
+    monkeypatch.setattr(cloud, "_put_file", boom)
+    monkeypatch.setattr(cloud, "_requests", boom)
+    said = []
+    out = cloud._run_cloud_pass(str(tmp_path / "book.pdf"), "pipeline", "t", cfg, str(dest), said.append)
+    assert out == str(dest)
+    assert any("reusing cached" in s for s in said)

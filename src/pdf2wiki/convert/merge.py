@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import textwrap
@@ -181,19 +182,29 @@ def run_mineru(mineru_bin, pdf, a, b, backend, extra, outdir, clean_cwd, env,
         cmd = [mineru_bin, "-p", pdf, "-o", outdir, "-b", backend, "-s", str(a), "-e", str(b)] + extra
         print("  run:", " ".join(cmd[3:]))
         with open(f"{outdir}.log", "w", encoding="utf-8") as log:
+            # start_new_session=True puts MinerU in its own process group so a timeout can SIGKILL the
+            # WHOLE group. MinerU spawns vllm/torch workers; a bare child-kill would orphan them and an
+            # orphaned worker pins GPU VRAM, so the resumed pass OOMs (Timeouts-Pattern [!warning]: a
+            # timeout must kill the underlying work, not just the wrapper).
+            proc = subprocess.Popen(cmd, env=env, cwd=clean_cwd,
+                                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
-                subprocess.run(cmd, env=env, check=True, cwd=clean_cwd,
-                               stdout=log, stderr=subprocess.STDOUT, timeout=timeout)
-            except subprocess.CalledProcessError as e:
-                raise PassFailed(
-                    f"FAILED pass [{tag}] pages {a}-{b} (exit {e.returncode}). log: {outdir}.log — "
-                    f"completed passes are cached; fix root cause and re-run to resume from here."
-                ) from e
+                rc = proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired as e:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+                proc.wait()
                 raise PassFailed(
-                    f"FAILED pass [{tag}] pages {a}-{b}: timed out after {e.timeout}s. log: {outdir}.log "
-                    f"— completed passes are cached; re-run to resume from here."
+                    f"FAILED pass [{tag}] pages {a}-{b}: timed out after {timeout}s (process group killed). "
+                    f"log: {outdir}.log — completed passes are cached; re-run to resume from here."
                 ) from e
+            if rc != 0:
+                raise PassFailed(
+                    f"FAILED pass [{tag}] pages {a}-{b} (exit {rc}). log: {outdir}.log — "
+                    f"completed passes are cached; fix root cause and re-run to resume from here."
+                )
         cl = glob.glob(f"{outdir}/*/*/*content_list.json")
         if not cl:
             raise PassFailed(

@@ -23,13 +23,76 @@ MINERU_API_TOKEN, then a token_file; it is never written to disk or logged.
 import glob
 import json
 import os
+import random
 import time
 import zipfile
 from io import BytesIO
+from urllib.parse import urlparse
 
 
 class CloudError(RuntimeError):
-    """A mineru.net Cloud request failed. Raised loud (fail-fast) — never silently degraded."""
+    """A mineru.net Cloud request failed. Raised loud (fail-fast) — never silently degraded.
+
+    `transient` marks a failure worth retrying (network drop, HTTP 429/5xx) vs a permanent one
+    (4xx, API error code, page-limit) that must fail fast — Backoff-Retries: classify, don't blindly
+    retry every error.
+    """
+
+    def __init__(self, msg, *, transient=False):
+        super().__init__(msg)
+        self.transient = transient
+
+
+def _redact_url(u: str) -> str:
+    """Drop the query string from a URL before logging it — a mineru.net presigned upload/download
+    URL carries its signature there and is itself a capability credential (Log-Redaction)."""
+    try:
+        p = urlparse(u)
+        return f"{p.scheme}://{p.netloc}{p.path}"
+    except Exception:
+        return "<url>"
+
+
+def _require_https(u: str, what: str) -> str:
+    """Refuse a non-HTTPS URL before we send the Bearer token or the PDF over it. A config override
+    or a MITM'd/poisoned API response could downgrade to http:// and leak the credential/data
+    (JSON-Web-Token: token is only Base64, must travel over TLS; SSRF-in-APIs: don't blindly follow
+    a server-supplied URL)."""
+    scheme = urlparse(u).scheme
+    if scheme != "https":
+        raise CloudError(f"refusing to use non-HTTPS {what} URL ({scheme or 'no'}-scheme): the "
+                         f"Bearer token / PDF must not travel unencrypted")
+    return u
+
+
+def _safe_extract(zbytes: bytes, dest_dir: str) -> None:
+    """Extract a mineru.net result ZIP, rejecting any member whose path escapes dest_dir (zip-slip).
+    The archive is downloaded from a server-supplied URL — untrusted input (Unsafe-Consumption-of-APIs);
+    `extractall` on a `../`-prefixed or absolute member would otherwise overwrite arbitrary files."""
+    os.makedirs(dest_dir, exist_ok=True)
+    dest_real = os.path.realpath(dest_dir)
+    with zipfile.ZipFile(BytesIO(zbytes)) as z:
+        for name in z.namelist():
+            target = os.path.realpath(os.path.join(dest_dir, name))
+            if target != dest_real and not target.startswith(dest_real + os.sep):
+                raise CloudError(f"refusing to extract unsafe zip member '{name}' (escapes {dest_dir})")
+        z.extractall(dest_dir)
+
+
+def _retry(what: str, fn, *, tries: int, base_delay: float, say):
+    """Call fn(); on a *transient* CloudError retry up to `tries` times with exponential backoff +
+    full jitter. Permanent CloudErrors re-raise immediately. Backoff-Retries + MicroProfile-Fault-
+    Tolerance (jitter so parallel retries don't synchronize; retry can worsen an outage → bounded)."""
+    for attempt in range(1, tries + 1):
+        try:
+            return fn()
+        except CloudError as e:
+            if not (getattr(e, "transient", False) and attempt < tries):
+                raise
+            delay = min(30.0, base_delay * (2 ** (attempt - 1)))
+            delay = random.uniform(0, delay)          # full jitter
+            say(f"  transient {what} error (attempt {attempt}/{tries}), retrying in {delay:.1f}s: {e}")
+            time.sleep(delay)
 
 
 def _requests():
@@ -61,18 +124,25 @@ def _resolve_token(cfg) -> str:
     )
 
 
+def _transient_status(code: int) -> bool:
+    """HTTP 429 (rate limit) and 5xx are worth retrying; other 4xx are permanent (Backoff-Retries)."""
+    return code == 429 or 500 <= code < 600
+
+
 def _api(url, token, method="GET", body=None, timeout=60):
-    """One JSON API call to mineru.net. Returns the `data` payload; raises CloudError on HTTP/API error."""
+    """One JSON API call to mineru.net. Returns the `data` payload; raises CloudError on HTTP/API error.
+    Network drops and 429/5xx are flagged transient (retryable); other errors are permanent."""
     requests = _requests()
     headers = {"Authorization": f"Bearer {token}"}
     try:
         r = requests.request(method, url, headers=headers, json=body, timeout=timeout)
     except requests.RequestException as e:
-        raise CloudError(f"{method} {url} unreachable: {e}") from e
+        raise CloudError(f"{method} {url} unreachable: {e}", transient=True) from e
     if r.status_code != 200:
-        raise CloudError(f"{method} {url} -> HTTP {r.status_code}: {r.text[:400]}")
+        raise CloudError(f"{method} {url} -> HTTP {r.status_code}: {r.text[:200].replace(chr(10), ' ')}",
+                         transient=_transient_status(r.status_code))
     payload = r.json()
-    if payload.get("code") != 0:
+    if payload.get("code") != 0:                       # API-level error (bad request, quota) = permanent
         raise CloudError(f"{method} {url} -> API code {payload.get('code')}: {payload.get('msg')}")
     return payload["data"]
 
@@ -81,13 +151,16 @@ def _put_file(upload_url, pdf_path, timeout=300):
     """Upload the PDF to a mineru.net pre-signed URL. PUT with NO Content-Type (the URL is signed
     without one; adding one breaks the OSS signature)."""
     requests = _requests()
+    _require_https(upload_url, "upload")
     with open(pdf_path, "rb") as f:
         try:
             r = requests.put(upload_url, data=f, timeout=timeout)
         except requests.RequestException as e:
-            raise CloudError(f"upload PUT unreachable: {e}") from e
+            raise CloudError(f"upload PUT to {_redact_url(upload_url)} unreachable: {e}",
+                             transient=True) from e
     if r.status_code != 200:
-        raise CloudError(f"upload PUT -> HTTP {r.status_code}: {r.text[:200]}")
+        raise CloudError(f"upload PUT -> HTTP {r.status_code}: {r.text[:200].replace(chr(10), ' ')}",
+                         transient=_transient_status(r.status_code))
 
 
 def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=None) -> str:
@@ -96,10 +169,22 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     Raises CloudError on any failure (fail-fast, loud)."""
     c = cfg.mineru_cloud
     name = os.path.basename(pdf_path)
+
+    # Step 0: resume — a completed pass writes a `.done` sentinel; skip the whole upload/poll/download
+    # if it and the extracted artifacts are already present (Idempotent-Message-Handling: check before
+    # doing work). Cheap and avoids re-uploading + re-paying for a pass that already succeeded.
+    done_marker = os.path.join(dest_dir, ".done")
+    existing = (glob.glob(f"{dest_dir}/full.md") + glob.glob(f"{dest_dir}/*/full.md")
+                + glob.glob(f"{dest_dir}/*_content_list.json") + glob.glob(f"{dest_dir}/*/*_content_list.json"))
+    if os.path.exists(done_marker) and existing:
+        say(f"[{model_version}] reusing cached cloud pass in {dest_dir} (.done present) — no re-upload")
+        return dest_dir
+
+    _require_https(c.base_url, "API base")
     say(f"⚠ mineru.net Cloud: uploading '{name}' to a THIRD-PARTY cloud "
         f"(model_version={model_version}, lang={c.language}). Data leaves this machine.")
 
-    # Step 1: request a pre-signed upload URL for this file.
+    # Step 1: request a pre-signed upload URL for this file (retry transient network/5xx).
     body = {
         "files": [{"name": name, "is_ocr": False}],
         "model_version": model_version,
@@ -109,24 +194,43 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
     }
     if c.extra_formats:
         body["extra_formats"] = list(c.extra_formats)
-    sub = _api(f"{c.base_url}/file-urls/batch", token, method="POST", body=body)
-    batch_id = sub["batch_id"]
-    upload_url = sub["file_urls"][0]
+    sub = _retry("submit", lambda: _api(f"{c.base_url}/file-urls/batch", token, method="POST", body=body),
+                 tries=c.retries, base_delay=c.retry_base_delay, say=say)
+    try:                                               # treat the API response as untrusted input
+        batch_id = sub["batch_id"]
+        upload_url = sub["file_urls"][0]
+    except (KeyError, IndexError, TypeError) as e:
+        raise CloudError(f"unexpected submit response shape ({model_version}): {e}") from e
 
-    # Step 2: upload the bytes.
-    _put_file(upload_url, pdf_path)
+    # Step 2: upload the bytes (retry transient; _put_file enforces https on the presigned URL).
+    _retry("upload", lambda: _put_file(upload_url, pdf_path),
+           tries=c.retries, base_delay=c.retry_base_delay, say=say)
     say(f"[{model_version}] uploaded; batch={batch_id}; polling…")
 
-    # Step 3: poll until this file is done (or failed). Fail-fast + loud on error.
+    # Step 3: poll until this file is done (or failed). Tolerate a bounded run of transient poll
+    # errors (a network blip mid-poll must NOT fail an otherwise-healthy parse) — Backoff-Retries.
     deadline = time.monotonic() + (timeout or c.poll_timeout)
     zip_url = None
+    transient_fails = 0
     while time.monotonic() < deadline:
-        data = _api(f"{c.base_url}/extract-results/batch/{batch_id}", token)
+        try:
+            data = _api(f"{c.base_url}/extract-results/batch/{batch_id}", token)
+        except CloudError as e:
+            if e.transient and transient_fails < c.poll_max_transient:
+                transient_fails += 1
+                say(f"  [{model_version}] transient poll error ({transient_fails}/{c.poll_max_transient}), "
+                    f"backing off: {e}")
+                time.sleep(min(30, 6 * transient_fails))
+                continue
+            raise
+        transient_fails = 0
         item = next((x for x in data.get("extract_result", []) if x.get("file_name") == name), None)
         if item:
             state = item.get("state")
             if state == "done":
-                zip_url = item["full_zip_url"]
+                zip_url = item.get("full_zip_url")
+                if not zip_url:
+                    raise CloudError(f"cloud reported done but no full_zip_url ({model_version})")
                 break
             if state == "failed":
                 raise CloudError(f"cloud parse failed for '{name}' ({model_version}): {item.get('err_msg')}")
@@ -135,17 +239,25 @@ def _run_cloud_pass(pdf_path, model_version, token, cfg, dest_dir, say, timeout=
         time.sleep(6)
     if not zip_url:
         raise CloudError(f"timed out after {timeout or c.poll_timeout}s waiting for batch {batch_id} ({model_version})")
+    _require_https(zip_url, "result-download")
 
-    # Step 4: download the result ZIP and extract it whole.
-    requests = _requests()
-    try:
-        resp = requests.get(zip_url, timeout=300)
-        resp.raise_for_status()
-        zbytes = resp.content
-    except requests.RequestException as e:
-        raise CloudError(f"result download failed ({model_version}): {e}") from e
-    os.makedirs(dest_dir, exist_ok=True)
-    zipfile.ZipFile(BytesIO(zbytes)).extractall(dest_dir)
+    # Step 4: download the result ZIP (retry transient) and extract it with zip-slip guarding.
+    def _download():
+        requests = _requests()
+        try:
+            resp = requests.get(zip_url, timeout=300)
+        except requests.RequestException as e:
+            raise CloudError(f"result download from {_redact_url(zip_url)} failed ({model_version}): {e}",
+                             transient=True) from e
+        if resp.status_code != 200:
+            raise CloudError(f"result download -> HTTP {resp.status_code} ({model_version})",
+                             transient=_transient_status(resp.status_code))
+        return resp.content
+
+    zbytes = _retry("download", _download, tries=c.retries, base_delay=c.retry_base_delay, say=say)
+    _safe_extract(zbytes, dest_dir)
+    with open(done_marker, "w", encoding="utf-8") as f:
+        f.write("ok\n")        # mark complete only after a successful extract — guards partial reuse
     return dest_dir
 
 

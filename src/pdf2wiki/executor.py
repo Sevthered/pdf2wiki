@@ -27,8 +27,9 @@ class LocalExecutor:
         from .convert import convert_book  # lazy: keep GPU-path imports out of CLI startup
         return convert_book(pdf_path, slug, out_root, timeout=timeout, cfg=cfg)
 
-    def fetch(self, slug: str, out_root: str, dest_dir: str) -> bool:
-        """Local mode: artifacts are already on disk — just report where."""
+    def fetch(self, slug: str, out_root: str, dest_dir: str, timeout: int | None = None) -> bool:
+        """Local mode: artifacts are already on disk — just report where. `timeout` is accepted for
+        interface parity with SSHExecutor and ignored (no transfer happens)."""
         src = os.path.join(os.path.expanduser(out_root), slug)
         return os.path.exists(os.path.join(src, f"{slug}.md"))
 
@@ -45,12 +46,20 @@ def _remote_path(p: str) -> str:
 
 class SSHExecutor:
     def __init__(self, host: str, books_dir: str, workdir: str,
-                 connect_timeout: int = 8, convert_timeout: int = 7200):
+                 connect_timeout: int = 8, convert_timeout: int = 7200,
+                 fetch_timeout: int = 600, reap_grace: int = 120):
         self.host = host
         self.books_dir = _remote_path(books_dir) if books_dir else books_dir
         self.workdir = _remote_path(workdir)
         self.connect_timeout = connect_timeout
         self.convert_timeout = convert_timeout
+        self.fetch_timeout = fetch_timeout
+        self.reap_grace = reap_grace
+
+    def _ssh_opts(self) -> list[str]:
+        # ConnectTimeout bounds the TCP connect; BatchMode=yes fails instead of hanging on an
+        # interactive auth/host-key prompt mid-batch (Timeouts-Pattern: bound every remote wait).
+        return ["-o", f"ConnectTimeout={self.connect_timeout}", "-o", "BatchMode=yes"]
 
     def _run(self, cmd: list[str], timeout: int | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -60,7 +69,8 @@ class SSHExecutor:
         every book fail near-instantly (a connect-timeout, not a real conversion failure) and a
         batch loop would burn through the entire list in minutes, mislabeling every book as
         failed."""
-        r = self._run(["ssh", "-o", f"ConnectTimeout={self.connect_timeout}", self.host, "echo ok"])
+        r = self._run(["ssh", *self._ssh_opts(), self.host, "echo ok"],
+                      timeout=self.connect_timeout + 5)
         if "ok" not in r.stdout:
             raise ExecutionError(
                 f"cannot reach {self.host} over SSH: {r.stderr.strip() or 'connect timeout'}"
@@ -69,16 +79,22 @@ class SSHExecutor:
     def convert(self, pdf_filename: str, slug: str, out_root: str, timeout: int | None = None) -> tuple[bool, str]:
         """Run pdf2wiki's converter on the remote host. pdf_filename is relative to books_dir.
         Returns (ok, remote_log_text)."""
+        t = int(timeout or self.convert_timeout)
         remote_pdf = f"{self.books_dir}/{pdf_filename}"
         out_root = _remote_path(out_root)
         log = f"{self.workdir}/logs/{slug}.log"
+        # `timeout {t}s` on the REMOTE side self-reaps the converter (and its vllm/torch children) if
+        # the local ssh gives up — Timeouts-Pattern [!warning]: abandoning the local wait does NOT stop
+        # the remote work, leaving a zombie job that pins VRAM. The local subprocess waits t+reap_grace
+        # so the remote reaper fires first (a remote timeout surfaces as EXIT=124, i.e. not ok).
         inner = (
             f"mkdir -p {shlex.quote(self.workdir)}/logs && "
-            f"pdf2wiki convert {shlex.quote(remote_pdf)} --name {shlex.quote(slug)} "
+            f"timeout {t}s pdf2wiki convert {shlex.quote(remote_pdf)} --name {shlex.quote(slug)} "
             f"--out {shlex.quote(out_root)} > {shlex.quote(log)} 2>&1; echo EXIT=$?"
         )
-        r = self._run(["ssh", self.host, inner], timeout=timeout or self.convert_timeout)
-        logfetch = self._run(["ssh", self.host, f"cat {shlex.quote(log)}"])
+        r = self._run(["ssh", *self._ssh_opts(), self.host, inner], timeout=t + self.reap_grace)
+        logfetch = self._run(["ssh", *self._ssh_opts(), self.host, f"cat {shlex.quote(log)}"],
+                             timeout=60)
         logtext = logfetch.stdout if logfetch.returncode == 0 else \
             f"(could not fetch remote log {log}: {logfetch.stderr.strip()})"
         # the remote CLI's exit code is authoritative (pdf2wiki convert returns non-zero on any
@@ -86,17 +102,22 @@ class SSHExecutor:
         ok = "EXIT=0" in r.stdout
         return ok, logtext
 
-    def fetch(self, slug: str, out_root: str, dest_dir: str) -> bool:
-        """Pull <out_root>/<slug>/{<slug>.md, images/} from the remote host. scp exit codes are
-        checked — a partial pull must fail loudly, not continue with missing artifacts."""
+    def fetch(self, slug: str, out_root: str, dest_dir: str, timeout: int | None = None) -> bool:
+        """Pull <out_root>/<slug>/{<slug>.md, images/} from the remote host. Every scp is timeout-
+        bounded (Timeouts-Pattern: a stalled transfer must not hang the batch) and its exit code is
+        checked — a partial pull fails loudly. Remote paths are shlex-quoted for the remote shell."""
+        t = int(timeout or self.fetch_timeout)
         os.makedirs(dest_dir, exist_ok=True)
         out_root = _remote_path(out_root)
-        md = f"{out_root}/{slug}/{slug}.md"
-        r1 = self._run(["scp", "-q", f"{self.host}:{md}", os.path.join(dest_dir, f"{slug}.md")])
+        opts = self._ssh_opts()
+        md = shlex.quote(f"{out_root}/{slug}/{slug}.md")
+        r1 = self._run(["scp", "-q", *opts, f"{self.host}:{md}",
+                        os.path.join(dest_dir, f"{slug}.md")], timeout=t)
         if r1.returncode != 0:
             return False
-        r2 = self._run(["scp", "-q", "-r", f"{self.host}:{out_root}/{slug}/images",
-                        os.path.join(dest_dir, "images")])
+        imgs = shlex.quote(f"{out_root}/{slug}/images")
+        r2 = self._run(["scp", "-q", "-r", *opts, f"{self.host}:{imgs}",
+                        os.path.join(dest_dir, "images")], timeout=t)
         # a book with zero figures legitimately has no images dir — only the md is mandatory
         if r2.returncode != 0 and "No such file" not in (r2.stderr or ""):
             return False

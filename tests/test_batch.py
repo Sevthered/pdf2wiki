@@ -52,7 +52,7 @@ def test_fetch_exception_marks_failed_and_continues(tmp_path, monkeypatch):
         def convert(self, pdf, slug, out_root, timeout):
             return True, "ok"
 
-        def fetch(self, slug, out_root, work):
+        def fetch(self, slug, out_root, work, timeout=None):
             raise FileNotFoundError("scp target missing")
 
     monkeypatch.setattr(batch, "LocalExecutor", FakeEx)
@@ -76,3 +76,52 @@ def test_cmd_batch_returns_zero_when_all_done(monkeypatch):
                         lambda *a, **k: {"book-a": {"status": "done"},
                                          "book-b": {"status": "done"}})
     assert cli.main(["batch", "books.toml"]) == 0
+
+
+def _books_toml_n(tmp_path, n):
+    body = "\n".join(f'[[book]]\npdf = "b{i}.pdf"\nslug = "book-{i}"\ndomain = "d"\n' for i in range(n))
+    p = tmp_path / "many.toml"
+    p.write_text(body)
+    return str(p)
+
+
+def test_circuit_breaker_aborts_when_executor_dies_midbatch(tmp_path, monkeypatch):
+    # a mid-batch dependency death must trip the breaker after N consecutive failures and abort,
+    # not fast-fail every remaining book (the '17 books in minutes' failure mode).
+    class FakeEx:
+        def __init__(self):
+            self.checks = 0
+        def check(self):
+            self.checks += 1
+            if self.checks > 1:                       # start preflight ok; mid-batch re-probe finds it dead
+                raise Exception("host down")
+        def convert(self, pdf, slug, out_root, timeout):
+            raise subprocess.TimeoutExpired(cmd="x", timeout=1)
+        def fetch(self, *a, **k):
+            raise AssertionError("never reached")
+
+    monkeypatch.setattr(batch, "LocalExecutor", FakeEx)
+    cfg = load_config()                                # max_consec_fail default = 3
+    manifest = batch.run_batch(_books_toml_n(tmp_path, 6), cfg, str(tmp_path / "stage"), remote=None)
+    failed = [s for s, e in manifest.items() if e["status"] == "convert_failed"]
+    assert len(failed) == 3                            # aborted after 3 consecutive, not all 6
+    assert "book-3" not in manifest and "book-5" not in manifest   # later books never attempted
+    assert manifest["book-0"]["error_class"] == "TimeoutExpired"
+
+
+def test_no_breaker_when_executor_stays_healthy(tmp_path, monkeypatch):
+    # content failures (executor healthy) must NOT trip the breaker — every book is still attempted.
+    class FakeEx:
+        def check(self):
+            pass                                       # always healthy
+        def convert(self, pdf, slug, out_root, timeout):
+            return False, "FAILED coverage"            # ok=False content failure
+        def fetch(self, *a, **k):
+            raise AssertionError("never reached")
+
+    monkeypatch.setattr(batch, "LocalExecutor", FakeEx)
+    cfg = load_config()
+    manifest = batch.run_batch(_books_toml_n(tmp_path, 5), cfg, str(tmp_path / "stage"), remote=None)
+    failed = [s for s, e in manifest.items() if e["status"] == "convert_failed"]
+    assert len(failed) == 5                            # all attempted, no premature abort
+    assert manifest["book-0"]["error_class"] == "permanent"

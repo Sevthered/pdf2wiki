@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-07-23
+
+Resilience + security hardening from a book-grounded review (Tech-Books vault: Backoff-Retries,
+Circuit-Breaker-Pattern, Timeouts-Pattern, Unsafe-Consumption-of-APIs, SSRF-in-APIs). No API changes;
+all existing behavior preserved. +10 tests (93 → 103).
+
+### Security
+- **Zip-slip guard**: the mineru.net result ZIP (downloaded from a server-supplied URL) is now
+  validated member-by-member before extraction — a `../`/absolute member is rejected instead of
+  overwriting arbitrary files.
+- **HTTPS enforced** on the API base URL, the presigned upload URL, and the result-download URL before
+  the Bearer token or the PDF is sent — a config/response downgrade to `http://` is refused.
+- **Untrusted-response handling**: submit-response fields are validated (clear error instead of a raw
+  `KeyError`); upstream error bodies are truncated + single-lined; presigned URLs are redacted (query
+  stripped) in error messages.
+- **Token hygiene**: `pdf2wiki.toml` is now gitignored and the config documents preferring
+  `MINERU_API_TOKEN` / `token_file` over an inline token.
+
+### Added
+- **Retry with backoff + jitter** on the cloud HTTP calls (submit / upload / result download) and
+  bounded tolerance for transient errors mid-poll — a momentary network blip or HTTP 429/5xx no longer
+  fails an otherwise-healthy conversion. Transient (429/5xx/network) vs permanent (4xx/API-error) is
+  classified; permanent errors still fail fast. Tunable: `[mineru_cloud].retries`, `retry_base_delay`,
+  `poll_max_transient`.
+- **Batch circuit breaker**: after `[remote].max_consec_fail` (default 3) consecutive book failures the
+  batch re-probes executor health and aborts if the dependency is dead, instead of fast-failing every
+  remaining book. A healthy probe continues (content failures don't trip it).
+- **Per-pass cloud resume**: each cloud pass writes a `.done` sentinel; a re-run reuses a completed
+  pass instead of re-uploading and re-paying (matches the local converter's `.done` caching).
+- Manifest now records an `error_class` per failed book (transient / permanent / timeout / fetch / phase5).
+
+### Changed
+- **Remote convert timeout now kills the remote job**: the SSH convert wraps the converter in a
+  server-side `timeout Ns` reaper, so a client-side timeout no longer leaves a zombie MinerU/vllm job
+  pinning GPU VRAM. SSH/scp calls gain `ConnectTimeout` + `BatchMode=yes`; `fetch()` scp transfers are
+  now timeout-bounded and remote paths are shlex-quoted.
+- **Local MinerU timeout kills the whole process group** (`start_new_session=True` + `killpg`), so
+  orphaned vllm/torch workers no longer survive a timed-out pass.
+
 ## [0.2.1] - 2026-07-23
 
 ### Changed

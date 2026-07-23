@@ -163,11 +163,22 @@ def test_transplant_indent_preserves_code_escapes():
 
 def test_run_mineru_timeout_becomes_passfailed(tmp_path, monkeypatch):
     # a slow MinerU pass must surface as a clean PassFailed (documented hard-stop), not a raw
-    # TimeoutExpired escaping convert_book's handler and crashing the book.
-    def fake_run(*a, **k):
-        raise subprocess.TimeoutExpired(cmd="mineru", timeout=7200)
+    # TimeoutExpired escaping convert_book's handler and crashing the book. The whole process group
+    # must be SIGKILLed so orphaned vllm/torch workers don't survive and pin VRAM.
+    killed = {}
 
-    monkeypatch.setattr(merge_mod.subprocess, "run", fake_run)
+    class FakeProc:
+        pid = 4321
+        def __init__(self): self._calls = 0
+        def wait(self, timeout=None):
+            self._calls += 1
+            if self._calls == 1:                      # first wait (with timeout) trips
+                raise subprocess.TimeoutExpired(cmd="mineru", timeout=7200)
+            return -9                                 # post-kill reap
+
+    monkeypatch.setattr(merge_mod.subprocess, "Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr(merge_mod.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(merge_mod.os, "killpg", lambda pgid, sig: killed.setdefault("pgid", pgid))
     outdir = str(tmp_path / "pass")
     try:
         run_mineru("mineru", "book.pdf", 0, 1, "pipeline", ["-m", "txt"],
@@ -175,6 +186,7 @@ def test_run_mineru_timeout_becomes_passfailed(tmp_path, monkeypatch):
         assert False, "expected PassFailed"
     except PassFailed as e:
         assert "timed out" in str(e)
+    assert killed["pgid"] == 4321                     # the whole process group was SIGKILLed
 
 
 # ---------- geometry / runs ----------

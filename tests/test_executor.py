@@ -37,10 +37,11 @@ def test_ssh_executor_convert_command_has_no_tilde(monkeypatch):
     monkeypatch.setattr(ex, "_run", fake_run)
     ok, log = ex.convert("book.pdf", "slug", "~/out")
     assert ok is True
-    inner = captured["cmds"][0][2]
+    inner = captured["cmds"][0][-1]  # remote command is the final ssh arg (ssh opts precede it)
     assert "~" not in inner          # every remote path home-relative, none tilde-quoted
     assert "books/book.pdf" in inner
     assert "--out out" in inner
+    assert "timeout 7200s pdf2wiki convert" in inner   # remote self-reaper wraps the converter
 
 
 def test_config_defaults_and_project_override(tmp_path, monkeypatch):

@@ -13,8 +13,9 @@ raw-dict-backed adapter rather than a field dataclass on purpose:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass
@@ -28,7 +29,10 @@ class Block:
     def to_dict(self) -> dict[str, Any]:
         return self.raw
 
-    # ---- MinerU-owned keys pdf2wiki reads ----
+    def copy(self) -> Block:
+        return Block(raw=dict(self.raw))
+
+    # ---- MinerU-owned keys pdf2wiki reads/writes ----
     @property
     def type(self) -> str:
         return str(self.raw.get("type", ""))
@@ -37,9 +41,16 @@ class Block:
     def sub_type(self) -> str:
         return str(self.raw.get("sub_type", "") or "")
 
+    @sub_type.setter
+    def sub_type(self, v: str) -> None:
+        self.raw["sub_type"] = v
+
     @property
-    def bbox(self) -> list[float]:
-        return self.raw.get("bbox", [0, 0, 0, 0])
+    def bbox(self) -> list[float] | None:
+        v = self.raw.get("bbox")
+        if isinstance(v, str):
+            v = json.loads(v)
+        return [float(x) for x in v] if v else None
 
     @property
     def page_idx(self) -> int:
@@ -49,6 +60,10 @@ class Block:
     def text(self) -> str | None:
         return self.raw.get("text")
 
+    @text.setter
+    def text(self, v: str) -> None:
+        self.raw["text"] = v
+
     @property
     def text_level(self) -> int | None:
         return self.raw.get("text_level")
@@ -57,13 +72,25 @@ class Block:
     def code_body(self) -> str:
         return str(self.raw.get("code_body", "") or "")
 
+    @code_body.setter
+    def code_body(self, v: str) -> None:
+        self.raw["code_body"] = v
+
     @property
     def table_body(self) -> str | None:
         return self.raw.get("table_body")
 
+    @table_body.setter
+    def table_body(self, v: str | None) -> None:
+        self.raw["table_body"] = v
+
     @property
     def content(self) -> str:
         return str(self.raw.get("content", "") or "")
+
+    @content.setter
+    def content(self, v: str) -> None:
+        self.raw["content"] = v
 
     @property
     def img_path(self) -> str | None:
@@ -103,6 +130,14 @@ class Block:
         self.raw["_imgdir"] = v
 
     @property
+    def src(self) -> str | None:
+        return self.raw.get("_src")
+
+    @src.setter
+    def src(self, v: str) -> None:
+        self.raw["_src"] = v
+
+    @property
     def code_flag(self) -> bool:
         return bool(self.raw.get("_code_flag", False))
 
@@ -121,3 +156,15 @@ class Block:
     @property
     def reindented(self) -> bool:
         return bool(self.raw.get("_reindented", False))
+
+    @reindented.setter
+    def reindented(self, v: bool) -> None:
+        self.raw["_reindented"] = v
+
+    @property
+    def code_path(self) -> Literal["verified", "flagged", "pipeline_only"] | None:
+        return self.raw.get("_code_path")
+
+    @code_path.setter
+    def code_path(self, v: Literal["verified", "flagged", "pipeline_only"]) -> None:
+        self.raw["_code_path"] = v

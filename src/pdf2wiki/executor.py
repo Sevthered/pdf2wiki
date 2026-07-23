@@ -59,7 +59,13 @@ class SSHExecutor:
     def _ssh_opts(self) -> list[str]:
         # ConnectTimeout bounds the TCP connect; BatchMode=yes fails instead of hanging on an
         # interactive auth/host-key prompt mid-batch (Timeouts-Pattern: bound every remote wait).
-        return ["-o", f"ConnectTimeout={self.connect_timeout}", "-o", "BatchMode=yes"]
+        # ServerAlive* keeps the control channel alive across a long MinerU pass: all converter
+        # output goes to a remote log file, so the ssh channel is silent for minutes and a NAT/idle
+        # timeout (WSL2 mirrored networking is prone to this) would otherwise drop it — the batch
+        # would then mislabel a still-running convert as failed. 30s ping × 240 = ~2h tolerated
+        # silence, comfortably over one pass and inside the `timeout Ns` reaper.
+        return ["-o", f"ConnectTimeout={self.connect_timeout}", "-o", "BatchMode=yes",
+                "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=240"]
 
     def _run(self, cmd: list[str], timeout: int | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)

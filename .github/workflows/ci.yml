@@ -28,4 +28,10 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run reuse lint  # REUSE 3.3: every file has SPDX copyright + license info
       - run: uv run mypy  # strict; config in pyproject [tool.mypy], src is strict-clean
-      - run: uv run pytest -q
+      - run: uv run pytest -q --cov=pdf2wiki --cov-report=xml --cov-report=term-missing
+      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
+        if: matrix.python-version == '3.13'  # upload once, not per matrix leg
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}  # optional for a public repo; set for reliable uploads
+          files: ./coverage.xml
+          fail_ci_if_error: false  # a Codecov hiccup must not red the build

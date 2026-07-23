@@ -5,6 +5,9 @@ dist/
 build/
 *.egg-info/
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 uv.lock
 
 # project-local config may hold a mineru.net token inline — never commit it (prefer env/token_file)

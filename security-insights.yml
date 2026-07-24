@@ -58,6 +58,7 @@ repository:
     review-policy: https://github.com/Sevthered/pdf2wiki/blob/main/GOVERNANCE.md
     security-policy: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md
     governance: https://github.com/Sevthered/pdf2wiki/blob/main/GOVERNANCE.md
+    dependency-management-policy: https://github.com/Sevthered/pdf2wiki/blob/main/docs/explanation/dependencies.md
   license:
     url: https://github.com/Sevthered/pdf2wiki/blob/main/LICENSE
     expression: AGPL-3.0-or-later

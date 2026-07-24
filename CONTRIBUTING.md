@@ -39,6 +39,9 @@ covered by `REUSE.toml`. Install the pre-commit hook to catch a missing header b
 uv run pre-commit install
 ```
 
+How dependencies are selected, pinned, and tracked is documented in
+[Dependency management](docs/explanation/dependencies.md).
+
 ## Conventions
 
 - **Coding standards.** Python code follows [PEP 8](https://peps.python.org/pep-0008/). Style and imports

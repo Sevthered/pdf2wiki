@@ -43,6 +43,7 @@ Background and design rationale.
 - [Why a dual-backend pipeline](explanation/why-dual-backend.md)
 - [How the merge works](explanation/how-the-merge-works.md)
 - [Design principles](explanation/design-principles.md)
+- [Dependency management](explanation/dependencies.md)
 
 ## [Architecture](architecture/)
 

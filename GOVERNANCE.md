@@ -19,7 +19,7 @@ why it does not fit.
 ## Roles and responsibilities
 
 - **Maintainer** — currently **[@Sevthered](https://github.com/Sevthered)**, the sole maintainer.
-  Responsible for: the project roadmap and direction, reviewing and merging pull requests, cutting
+  Responsible for: the project [roadmap](ROADMAP.md) and direction, reviewing and merging pull requests, cutting
   releases (PyPI + GitHub, see the release process in the project docs), responding to security reports
   (see [SECURITY.md](SECURITY.md)), and enforcing the [Code of Conduct](CODE_OF_CONDUCT.md).
 - **Contributors** — anyone who opens a pull request. Responsible for: following the conventions in

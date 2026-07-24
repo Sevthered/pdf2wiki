@@ -7,6 +7,7 @@
 [![codecov](https://codecov.io/gh/Sevthered/pdf2wiki/graph/badge.svg)](https://codecov.io/gh/Sevthered/pdf2wiki)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Sevthered/pdf2wiki/badge)](https://scorecard.dev/viewer/?uri=github.com/Sevthered/pdf2wiki)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13768/badge)](https://www.bestpractices.dev/projects/13768)
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/13768/baseline)](https://www.bestpractices.dev/projects/13768)
 
 Convert heavily technical books (native-text PDFs) into clean, chapter-split, **LLM-ready Markdown** —
 code byte-perfect, tables intact, diagrams transcribed to Mermaid — suitable for an Obsidian vault or

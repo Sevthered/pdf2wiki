@@ -66,6 +66,27 @@ How dependencies are selected, pinned, and tracked is documented in
 4. Commit with a sign-off: `git commit -s` (see [Sign your work](#sign-your-work-dco) below).
 5. Open a pull request describing what changed and why.
 
+## Code review
+
+Every change — including the maintainer's own — lands through a pull request and is reviewed before it
+is merged. Reviews are conducted on GitHub against the checklist below; a change is **acceptable only
+when all of it holds**:
+
+- **CI is green.** The full test suite passes on Python 3.11–3.13, and `ruff check`, `ruff format
+  --check`, `mypy --strict`, and `reuse lint` all pass (enforced as required status checks).
+- **Sign-off present.** Every non-bot commit carries a DCO `Signed-off-by` trailer (checked in CI).
+- **Tests accompany behavior changes.** New or changed behavior adds or updates tests, and coverage
+  must not regress.
+- **Docs are updated in the same change** as the code they describe (docs-as-code).
+- **The change is in scope and surgical** — it does only what its description says, with no unrelated
+  refactoring.
+- **Security implications are considered** against the
+  [assurance case](docs/security/assurance-case.md): input validation, subprocess handling, secret
+  handling, and network egress.
+
+The reviewer either approves or requests changes with specific, actionable feedback. Branch protection
+blocks the merge until the required checks pass.
+
 ## Sign your work (DCO)
 
 Contributions must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/)

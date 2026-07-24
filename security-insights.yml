@@ -55,7 +55,7 @@ repository:
       primary: true
   documentation:
     contributing-guide: https://github.com/Sevthered/pdf2wiki/blob/main/CONTRIBUTING.md
-    review-policy: https://github.com/Sevthered/pdf2wiki/blob/main/GOVERNANCE.md
+    review-policy: https://github.com/Sevthered/pdf2wiki/blob/main/CONTRIBUTING.md#code-review
     security-policy: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md
     governance: https://github.com/Sevthered/pdf2wiki/blob/main/GOVERNANCE.md
     dependency-management-policy: https://github.com/Sevthered/pdf2wiki/blob/main/docs/explanation/dependencies.md

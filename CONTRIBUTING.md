@@ -59,7 +59,30 @@ uv run pre-commit install
 1. Branch from `main`.
 2. Make the change with tests and docs updated.
 3. Ensure `uv run pytest -q` passes.
-4. Open a pull request describing what changed and why.
+4. Commit with a sign-off: `git commit -s` (see [Sign your work](#sign-your-work-dco) below).
+5. Open a pull request describing what changed and why.
+
+## Sign your work (DCO)
+
+Contributions must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/)
+(DCO) — a lightweight statement that you wrote the patch, or otherwise have the right to submit it under
+the project's license. It is *not* a CLA and assigns no copyright; it is the same mechanism the Linux
+kernel and many CNCF projects use.
+
+Add the sign-off automatically with the `-s` flag:
+
+```bash
+git commit -s -m "your message"
+```
+
+This appends a trailer to the commit message using your configured `user.name` / `user.email`:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+If you forgot it on the most recent commit, amend with `git commit --amend -s`. By adding the
+sign-off you certify the four statements of the DCO 1.1 linked above.
 
 ## License
 

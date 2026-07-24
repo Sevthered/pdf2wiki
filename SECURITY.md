@@ -29,7 +29,10 @@ next patch release, and the advisory is published once users have had a chance t
   itself should be reported to that project; report here anything about how pdf2wiki *invokes* it
   (argument handling, path/quoting, remote execution over SSH).
 - **Releases** are published via PyPI Trusted Publishing (OIDC, no stored token) and carry PEP 740
-  provenance attestations — verify them on the PyPI file page.
+  provenance attestations — verify them on the PyPI file page. Release **version tags are
+  cryptographically signed**; verify one with `git tag -v vX.Y.Z`.
+- **Commits** are signed off under the [Developer Certificate of Origin](https://developercertificate.org/)
+  (`Signed-off-by:` trailer) — see `CONTRIBUTING.md`.
 
 ## Assurance case
 

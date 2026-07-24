@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **llm-wiki plugin 0.1.1** — the bundled Claude Code plugin is versioned independently of the
+  converter (`plugin/.claude-plugin/plugin.json`) and is delivered from `main` via
+  `/plugin marketplace update pdf2wiki`, not through a PyPI release. This is a plugin-asset change
+  only; the converter and its published package are untouched.
+  - `knowledge-researcher` now **triages before reading**: it greps a ranked candidate list first and
+    falls back to `wiki/index.md` / `wiki/domains/` only when that comes back empty, and it stops
+    reading once two consecutive pages add nothing needed. Pages left unopened are declared under
+    **Not covered** instead of being silently truncated. Measured on the reference vault, page reads
+    were ~80% of the agent's token cost against ~12% for navigation, and constraining reads cut billed
+    input by ~70% while still returning the large majority of must-have pages. Expressed as a stopping
+    rule rather than a page count, because the right number depends on a vault's page granularity.
+  - `knowledge-query` no longer tells readers that `wiki/hot.md` is "recent context, ~1 screen" and to
+    read it first. That file is append-at-top and grows every session — on the reference vault it
+    measures ~11k tokens, the largest navigation artifact — and the researcher agent already skipped
+    it. Reading it is now conditional on the question being about recent vault work.
+
 ## [0.2.6] - 2026-07-24
 
 A hardening, quality, and provenance release — the first published via signed, attested Trusted

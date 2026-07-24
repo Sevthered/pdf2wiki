@@ -30,6 +30,17 @@ why it does not fit.
 It is always clear who holds the maintainer role: it is the account listed above and shown in the
 repository's ownership.
 
+## Access and collaborator review
+
+Escalated permissions to sensitive resources — write/maintain access to the repository, the PyPI
+project, and CI/CD secrets — are granted **only after review**. Because pdf2wiki is single-maintainer,
+the maintainer currently holds all such access and no other party has any. Before any prospective
+collaborator is granted escalated permissions, the maintainer reviews their track record (accepted
+pull requests) and grants the **least privilege** needed for the role, increasing it only as trust is
+established. Routine contribution never requires escalated access: contributors work through forks and
+pull requests, which are gated by branch protection — required CI checks, DCO sign-off, and admin
+enforcement.
+
 ## Continuity
 
 pdf2wiki is designed to survive the loss of any single person — including its sole maintainer — with

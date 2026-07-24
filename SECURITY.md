@@ -10,6 +10,12 @@ there are no long-term support branches.
 | latest `0.2.x` | ✅        |
 | anything older | ❌        |
 
+**Scope and duration of support.** Support covers **security fixes only** (not backported features). A
+release is supported from the moment it is published **until the next release supersedes it**; at that
+point the older version reaches **end-of-life and no longer receives security updates**. Upgrading is a
+single `pip install --upgrade pdf2wiki`. This policy will be revisited once the project reaches a
+stable `1.0`.
+
 ## Reporting a vulnerability
 
 Please report security issues **privately** — do **not** open a public issue.
@@ -36,6 +42,25 @@ anonymous). GitHub Security Advisories records reporter credit automatically.
   cryptographically signed**; verify one with `git tag -v vX.Y.Z`.
 - **Commits** are signed off under the [Developer Certificate of Origin](https://developercertificate.org/)
   (`Signed-off-by:` trailer) — see `CONTRIBUTING.md`.
+
+## Secrets and credentials
+
+The project uses very few secrets and manages them as follows (storage, access, rotation):
+
+- **mineru.net API token** (optional `--mineru-cloud` mode, user-supplied): read from the
+  `MINERU_API_TOKEN` environment variable or a user-managed token file; never committed (the
+  token-bearing `pdf2wiki.toml` is git-ignored), never written to disk by the tool, and redacted from
+  all logging. Rotate it at <https://mineru.net/apiManage/token> and update your env var / token file.
+- **`CODECOV_TOKEN`** (CI coverage upload): stored only as a GitHub Actions **encrypted repository
+  secret**, exposed to a single trusted CI step; rotate by regenerating it in Codecov and updating the
+  GitHub secret.
+- **PyPI publishing:** no stored token — releases use **Trusted Publishing** (OIDC), so there is no
+  long-lived credential to leak or rotate.
+- **SSH keys** (optional `--remote` mode): the operator's own OS-managed keys; pdf2wiki never stores or
+  transmits them.
+
+Repository secret hygiene is backed by GitHub **secret scanning with push protection**, which blocks a
+push containing a detected secret.
 
 ## Assurance case
 

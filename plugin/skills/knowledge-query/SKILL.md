@@ -38,14 +38,24 @@ If no domain matches the task, the vault doesn't cover it — say so.
 
 ## Navigation protocol
 
-Read in this order — stop as soon as you have what you need:
-1. `wiki/hot.md` — recent context, ~1 screen.
-2. `wiki/index.md` — master catalog.
-3. `wiki/domains/<domain>.md` — domain index → links to concept/entity pages.
-4. Concept/entity pages: `wiki/concepts/<Page-Name>.md`, `wiki/entities/<Page-Name>.md`.
-   Filenames are unique — `Grep`/`Glob` for a topic works (e.g. `Glob wiki/concepts/*Circuit*`).
+Reading pages, not navigating to them, is what a vault lookup costs. So **triage before you read**, and
+stop as soon as you have what you need:
+
+1. Concept/entity pages are the answer: `wiki/concepts/<Page-Name>.md`, `wiki/entities/<Page-Name>.md`.
+   Filenames are unique, so `Grep`/`Glob` for the topic and its synonyms goes straight there
+   (e.g. `Glob wiki/concepts/*Circuit*`). Rank the hits by which page is likely to **answer** the
+   question — not by which mentions the terms most — then read in that order.
+2. `wiki/index.md` — master catalog. Read it when the grep triage comes back empty, or when the question
+   is about the vault's own scope.
+3. `wiki/domains/<domain>.md` — domain index → links to concept/entity pages. Same trigger as (2).
+4. `wiki/hot.md` — **ONLY** if the question is about recent vault work. It is append-at-top, grows every
+   session, and can be the largest file in the wiki; do not read it as a matter of routine.
 5. Raw book chapters (`<domain>/<book>/NN-chapter.md`) ONLY if a wiki page cites the chapter and you
    need more depth than the page carries.
+
+Stop reading when two pages in a row add nothing you needed — the ranked list has gone dry. If you stop
+with the question only partly answered, say which candidates you left unopened rather than truncating
+silently.
 
 ## Context discipline
 

@@ -88,8 +88,15 @@ Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://dia
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions,
 [GOVERNANCE.md](GOVERNANCE.md) for how the project is run and who maintains it, and the
-[Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately per [SECURITY.md](SECURITY.md).
-Where the project is headed: the [roadmap](ROADMAP.md).
+[Code of Conduct](CODE_OF_CONDUCT.md). Where the project is headed: the [roadmap](ROADMAP.md).
+
+**Reporting bugs.** Found a defect or have a feature request? Open a
+[GitHub issue](https://github.com/Sevthered/pdf2wiki/issues) — the bug-report template prompts for the
+version, environment, steps to reproduce, and expected vs actual behavior. **Security** issues must be
+reported privately per [SECURITY.md](SECURITY.md), never as a public issue.
+
+**Repository scope.** pdf2wiki is a single repository with no separate subprojects or additional
+repositories; the bundled `llm-wiki` Claude Code plugin ships in-repo under [`plugin/`](plugin/).
 
 ## Status
 

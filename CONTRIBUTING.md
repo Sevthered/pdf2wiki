@@ -40,7 +40,10 @@ uv run pre-commit install
 
 ## Conventions
 
-- **Style.** Match the surrounding code. Keep changes surgical.
+- **Coding standards.** Python code follows [PEP 8](https://peps.python.org/pep-0008/). Style and imports
+  are enforced by `ruff`, formatting by `ruff format`, and types by `mypy --strict` (all configured in
+  `pyproject.toml` and gated in CI), so contributions must pass them. Beyond that, match the surrounding
+  code and keep changes surgical.
 - **Dry-run by default.** Any command that modifies existing files must default to a dry-run and
   require `--apply` (see [design principles](docs/explanation/design-principles.md)). `convert` and
   `qa` are the only exceptions — they only create new artifacts.
@@ -48,7 +51,8 @@ uv run pre-commit install
 - **Fidelity first.** Never silently trust VLM-transcribed code — divergences are flagged, not hidden.
 - **Docs-as-code.** Documentation lives in `docs/`, organized by the [Diátaxis](https://diataxis.fr/)
   framework (tutorials / how-to / reference / explanation). Update the relevant page in the same change
-  as the code, and keep one topic to one page.
+  as the code, and keep one topic to one page. Documentation is kept current with the code; known
+  documentation defects are tracked as GitHub issues and fixed.
 
 ## Submitting changes
 

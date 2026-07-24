@@ -11,6 +11,7 @@ path = [
     "CONTRIBUTING.md",
     "SECURITY.md",
     "GOVERNANCE.md",
+    "ROADMAP.md",
     "*.toml",
     "*.lock",
     "*.yaml",

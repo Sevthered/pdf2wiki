@@ -41,3 +41,9 @@ anonymous). GitHub Security Advisories records reporter credit automatically.
 
 For the design-level security argument — threat model, trust boundaries, the input-validation map, and
 a requirement→evidence table — see [`docs/security/assurance-case.md`](docs/security/assurance-case.md).
+
+## Security Insights
+
+Machine-readable security metadata (OpenSSF [Security Insights](https://github.com/ossf/security-insights-spec)
+v2.2.0) — including the project's OSPS Baseline Level 1 self-attestation — is published at
+[`security-insights.yml`](security-insights.yml).

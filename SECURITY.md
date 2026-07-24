@@ -30,3 +30,8 @@ next patch release, and the advisory is published once users have had a chance t
   (argument handling, path/quoting, remote execution over SSH).
 - **Releases** are published via PyPI Trusted Publishing (OIDC, no stored token) and carry PEP 740
   provenance attestations — verify them on the PyPI file page.
+
+## Assurance case
+
+For the design-level security argument — threat model, trust boundaries, the input-validation map, and
+a requirement→evidence table — see [`docs/security/assurance-case.md`](docs/security/assurance-case.md).

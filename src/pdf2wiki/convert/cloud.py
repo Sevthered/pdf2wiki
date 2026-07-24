@@ -109,7 +109,7 @@ def _retry(
             if not (getattr(e, "transient", False) and attempt < tries):
                 raise
             delay = min(30.0, base_delay * (2 ** (attempt - 1)))
-            delay = random.uniform(0, delay)  # full jitter
+            delay = random.uniform(0, delay)  # noqa: S311 - retry backoff jitter, not cryptographic
             say(
                 f"  transient {what} error (attempt {attempt}/{tries}), retrying in {delay:.1f}s: {e}"
             )

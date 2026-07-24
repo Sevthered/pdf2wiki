@@ -28,6 +28,10 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
+          # Fine-grained PAT (Administration: read) so Scorecard can read branch-protection rules,
+          # which the default GITHUB_TOKEN cannot. Set the SCORECARD_TOKEN repo secret before relying
+          # on this; without it the Branch-Protection check stays inconclusive.
+          repo_token: ${{ secrets.SCORECARD_TOKEN }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: SARIF file

@@ -1,0 +1,18 @@
+# Codecov configuration.
+# Goal: stop the "all lines covered / no change" PR comment (and the GitHub notification
+# email it triggers) from posting on every PR. A comment now appears only when coverage
+# actually changes — i.e. you hear from Codecov only when something is worth looking at.
+comment:
+  require_changes: true          # no comment unless coverage changed vs the base
+  require_base: false
+  require_head: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto             # compare against the base commit
+        threshold: 1%            # only mark the check failed on a real (>1%) drop
+    patch:
+      default:
+        informational: true      # report patch coverage but never fail the check on it

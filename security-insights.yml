@@ -1,0 +1,115 @@
+header:
+  schema-version: 2.2.0
+  last-updated: '2026-07-24'
+  last-reviewed: '2026-07-24'
+  url: https://github.com/Sevthered/pdf2wiki/blob/main/security-insights.yml
+  comment: |
+    OpenSSF Security Insights (spec v2.2.0) for pdf2wiki — the machine-readable
+    self-attestation of the project's security posture. The project self-attests
+    OSPS Baseline Level 1 and holds an OpenSSF Best Practices Silver badge
+    (bestpractices.dev project 13768). Single-repository project.
+
+project:
+  name: pdf2wiki
+  homepage: https://github.com/Sevthered/pdf2wiki
+  roadmap: https://github.com/Sevthered/pdf2wiki/blob/main/ROADMAP.md
+  administrators:
+    - name: Sevthered
+      affiliation: independent
+      email: Sevthered@users.noreply.github.com
+      social: https://github.com/Sevthered
+      primary: true
+  documentation:
+    quickstart-guide: https://github.com/Sevthered/pdf2wiki#quickstart
+    detailed-guide: https://github.com/Sevthered/pdf2wiki/tree/main/docs
+    code-of-conduct: https://github.com/Sevthered/pdf2wiki/blob/main/CODE_OF_CONDUCT.md
+    support-policy: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md
+    signature-verification: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md
+  repositories:
+    - name: pdf2wiki
+      url: https://github.com/Sevthered/pdf2wiki
+      comment: |
+        The single project repository. No separate subprojects or additional
+        repositories; the llm-wiki Claude Code plugin ships in-repo under plugin/.
+  vulnerability-reporting:
+    reports-accepted: true
+    bug-bounty-available: false
+    policy: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md
+    comment: |
+      Report privately via GitHub's private vulnerability reporting (the repository's
+      Security tab). Acknowledgement within about 7 days; reporters are credited in the
+      advisory and release notes unless they request anonymity.
+
+repository:
+  url: https://github.com/Sevthered/pdf2wiki
+  status: active
+  bug-fixes-only: false
+  accepts-change-request: true
+  accepts-automated-change-request: true
+  no-third-party-packages: false
+  core-team:
+    - name: Sevthered
+      affiliation: independent
+      email: Sevthered@users.noreply.github.com
+      social: https://github.com/Sevthered
+      primary: true
+  documentation:
+    contributing-guide: https://github.com/Sevthered/pdf2wiki/blob/main/CONTRIBUTING.md
+    review-policy: https://github.com/Sevthered/pdf2wiki/blob/main/GOVERNANCE.md
+    security-policy: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md
+    governance: https://github.com/Sevthered/pdf2wiki/blob/main/GOVERNANCE.md
+  license:
+    url: https://github.com/Sevthered/pdf2wiki/blob/main/LICENSE
+    expression: AGPL-3.0-or-later
+  release:
+    changelog: https://github.com/Sevthered/pdf2wiki/blob/main/CHANGELOG.md
+    automated-pipeline: true
+    attestations:
+      - name: PyPI publish provenance (PEP 740)
+        predicate-uri: https://docs.pypi.org/attestations/publish/v1
+        location: https://pypi.org/project/pdf2wiki/
+        comment: |
+          Releases are published via PyPI Trusted Publishing (OIDC, no stored token)
+          and carry PEP 740 Sigstore attestations, verifiable on each file's PyPI page.
+    distribution-points:
+      - uri: pkg:pypi/pdf2wiki
+        comment: PyPI package
+      - uri: https://github.com/Sevthered/pdf2wiki/releases
+        comment: GitHub releases (cryptographically signed tags)
+    license:
+      url: https://github.com/Sevthered/pdf2wiki/blob/main/LICENSE
+      expression: AGPL-3.0-or-later
+  security:
+    assessments:
+      self:
+        evidence: https://github.com/Sevthered/pdf2wiki/blob/main/docs/security/assurance-case.md
+        date: '2026-07-24'
+        comment: |
+          Security assurance case: threat model over four trust boundaries, trust-boundary
+          identification, input-validation map, and a requirement-to-evidence table.
+    tools:
+      - name: Dependabot
+        type: SCA
+        integration:
+          adhoc: false
+          ci: true
+          release: false
+        comment: |
+          Monitors dependencies for known vulnerabilities and opens update PRs
+          (.github/dependabot.yml).
+      - name: ruff (flake8-bandit)
+        type: SAST
+        integration:
+          adhoc: false
+          ci: true
+          release: false
+        comment: |
+          Bandit security ruleset (S) run over src/ in CI (pyproject [tool.ruff.lint]).
+      - name: OpenSSF Scorecard
+        type: SAST
+        integration:
+          adhoc: false
+          ci: true
+          release: false
+        comment: |
+          Supply-chain and security-posture scan (.github/workflows/scorecard.yml).

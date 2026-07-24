@@ -4,6 +4,21 @@ Thanks for your interest. This guide covers the development setup and the conven
 follows. By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md); see
 [GOVERNANCE.md](GOVERNANCE.md) for how decisions are made and who maintains the project.
 
+## Good first issues
+
+New or casual contributors should start with issues labeled
+[`good first issue`](https://github.com/Sevthered/pdf2wiki/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+(and [`help wanted`](https://github.com/Sevthered/pdf2wiki/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)).
+These are scoped to be completable without deep knowledge of the whole pipeline. Small, always-welcome
+tasks include:
+
+- documentation fixes and clarifications under `docs/`;
+- adding a test for an untested branch (see the coverage report);
+- a new language mapping in `phase5/lang_retag.py` or a phase-5 edge case;
+- tightening an error message or a `--help` string.
+
+If nothing suitable is open, propose a small change in an issue first and it can be labeled accordingly.
+
 ## Development setup
 
 pdf2wiki uses [uv](https://docs.astral.sh/uv/).

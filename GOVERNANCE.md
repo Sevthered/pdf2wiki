@@ -41,6 +41,9 @@ established. Routine contribution never requires escalated access: contributors 
 pull requests, which are gated by branch protection — required CI checks, DCO sign-off, and admin
 enforcement.
 
+The maintainer's GitHub account is protected with **cryptographic two-factor authentication** — an
+authenticator app (TOTP) or a hardware security key, **not** SMS.
+
 ## Continuity
 
 pdf2wiki is designed to survive the loss of any single person — including its sole maintainer — with

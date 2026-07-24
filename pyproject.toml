@@ -56,7 +56,7 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "W", "SIM", "RUF"]
+select = ["E", "F", "I", "B", "UP", "W", "SIM", "RUF", "S"]  # S = flake8-bandit security lint (SAST)
 ignore = [
     "E501",                        # code width is the formatter's job; long comments/strings are intentional
     "E741",                        # a/b/l are intentional short names for page ranges / block pairs in merge
@@ -66,7 +66,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B011", "E402", "RUF043"]  # assert-False idiom; sys.path.insert before imports; raises-match patterns
+"tests/*" = ["B011", "E402", "RUF043", "S101", "S105", "S106"]  # assert-False; sys.path.insert; raises-match; asserts ARE the tests; dummy fixture tokens are not secrets (S105/S106)
 
 [tool.mypy]
 python_version = "3.11"

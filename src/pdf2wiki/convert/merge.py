@@ -220,7 +220,7 @@ def run_mineru(
             # WHOLE group. MinerU spawns vllm/torch workers; a bare child-kill would orphan them and an
             # orphaned worker pins GPU VRAM, so the resumed pass OOMs (Timeouts-Pattern [!warning]: a
             # timeout must kill the underlying work, not just the wrapper).
-            proc = subprocess.Popen(
+            proc = subprocess.Popen(  # noqa: S603 - list-form argv, no shell; cmd is built internally, not user text
                 cmd,
                 env=env,
                 cwd=clean_cwd,

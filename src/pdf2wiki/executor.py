@@ -91,7 +91,9 @@ class SSHExecutor:
         ]
 
     def _run(self, cmd: list[str], timeout: int | None = None) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(  # noqa: S603 - list-form argv, no shell; ssh/scp args are shlex-quoted internally
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
 
     def check(self) -> None:
         """Verify SSH connectivity ONCE before a batch. Without this, a dead connection makes

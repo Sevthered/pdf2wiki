@@ -20,6 +20,9 @@ Use GitHub's private vulnerability reporting: the repository's **Security** tab 
 You can expect an acknowledgement within about **7 days**. If a fix is warranted, it ships in the
 next patch release, and the advisory is published once users have had a chance to upgrade.
 
+Reporters are **credited** in the published advisory and release notes (unless you ask to remain
+anonymous). GitHub Security Advisories records reporter credit automatically.
+
 ## Scope notes
 
 - **Data egress:** in `--mineru-cloud` mode pdf2wiki uploads the source PDF to the third-party

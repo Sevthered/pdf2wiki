@@ -29,7 +29,8 @@ tests for any behavior change and keep the suite green.
 
 ## Lint & license compliance
 
-CI runs `ruff check`, `ruff format --check`, `reuse lint`, `mypy`, and `pytest`. Run them locally
+CI runs `ruff check` (including the `flake8-bandit` security-lint rules, `S`), `ruff format --check`,
+`reuse lint`, `mypy`, and `pytest`, plus an OpenSSF Scorecard scan. Run the first set locally
 with `uv run <tool>`. The project is [REUSE](https://reuse.software/) 3.3 compliant — every source
 file carries an SPDX header (`src/**` is AGPL-3.0-or-later, `plugin/**` is MIT); non-code files are
 covered by `REUSE.toml`. Install the pre-commit hook to catch a missing header before you commit:

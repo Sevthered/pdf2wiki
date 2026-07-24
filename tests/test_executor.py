@@ -7,10 +7,13 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import pdf2wiki.executor as executor
 from pdf2wiki.config import Config, load_config
-from pdf2wiki.executor import SSHExecutor, _remote_path
+from pdf2wiki.executor import ExecutionError, SSHExecutor, _remote_path
 
 
 def test_remote_path_strips_tilde():
@@ -117,6 +120,39 @@ def test_convert_remote_and_hybrid_url_mutually_exclusive(capsys):
     )
     assert rc == 2
     assert "mutually exclusive" in capsys.readouterr().err
+
+
+def test_ssh_check_ok_runs_real_run(monkeypatch):
+    # exercises the real _run body (subprocess.run) by patching the module's subprocess, not _run:
+    # check() must build an `ssh ... echo ok` argv, bound by connect_timeout + 5, and pass on "ok".
+    seen = {}
+
+    class R:
+        returncode = 0
+        stdout = "ok\n"
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["timeout"] = kwargs.get("timeout")
+        return R()
+
+    monkeypatch.setattr(executor.subprocess, "run", fake_run)
+    SSHExecutor("gpu-box", "~/books", "~/work", connect_timeout=8).check()  # must not raise
+    assert seen["cmd"][0] == "ssh" and seen["cmd"][-1] == "echo ok"
+    assert "BatchMode=yes" in seen["cmd"]
+    assert seen["timeout"] == 13  # connect_timeout + 5
+
+
+def test_ssh_check_unreachable_raises(monkeypatch):
+    class R:
+        returncode = 255
+        stdout = ""
+        stderr = "connect timeout"
+
+    monkeypatch.setattr(executor.subprocess, "run", lambda cmd, **k: R())
+    with pytest.raises(ExecutionError, match="cannot reach dead-host"):
+        SSHExecutor("dead-host", "~/b", "~/w").check()
 
 
 def test_ssh_opts_include_keepalive():

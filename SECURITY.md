@@ -54,6 +54,10 @@ The project uses very few secrets and manages them as follows (storage, access, 
 - **`CODECOV_TOKEN`** (CI coverage upload): stored only as a GitHub Actions **encrypted repository
   secret**, exposed to a single trusted CI step; rotate by regenerating it in Codecov and updating the
   GitHub secret.
+- **`SCORECARD_TOKEN`** (lets OpenSSF Scorecard read branch-protection rules): a **fine-grained PAT**
+  with only `Administration: read` on this repository, stored as a GitHub Actions **encrypted
+  repository secret**. Fine-grained PATs expire after at most one year — rotate before expiry by
+  regenerating the PAT and updating the secret.
 - **PyPI publishing:** no stored token — releases use **Trusted Publishing** (OIDC), so there is no
   long-lived credential to leak or rotate.
 - **SSH keys** (optional `--remote` mode): the operator's own OS-managed keys; pdf2wiki never stores or

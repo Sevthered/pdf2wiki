@@ -1,0 +1,34 @@
+name: codeql
+
+# CodeQL static analysis for the Python source. Satisfies OpenSSF Scorecard's SAST check and adds
+# real vulnerability scanning. Python is interpreted, so no build step is needed (no autobuild).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "27 7 * * 2" # weekly, Tuesday 07:27 UTC (offset from the scorecard workflow)
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: CodeQL analyze (python)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload CodeQL results to code scanning
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          category: "/language:python"

@@ -6,11 +6,33 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-07-24
+
+A hardening, quality, and provenance release — the first published via signed, attested Trusted
+Publishing. No converter behavior change: conversion output is byte-for-byte identical to 0.2.5.
+
 ### Added
 - **Typed public API** — the package now ships `py.typed` (PEP 561), so downstream projects' type
   checkers see pdf2wiki's types. The core is `mypy --strict`-clean.
 - **[REUSE 3.3](https://reuse.software/) licensing metadata** — per-file SPDX headers plus a
   `REUSE.toml`, so every file's copyright and license are machine-readable.
+- **Project governance & security documentation** — `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`
+  (Contributor Covenant 2.1), `ROADMAP.md`, and a security **assurance case** at
+  `docs/security/assurance-case.md` (threat model, trust boundaries, input-validation map).
+- **OpenSSF tooling** — OpenSSF Best Practices badge, an OpenSSF Scorecard workflow, and Codecov
+  coverage reporting, all surfaced in the README.
+
+### Security
+- **Signed releases.** Distributions are published via PyPI Trusted Publishing (OIDC, no stored
+  token) with **PEP 740 provenance attestations**; release tags are cryptographically signed. Verify
+  a tag with `git tag -v vX.Y.Z` and the PyPI attestations on each file's page.
+- **Static analysis.** CI now runs ruff's `flake8-bandit` (`S`) security ruleset over `src/`.
+- **DCO sign-off.** Contributions are signed off under the Developer Certificate of Origin
+  (`git commit -s`); vulnerability reporters are credited in advisories unless they opt out.
+
+### Changed
+- **Internal typed-`Block` refactor** with a `mypy --strict` CI gate and Hypothesis property tests
+  for the `phase5` transformers. Locked byte-identical by golden snapshots — no user-facing change.
 
 ## [0.2.5] - 2026-07-23
 
@@ -179,7 +201,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.2...v0.2.3

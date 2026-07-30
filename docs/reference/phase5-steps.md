@@ -34,7 +34,7 @@ regex. It follows CommonMark's fenced-code rules as far as converter output need
 | # | Step | Reads | Does | Produces |
 |---|------|-------|------|----------|
 | 1 | `caption_unbleed` | md | Lifts a `Listing/Figure/Table/Example N.M …` caption that MinerU trapped inside a code fence out to a bold line above the fence, or drops a caption-only fence entirely. | md with captions un-bled from code |
-| 2 | `lang_retag` | md | Re-detects each code fence's language by precedence — a `# file: x.ext` hint, then a trusted specific MinerU tag (resolved through the alias/extension table), then a keyword heuristic, else `text` — and rewrites the fence tag. Tags the heuristic cannot detect but books do emit (`pseudocode`, `cmake`, `makefile`, `hcl`, `qml`, `vhdl`, `gherkin`, `graphql`) are trusted as-is; MinerU's known-wrong guesses (`swift`, `erlang`) are always re-detected. | md with reliable language tags |
+| 2 | `lang_retag` | md | Re-detects each code fence's language by precedence — a `# file: x.ext` hint, then a trusted specific MinerU tag (resolved through the alias/extension table), then a keyword heuristic, else `text` — and rewrites the fence tag. Tags the heuristic cannot detect but books do emit (`hcl`, `qml`, `vhdl`, `gherkin`, `graphql`) are trusted as-is; MinerU's known-wrong guesses (`swift`, `erlang`) are always re-detected. See [the detection order](#lang_retag-detection-order). | md with reliable language tags |
 | 3 | `dash_normalize` | md | Inside code fences only, converts a typographic en/em-dash used as a long-flag prefix (`–dev`) to `--` and a U+2212 minus to `-`. | md with correct dashes in code |
 | 4 | `mermaid_repair` | md | Sanitizes ```mermaid``` node labels so the diagram parses — literal `\n` → `<br>`, inner quotes → `'`, inner brackets → `()`, closes unclosed labels, drops orphan brackets. | md with parseable Mermaid |
 | 5 | `code_unescape` | md | Inside code fences only, strips MinerU's markdown-punctuation escapes (`\$ \* \~ \_` `` \` `` `\# \@ \% \& \!`) while preserving real string/regex escapes (`\n \t \d \s \" \\`). | md with clean code fences |
@@ -61,6 +61,37 @@ references keep resolving.
 
 If the Markdown has no detectable boundary, `chapter_split` raises an error rather than emit a single
 undivided file — fix the headings and re-run.
+
+## `lang_retag` detection order
+
+The keyword heuristic is precision-first: a block it cannot identify becomes `text` rather than
+borrowing a neighbouring language's tag. Order matters, because the loose branches key off tokens
+several languages share, so the families with an unmistakable marker are resolved first:
+
+1. **`http`** — a request line or a header block.
+2. **`bash`** — the block *opens* with a `$ `/`➜ ` prompt, so it is a terminal session whatever
+   language its output quotes. Only the opening line counts: books also print a program's output as
+   a trailing `$ …` line inside the source block.
+3. **`pseudocode`** — an assignment arrow (`←`) or a brace-less `function f(x)` header.
+4. **`html`** — the block opens with markup and uses HTML element names. JavaScript that assembles
+   markup inside a string stays JavaScript.
+5. **`cmake`** — a build command in call form, or a `CMAKE_*`/`${PROJECT_*}` variable.
+6. **`rust`** — `fn`, `let mut`, an attribute, a bang-macro, `use std::…`, `-> Result<…>`. Before the
+   C family, because `std::` is Rust's path separator as much as C++'s.
+7. **`cpp` / `c`** — the preprocessor and the C standard library, split on C++-only vocabulary
+   (`std::`, `template<`, `public:`, a C++ header). Before `java`, whose typed-var form
+   (`Widget w = make_widget();`) and `class` keyword would otherwise claim these blocks.
+8. **`makefile`, then `go`** — Make is checked first because it shares Go's `:=`.
+9. **`javascript` / `typescript`** — before `ruby`, since an arrow function reads as a hashrocket,
+   and before `bash`, since `export function` reads as a shell `export`.
+10. `ruby`, `yaml`, `dockerfile`, `xml`, `json`, `java`, `python`, `sql`, `bash`, `ini`,
+    `properties`, generic `yaml` — then `text`.
+
+**Known limits.** A schema/IDL language with no branch of its own can borrow a neighbour's tag when
+its syntax overlaps: GraphQL SDL and a FlatBuffers schema can read as `typescript`, a Thrift `struct`
+as `c`. Measured over a 1674-page, 13240-block reference vault, that affects 8 blocks — all of which
+were `text` before. Allman-braced JavaScript can read as `pseudocode` (2 blocks), and a `kubectl -o
+go-template=…` command as `go` (1 block).
 
 ## Why this order
 

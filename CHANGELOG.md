@@ -47,6 +47,27 @@ All notable changes to this project are documented here. The format is based on
   pipeline-vs-hybrid divergence, while refusing to strip a deeply indented fence would have flagged
   correct blocks.
 
+### Added
+- **`lang_retag` detects C, C++, CMake, Rust, Go, JavaScript and TypeScript.** The keyword heuristic
+  had no branch for any of them, so an untagged fence holding that code was mis-detected rather than
+  merely missed: C++ `class Widget {` matched the python branch's bare `\bclass\b`, `Widget w =
+  make_widget();` matched java's typed-var form, Go's `import (` matched python's bare `\bimport\b`,
+  and TypeScript's `export function` matched the shell branch's `export` verb. Measured against the
+  4175 blocks in a 1674-page reference vault that carry an author `c`/`cpp`/`cmake`/`rust`/`go`/
+  `javascript`/`typescript` tag, the old heuristic scored **0% on every one of those seven
+  languages** — they survived only because a specific tag is trusted before the heuristic runs, so
+  the damage fell on the fences MinerU leaves generic. Each new branch is gated on a marker the other
+  families cannot produce, and the whole group is resolved before the loose `java`/`python`/`bash`/
+  `ruby` branches. Also added: `makefile`, `html` and `pseudocode` gates (Make shares Go's `:=`;
+  a page with an inline `<script>` is HTML; Manning's algorithm listings borrow C-ish syntax), a
+  terminal-session rule for a block that opens with a `$ ` prompt, and shell verbs for the new
+  toolchains (`cargo`/`go` subcommands, `cmake`, `ctest`, `ninja`, `meson`, `bazel`, `gcc`, `clang`,
+  `rustc`, `tsc`, `node`, `deno`, `bun`, `conan`, `vcpkg`, `gdb`, `valgrind`). Over the same
+  reference set the change corrects **3804** blocks; every block it decides differently from the old
+  version was traced to a fence whose recorded tag was itself wrong. `rust` and `typescript` have no
+  ground truth in that vault (no such book is converted yet) and are covered by tests only. Detection
+  order and its known limits: `docs/reference/phase5-steps.md`.
+
 ### Changed
 - **llm-wiki plugin 0.1.1** — the bundled Claude Code plugin is versioned independently of the
   converter (`plugin/.claude-plugin/plugin.json`) and is delivered from `main` via

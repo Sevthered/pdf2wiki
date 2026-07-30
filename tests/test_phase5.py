@@ -98,6 +98,234 @@ def test_mermaid_never_retagged():
     assert out == md and changes == []
 
 
+# ---------- lang_retag: the curly-brace / compiled families ----------
+# Every snippet is the shape MinerU emits for these books: an untagged fence, no `# file:` hint.
+# `rust` and `typescript` have no ground truth in the reference vault (no such book is converted
+# yet), so these cases are the only coverage they have.
+
+CPP_CLASS = """\
+#include <vector>
+
+class Widget {
+public:
+    void draw();
+};
+"""
+CPP_NO_INCLUDE = "Widget w = make_widget();\nstd::vector<int> v = {1, 2, 3};\n"
+C_SOURCE = '#include <stdio.h>\n\nint main(void) {\n    printf("hi\\n");\n    return 0;\n}\n'
+CMAKE_SCRIPT = """\
+cmake_minimum_required(VERSION 3.20)
+project(demo LANGUAGES CXX)
+add_executable(demo main.cpp)
+target_compile_features(demo PRIVATE cxx_std_20)
+"""
+RUST_FN = """\
+use std::collections::HashMap;
+
+#[derive(Debug)]
+pub struct Config {
+    pub retries: u32,
+}
+
+fn main() {
+    let mut counts: HashMap<&str, u32> = HashMap::new();
+    println!("{:?}", counts);
+}
+"""
+GO_SOURCE = """\
+package main
+
+import "fmt"
+
+func main() {
+    v, err := load("x")
+    if err != nil {
+        fmt.Println(err)
+    }
+}
+"""
+JS_SOURCE = """\
+const fs = require("fs");
+
+function load(name) {
+    return fs.readFileSync(name).toString();
+}
+
+[1, 2].forEach((n) => console.log(n));
+"""
+TS_SOURCE = """\
+export interface User {
+    id: number;
+    name: string;
+}
+
+export function greet(u: User): string {
+    return `hi ${u.name}`;
+}
+"""
+JAVA_INTERFACE = """\
+public interface DeleteServiceFacade {
+    boolean deleteAStock(String investorId, String symbol);
+}
+"""
+
+
+def tag(body: str) -> str:
+    return lang_retag.heuristic(body)
+
+
+def test_cpp_class_not_python():
+    assert tag(CPP_CLASS) == "cpp"
+
+
+def test_cpp_without_include_not_java():
+    assert tag(CPP_NO_INCLUDE) == "cpp"
+
+
+def test_c_source_split_from_cpp():
+    assert tag(C_SOURCE) == "c"
+
+
+def test_cmake_script():
+    assert tag(CMAKE_SCRIPT) == "cmake"
+
+
+def test_rust_source():
+    assert tag(RUST_FN) == "rust"
+
+
+def test_go_source_not_python():
+    assert tag(GO_SOURCE) == "go"
+
+
+def test_javascript_source():
+    assert tag(JS_SOURCE) == "javascript"
+
+
+def test_typescript_source():
+    assert tag(TS_SOURCE) == "typescript"
+
+
+def test_untagged_fence_gets_the_new_language():
+    md = f"```\n{GO_SOURCE}```\n"
+    out, changes, stats = lang_retag.retag(md)
+    assert "```go" in out
+    assert stats["kw"] == 1
+
+
+def test_c_plus_plus_info_string_is_kept_not_re_detected():
+    md = "```c++\nint x = 1;\n```\n"
+    out, _, stats = lang_retag.retag(md)
+    assert "```cpp" in out and stats["kept"] == 1
+
+
+# ---------- lang_retag: the families the new branches must NOT steal ----------
+
+
+def test_java_interface_stays_java():
+    assert tag(JAVA_INTERFACE) == "java"
+
+
+def test_java_new_and_fluent_api_stay_java():
+    body = """\
+@Test
+void testTimeout() {
+    RestTemplate t = new RestTemplate();
+    given().contentType(ContentType.JSON).get("/balance").then().statusCode(504);
+}
+"""
+    assert tag(body) == "java"
+
+
+def test_ruby_hashrocket_is_not_an_arrow_function():
+    assert tag("config = { :retries => 3 }\nputs config\n") == "ruby"
+
+
+def test_openapi_yaml_type_string_is_not_a_typescript_annotation():
+    body = """\
+Book:
+  type: object
+  required: [author, title]
+  properties:
+    title:  { type: string }
+    author: { type: string }
+"""
+    assert tag(body) == "yaml"
+
+
+def test_go_test_console_divider_is_not_strict_equality():
+    body = "go test -v\n=== RUN   TestSum\n--- PASS: TestSum (0.00s)\nPASS\n"
+    assert tag(body) == "bash"
+
+
+def test_sql_create_table_not_c():
+    assert tag("create table events (\n  id bigint,\n  payload text NULL\n);\n") == "sql"
+
+
+def test_makefile_not_go_despite_colon_equals():
+    body = "ARCH ?= avr\nMCU := atmega2560\n\nall: $(TARGET)\n\tavr-gcc -o $@ $<\n"
+    assert tag(body) == "makefile"
+
+
+def test_go_variable_with_capital_name_is_not_a_makefile():
+    body = "func TestGetter(t *testing.T) {\n    ID := 1234\n    defer teardown(ID)\n}\n"
+    assert tag(body) == "go"
+
+
+def test_vhdl_assignment_operator_is_not_go():
+    body = (
+        "architecture arch of FleaFPGA is\n"
+        "    signal clk_dvi : std_logic := '0';\n"
+        "begin\n"
+        "end arch;\n"
+    )
+    assert tag(body) != "go"
+
+
+def test_go_assignment_survives_the_vhdl_guard():
+    assert tag("serialized := serializeRequest(r)\nlog.Print(serialized)\n") == "go"
+
+
+def test_shell_install_function_is_not_cmake():
+    body = "install() {\n    cp -v build/myapp /usr/local/bin/myapp\n}\n"
+    assert tag(body) != "cmake"
+
+
+def test_cmake_install_with_a_keyword_argument_is_cmake():
+    assert tag("install(TARGETS demo DESTINATION bin)\n") == "cmake"
+
+
+def test_shell_verbs_for_the_new_toolchains():
+    assert tag("cargo build --release\ncargo test\n") == "bash"
+    assert tag("cmake -S . -B build\ncmake --build build\n") == "bash"
+    assert tag("go build ./...\n") == "bash"
+
+
+def test_html_page_with_inline_script_is_html():
+    body = '<!DOCTYPE html>\n<html>\n<body>\n<script>\nconsole.log("hi");\n</script>\n</body>\n</html>\n'
+    assert tag(body) == "html"
+
+
+def test_javascript_building_markup_in_a_string_stays_javascript():
+    body = 'function build() {\n    let html = "<h1>Friends</h1><table>";\n    return html;\n}\n'
+    assert tag(body) == "javascript"
+
+
+def test_pseudocode_arrow_beats_the_brace_families():
+    body = "function initFilter(server, minSize)\n    contactsList ← server.loadContacts()\n"
+    assert tag(body) == "pseudocode"
+
+
+def test_source_block_ending_with_a_printed_prompt_line_is_source():
+    body = 'func main() {\n    fmt.Println("hi")\n}\n$ {"Number":5}\n'
+    assert tag(body) == "go"
+
+
+def test_block_opening_with_a_prompt_is_a_shell_session():
+    body = "$ diff a.go b.go\n13c13\n< temp, err := strconv.Atoi(arg)\n"
+    assert tag(body) == "bash"
+
+
 # ---------- dash_normalize ----------
 
 

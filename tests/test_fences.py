@@ -29,7 +29,7 @@ from pdf2wiki.phase5 import (
 
 
 def test_blocks_roundtrip_raw_matches_source() -> None:
-    md = "a\n\n```python\nx = 1\n```\n\nb\n\n~~~c++\nint y;\n~~~\n"
+    md = "a\n\n```python\nx = 1\n```\n\nb\n\n```c++\nint y;\n```\n"
     blks = list(fences.blocks(md))
     assert [b.lang for b in blks] == ["python", "c++"]
     for b in blks:
@@ -49,10 +49,29 @@ def test_lang_is_first_token_lowercased() -> None:
     assert blk.lang == "java" and blk.info == "JAVA {highlight=2}"
 
 
-def test_longer_fence_run_and_tilde_are_lexed() -> None:
-    md = "````text\n```inner\n````\n\n~~~~yaml\na: 1\n~~~~\n"
-    assert [b.lang for b in fences.blocks(md)] == ["text", "yaml"]
+def test_longer_fence_run_is_lexed() -> None:
+    md = "````text\n```inner\n````\n"
+    assert [b.lang for b in fences.blocks(md)] == ["text"]
     assert next(iter(fences.blocks(md))).body == "```inner\n"  # inner 3-run is body, not a closer
+
+
+def test_tilde_fences_are_not_recognised() -> None:
+    # Backtick-only, deliberately: MinerU emits only backtick fences, and a PAIR of tilde divider
+    # rows in prose used to lex as a real block, so code_unescape/dash_normalize rewrote the prose
+    # between them and chapter_split dropped any chapter boundary inside (see
+    # test_paired_tilde_rows_in_prose_are_left_alone below). A tilde line is just prose text now.
+    assert list(fences.blocks("~~~~yaml\na: 1\n~~~~\n")) == []
+
+
+def test_paired_tilde_rows_in_prose_are_left_alone() -> None:
+    prose = "Console output pasted as prose, with a \\_literal\\_ escape and an —option flag.\n"
+    md = (
+        "# Chapter One\n\nIntro.\n\n~~~~~~~~~~~~~~~~\n"
+        + prose
+        + "~~~~~~~~~~~~~~~~\n\n# Chapter Two\n\nMore.\n"
+    )
+    assert list(fences.blocks(md)) == []
+    assert fences.transform(md, lambda blk: blk.rebuild(body="MUTATED\n")) == md
 
 
 def test_backtick_in_backtick_info_string_is_not_an_opener() -> None:
@@ -78,9 +97,9 @@ def test_stray_opener_leaves_the_prose_tail_untouched() -> None:
 
 
 def test_scanning_resumes_after_an_opener_that_never_closes() -> None:
-    # the failed opener does not consume the rest of the document: a later well-formed block is
-    # still found. (`~~~~` can never close a backtick fence, so the first opener is inert.)
-    md = "~~~~\n\nprose\n\n```python\nx = 1\n```\n"
+    # an opener with no closing line anywhere later in the document does not prevent an EARLIER
+    # well-formed block from being found.
+    md = "```python\nx = 1\n```\n\nprose\n\n```go\ny := 1\nno closer here\n"
     assert [b.lang for b in fences.blocks(md)] == ["python"]
 
 
@@ -94,8 +113,8 @@ def test_a_stray_opener_pairs_with_the_next_BARE_fence_line() -> None:
     assert blk.lang == "" and "prose" in blk.body and blk.rebuild() == blk.raw
 
 
-def test_code_lines_covers_fence_lines_and_tilde() -> None:
-    lines = ["a", "~~~cmake", "# not a heading", "~~~", "b"]
+def test_code_lines_covers_fence_lines() -> None:
+    lines = ["a", "```cmake", "# not a heading", "```", "b"]
     assert fences.code_lines(lines) == {1, 2, 3}
 
 
@@ -170,10 +189,10 @@ def test_mermaid_guard_is_case_insensitive() -> None:
     assert out == md
 
 
-def test_mermaid_repair_handles_uppercase_and_tilde_fences() -> None:
-    out, stats = mermaid_repair.repair('~~~MERMAID\nA["a&quot;b"] --> B\n~~~\n')
-    assert stats["blocks_changed"] == 1 and out.startswith("~~~MERMAID\n")
-    assert out.endswith("~~~\n") and "&quot;" not in out
+def test_mermaid_repair_handles_uppercase_fences() -> None:
+    out, stats = mermaid_repair.repair('```MERMAID\nA["a&quot;b"] --> B\n```\n')
+    assert stats["blocks_changed"] == 1 and out.startswith("```MERMAID\n")
+    assert out.endswith("```\n") and "&quot;" not in out
 
 
 def test_caption_unbleed_unwraps_a_non_letter_tagged_fence() -> None:
@@ -184,8 +203,28 @@ def test_caption_unbleed_unwraps_a_non_letter_tagged_fence() -> None:
 
 
 def test_tilde_divider_row_in_prose_does_not_eat_chapter_boundaries() -> None:
+    # A single tilde row was already inert under the old multi-fence-type lexer (unclosed opener).
+    # Now tildes aren't fence characters at all, so this holds unconditionally.
     lines = ["# Chapter One", "some prose", "~~~~~~~~~~~~~~", "# Chapter Two", "more"]
     assert chapter_split.find_boundaries(lines) == [(0, "Chapter One"), (3, "Chapter Two")]
+
+
+def test_paired_tilde_divider_rows_do_not_eat_a_chapter_boundary() -> None:
+    # The actual regression: with tildes recognised as fence characters, a PAIR of tilde rows lexed
+    # as one real block spanning the H1 between them, and chapter_split silently dropped that
+    # boundary. Confirmed on the real merged code before this fix (0 boundaries found for "Chapter
+    # Two" with the old lexer); backtick-only removes the failure mode outright.
+    lines = [
+        "# Chapter One",
+        "prose",
+        "~~~~~~~~",
+        "drawing",
+        "# Chapter Two",
+        "body",
+        "~~~~~~~~",
+        "tail",
+    ]
+    assert chapter_split.find_boundaries(lines) == [(0, "Chapter One"), (4, "Chapter Two")]
 
 
 def test_attribute_syntax_info_string_is_left_alone() -> None:
@@ -211,16 +250,16 @@ def test_caption_unbleed_keeps_the_fence_indent() -> None:
     assert "\n**Listing" not in out and changes == ["Listing 2.1"]
 
 
-def test_chapter_split_boundaries_ignore_non_letter_and_tilde_fences() -> None:
+def test_chapter_split_boundaries_ignore_non_letter_fences() -> None:
     lines = [
         "# Chapter One",
         "```c++",
         "# include guard comment",
         "```",
         "# Chapter Two",
-        "~~~cmake",
+        "```cmake",
         "# not a heading",
-        "~~~",
+        "```",
     ]
     assert chapter_split.find_boundaries(lines) == [(0, "Chapter One"), (4, "Chapter Two")]
 

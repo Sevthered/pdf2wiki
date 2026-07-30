@@ -159,8 +159,16 @@ CPP_ONLY = re.compile(
     re.M,
 )
 # C family (C or C++): the preprocessor, the C standard library, C declaration forms.
+# Directives other than `#include` must be glued to `#` (no space). The C standard DOES allow a space
+# (`#  define X`, `#  ifdef FOO` are valid), but that form is vanishingly rare in real code, and the
+# old `#\s*define` regex paid for it by matching English comments — `# define a helper` above a Python
+# `def`, `# include the sidecar` above a YAML block. Precision-first: a genuine spaced directive that
+# is the block's ONLY C signal now falls to `text` instead of `c` (measured: 0 such blocks in the
+# 1674-page reference vault). `#include` keeps its spaced form because the `<...>`/`"..."` header path
+# it then requires is unambiguous vs prose even when spaced.
 C_FAMILY = re.compile(
-    r"^\s*#\s*(include|define|pragma|ifndef|ifdef|undef|elif)\b|"
+    r"^[ \t]*#(define|pragma|ifndef|ifdef|undef|elif)\b|"
+    r"^[ \t]*#[ \t]*include[ \t]*[<\"]|"
     r"\b(printf|sprintf|snprintf|fprintf|scanf|malloc|calloc|realloc|memcpy|memset|strcpy|strlen)"
     r"\s*\(|\bsizeof\b|\btypedef\b|\bstruct\s+\w+\s*\{|\bint\s+main\s*\(",
     re.M,
@@ -203,12 +211,17 @@ VHDL_PASCAL = re.compile(
 MAKEFILE = re.compile(
     # NOT `+=`: every language has `count += 1`. `?=` is Make's alone.
     r"^\s*\.PHONY\s*:|^\s*[A-Za-z_][\w.-]*\s*\?=|"
+    # `basename` dropped: `$(basename "$0")` is a POSIX coreutils idiom as much as a Make call, and
+    # (unlike `dirname`, which the `\b` here already excludes) it was the one entry in this list that
+    # actually matched real shell scripts on the vault.
     r"\$\((CC|CXX|CPP|LD|AR|RM|MAKE|CURDIR|MAKEFILE_LIST|CFLAGS|CXXFLAGS|LDFLAGS|LDLIBS|OBJS?|"
     r"SRCS?|TARGET|BIN|"
-    r"shell|wildcard|patsubst|subst|addprefix|addsuffix|notdir|dir|basename|foreach|firstword)\b|"
+    r"shell|wildcard|patsubst|subst|addprefix|addsuffix|notdir|dir|foreach|firstword)\b|"
     # a target line followed by a TAB-indented recipe. NOT a bare ALLCAPS `:=`, which is also Go's
-    # (`ID := 1234`).
-    r"^[\w.%/$()-]+\s*:[^=\n]*\n\t",
+    # (`ID := 1234`). The target name must not be a language keyword -- Python's `else:` and Go's
+    # `default:`/`case 1:` followed by a tab-indented body match the bare pattern otherwise.
+    r"^(?!(?:else|try|finally|default|do|case|switch|while|for|if|elif|except|end|begin|then)\b)"
+    r"[\w.%/$()-]+\s*:[^=\n]*\n\t",
     re.M,
 )
 # JavaScript family. `=>` alone is NOT a signal: a Ruby hashrocket (`:a => 1`) looks the same, so
@@ -230,14 +243,16 @@ JS = re.compile(
 # narrow, because Java owns the two forms a wider gate would steal: `interface X {` is a Java
 # interface far more often than a TS one in this corpus, and `implements Y` is Java's keyword too.
 # A bare `: string` also matches an OpenAPI YAML `type: string`, so an annotation only counts when
-# declaration/argument punctuation follows it. `interface`/`type` therefore has to be `export`ed or
-# accompanied by one of the strong signals — see `_is_typescript`.
+# declaration/argument punctuation follows it. `interface`/`type`/`enum` therefore all require
+# `export` — a bare `enum X {` is Java, C, C++ or Rust far more often than TS in this corpus (an
+# earlier version exempted `enum` from this rule and mislabelled all four; corpus-measured, 0 vault
+# regressions from requiring `export` here). See TS_DECL below for the `export`-optional path,
+# which is gated on carrying a JS signal too.
 TS_STRONG = re.compile(
     # `type:`/`format:` are excluded keys: an OpenAPI schema writes `{ type: string, format: uuid }`,
     # which is otherwise indistinguishable from a TS property annotation.
     r"(?<!\btype)(?<!\bformat)\s*:\s*(string|number|boolean|any|unknown|never|void)(\[\])?\s*[;,)={|]|"
     r"\breadonly\s+\w|^\s*export\s+(interface|type|enum)\s+[A-Z]|"
-    r"^\s*(export\s+)?enum\s+[A-Z]\w*\s*\{|"
     r"\bas\s+(const|unknown|string|number|boolean)\b|\bdeclare\s+(module|const|function|global)\b|"
     r"\b(public|private|protected)\s+(readonly\s+)?\w+\s*:\s*\w+\s*[;,)=]",
     re.M,
@@ -288,8 +303,10 @@ def heuristic(body: str) -> str:
     # 4. html: only when the block OPENS with markup, so JS that assembles markup in a template
     #    string stays JS. Before the code families because a server-side template mixes their
     #    tokens into a page (a Go `html/template` block is html, not go). The later xml branch still
-    #    takes pom.xml / CDI beans, whose element names are not HTML's.
-    if b.startswith("<") and HTML.search(b):
+    #    takes pom.xml / CDI beans, whose element names are not HTML's. A leading `<?xml` declaration
+    #    already implies XML, and HTML's element-name list overlaps enough non-HTML XML vocabularies
+    #    (Atom `<link>`/`<title>`, DocBook `<table>`) that an XML prolog must win first.
+    if b.startswith("<") and not b.startswith("<?xml") and HTML.search(b):
         return "html"
     # 5. cmake before every other brace family: a build script is all call-form commands, and
     #    `project(...)`/`${CMAKE_*}` cannot appear in the languages it builds.

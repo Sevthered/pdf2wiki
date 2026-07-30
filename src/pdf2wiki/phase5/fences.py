@@ -16,15 +16,20 @@ onto a closing fence, breaking the document structure.
 This module replaces those regexes with a line scanner that follows CommonMark's fenced-code rules
 closely enough for converter output:
 
-- **opener**: up to 3 spaces/tabs of indent, then >= 3 backticks or >= 3 tildes, then a free-form
-  info string (a backtick fence's info string may not contain a backtick, per CommonMark).
+- **opener**: up to 3 spaces/tabs of indent, then >= 3 backticks, then a free-form info string (a
+  backtick fence's info string may not contain a backtick, per CommonMark). Backtick-only,
+  deliberately narrower than CommonMark: MinerU emits only backtick fences
+  (`convert/merge.py`'s `FENCE_LINE` is backtick-only for the same reason — "a `~~~` run is real
+  content in console output / ASCII art"), and a **pair** of `~~~~` divider rows in prose used to
+  lex as a real block, so `code_unescape`/`dash_normalize` rewrote the prose between them and
+  `chapter_split` dropped any chapter boundary inside. A single stray tilde row was already handled
+  by the "no matching closer" rule below; a pair was not.
 - **closer**: same fence character, at least as long as the opener, nothing but whitespace after.
 - an opener with **no matching closer is not a block at all**. CommonMark would render it as code to
   the end of the document, but these callers *rewrite* what they match: letting one stray opener
-  (or a bare `~~~~` divider row in prose) claim the document tail made `code_unescape` strip escapes
-  out of prose and `chapter_split` swallow every later chapter boundary. Malformed input is left
-  byte-for-byte alone instead. The old "pair it with the next fence line" behaviour is gone either
-  way.
+  claim the document tail made `code_unescape` strip escapes out of prose and `chapter_split`
+  swallow every later chapter boundary. Malformed input is left byte-for-byte alone instead. The old
+  "pair it with the next fence line" behaviour is gone either way.
 - `lang` is the first whitespace-separated token of the info string, lowercased, so a mermaid guard
   is case-insensitive and survives an attribute suffix. Attribute-syntax info strings (`{.python}`)
   keep their braces here -- callers that rewrite the tag must skip them rather than guess.
@@ -37,8 +42,8 @@ import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
-_OPEN = re.compile(r"^([ \t]{0,3})(`{3,}|~{3,})([^\n]*)$")
-_CLOSE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})[ \t]*$")
+_OPEN = re.compile(r"^([ \t]{0,3})(`{3,})([^\n]*)$")
+_CLOSE = re.compile(r"^[ \t]{0,3}(`{3,})[ \t]*$")
 
 
 def _closes(line: str, fence: str) -> bool:
@@ -46,8 +51,7 @@ def _closes(line: str, fence: str) -> bool:
     m = _CLOSE.match(line)
     if m is None:
         return False
-    run = m.group(1)
-    return run[0] == fence[0] and len(run) >= len(fence)
+    return len(m.group(1)) >= len(fence)
 
 
 @dataclass(frozen=True)
@@ -114,7 +118,7 @@ def blocks(md: str) -> Iterator[Block]:
             i += 1
             continue
         indent, fence, info = m.groups()
-        if fence[0] == "`" and "`" in info:  # CommonMark: no backtick in a backtick info string
+        if "`" in info:  # CommonMark: no backtick in a backtick fence's info string
             i += 1
             continue
         j = i + 1

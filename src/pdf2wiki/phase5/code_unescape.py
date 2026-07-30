@@ -18,7 +18,8 @@ Fixes ONLY within ``` code blocks (never prose, where markdown escaping is corre
 
 import re
 
-FENCE = re.compile(r"^(```)([a-zA-Z]*)\n(.*?)^```", re.S | re.M)
+from . import fences
+
 # Unescape \X -> X for X in this set. `(?<!\\)` keeps a real escaped-backslash (\\X) intact.
 UNESCAPE = r"$*~_`#@%&!"
 _PAT = re.compile(r"(?<!\\)\\([" + re.escape(UNESCAPE) + r"])")
@@ -39,12 +40,11 @@ def unescape(md: str) -> tuple[str, list[tuple[str, str, str]]]:
     """Return (new_md, list of (fence_tag, old_line, new_line))."""
     allchanges: list[tuple[str, str, str]] = []
 
-    def repl(mo: re.Match[str]) -> str:
-        tag, body = mo.group(2), mo.group(3)
-        if tag == "mermaid":
-            return mo.group(0)
-        newbody, ch = _fix_body(body)
-        allchanges.extend((tag, o, n) for o, n in ch)
-        return f"```{tag}\n{newbody}```"
+    def repl(blk: fences.Block) -> str | None:
+        if blk.is_mermaid:
+            return None
+        newbody, ch = _fix_body(blk.body)
+        allchanges.extend((blk.lang, o, n) for o, n in ch)
+        return blk.rebuild(body=newbody)
 
-    return FENCE.sub(repl, md), allchanges
+    return fences.transform(md, repl), allchanges

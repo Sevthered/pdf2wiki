@@ -10,10 +10,12 @@ language tags, including mermaid) and asserts the invariants each transformer's 
 A Hypothesis counterexample here is therefore a real finding (a broken idempotence/fidelity claim),
 not a flaky test — triage it (fix the code or soften the documented claim), don't just delete it.
 
-Domain restriction (matches what the converter actually emits, and what the phase5 FENCE regexes
-were written for): generated fence bodies never contain a bare ``` line or an embedded newline, and
-language tags are letters-only. Malformed/unbalanced fences are out of scope — the converter never
-produces them inside a single block.
+Domain restriction (matches what the converter actually emits): generated fence bodies never contain
+a bare ``` line or an embedded newline. Language tags are NOT letters-only — since the shared
+`phase5.fences` lexer replaced the per-step `[a-zA-Z]*` regexes, info strings like `c++`, `c#`,
+`objective-c`, `MERMAID`, and `java {highlight=2}` are in the documented domain and the invariants
+below must hold for them too. Malformed/unbalanced fences are still out of scope — the converter
+never produces them inside a single block.
 """
 
 import os
@@ -70,7 +72,24 @@ _CAPTION_LINE = st.sampled_from(
     ]
 )
 _TAG = st.sampled_from(
-    ["", "text", "code", "python", "java", "bash", "yaml", "ruby", "go", "mermaid"]
+    [
+        "",
+        "text",
+        "code",
+        "python",
+        "java",
+        "bash",
+        "yaml",
+        "ruby",
+        "go",
+        "mermaid",
+        # non-letter / decorated / cased info strings: unmatchable by the old `[a-zA-Z]*` regexes
+        "c++",
+        "c#",
+        "objective-c",
+        "MERMAID",
+        "java {highlight=2}",
+    ]
 )
 
 

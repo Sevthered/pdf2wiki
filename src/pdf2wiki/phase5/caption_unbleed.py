@@ -28,7 +28,8 @@ plain text and no longer matches the fence regex).
 
 import re
 
-FENCE = re.compile(r"^(```)([a-zA-Z]*)\n(.*?)^```[ \t]*$", re.S | re.M)
+from . import fences
+
 CAPTION = re.compile(r"^(Listing|Figure|Table|Example)\s+(\d+(?:\.\d+)*)\s+(.+?)\s*$")
 
 
@@ -36,19 +37,20 @@ def unbleed(md: str) -> tuple[str, list[str]]:
     """Return (new_md, list of unwrapped caption labels)."""
     changes: list[str] = []
 
-    def repl(mo: re.Match[str]) -> str:
-        tag, body = mo.group(2), mo.group(3)
-        if tag == "mermaid":
-            return mo.group(0)
-        raw = body.split("\n")
+    def repl(blk: fences.Block) -> str | None:
+        if blk.is_mermaid:
+            return None
+        raw = blk.body.split("\n")
         nonempty = [l for l in raw if l.strip()]
         if not nonempty:
-            return mo.group(0)
+            return None
         m = CAPTION.match(nonempty[0].strip())
         if not m:  # first content line isn't a caption -> leave alone
-            return mo.group(0)
+            return None
         label, num, rest = m.group(1), m.group(2), m.group(3)
-        cap = f"**{label} {num}** {rest}"
+        # keep the fence's own indent: an indented fence lives inside a list item, and emitting the
+        # caption at column 0 would end the list and drop the item's remaining content out of it.
+        cap = f"{blk.indent}**{label} {num}** {rest}"
         changes.append(f"{label} {num}")
         if len(nonempty) == 1:  # caption-ONLY fence -> drop the fence entirely
             return f"{cap}\n"
@@ -62,7 +64,7 @@ def unbleed(md: str) -> tuple[str, list[str]]:
         new_body = "\n".join(out_lines).lstrip("\n")
         if not new_body.endswith("\n"):
             new_body += "\n"
-        return f"{cap}\n\n```{tag}\n{new_body}```"
+        return f"{cap}\n\n{blk.rebuild(body=new_body)}"
 
-    out = FENCE.sub(repl, md)
+    out = fences.transform(md, repl)
     return out, changes

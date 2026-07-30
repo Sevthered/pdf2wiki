@@ -19,7 +19,8 @@ Validation is a parse-breaker score (proxy), not a real mermaid parse.
 
 import re
 
-MERBLOCK = re.compile(r"^(```mermaid\n)(.*?)^(```)", re.S | re.M)
+from . import fences
+
 ARROW = re.compile(r"(\s*(?:-\.->|--[>x]|==>|===|-\.-|---|~~~)\s*)")  # keep arrows as separators
 # id (or `subgraph name`) + shape-open + "label" + close. Prefix allows a `subgraph name ` lead-in.
 NODE = re.compile(r'^([\w&;\s]*?)([\[\{\(])"(.*)"([\]\}\)])(.*)$')
@@ -30,11 +31,17 @@ ORPHAN_TAIL = re.compile(
 )  # stray brackets/br after a close
 
 
+BR_EDGE = re.compile(r"^(?:\s*<br>)+|(?:<br>\s*)+$")
+
+
 def _san_inner(s: str) -> str:
     s = s.replace("\\", "")  # drop stray backslashes (\' escape noise)
     s = s.replace('"', "'").replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
     s = re.sub(r"(<br>\s*)+", "<br>", s)
-    return s.strip("<br> ").strip()
+    # Strip a leading/trailing <br> TOKEN. `str.strip("<br> ")` was a character set: it ate the
+    # final letters of every label ending in b/r/</>/space ("Load Balancer" -> "Load Balance",
+    # "Web" -> "We"), silently truncating node text in shipped books.
+    return BR_EDGE.sub("", s).strip().strip()
 
 
 def _fix_segment(seg: str) -> str:
@@ -76,16 +83,19 @@ def repair(md: str) -> tuple[str, dict[str, int]]:
     """Return (new_md, stats dict: blocks_changed, score_before, score_after)."""
     state = {"blocks_changed": 0, "score_before": 0, "score_after": 0}
 
-    def repl(mo: re.Match[str]) -> str:
-        body = mo.group(2)
+    def repl(blk: fences.Block) -> str | None:
+        if not blk.is_mermaid:
+            return None
+        body = blk.body
         b0 = issues(body)
         nb = _fix_block(body)
         b1 = issues(nb)
         state["score_before"] += b0
         state["score_after"] += b1
-        if nb != body:
-            state["blocks_changed"] += 1
-        return mo.group(1) + nb + mo.group(3)
+        if nb == body:
+            return None
+        state["blocks_changed"] += 1
+        return blk.rebuild(body=nb)
 
-    out = MERBLOCK.sub(repl, md)
+    out = fences.transform(md, repl)
     return out, state

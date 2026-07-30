@@ -27,6 +27,7 @@ from pdf2wiki.convert.merge import (
     render,
     run_mineru,
     strip_callouts,
+    strip_fence,
     strip_listing_numbers,
     toc_level1,
     transplant_indent,
@@ -39,6 +40,41 @@ def test_norm_code_ignores_fences_captions_callouts():
     a = "```java\nListing 3.1 Foo.java\npublic class Foo {①\n}\n```"
     b = "public class Foo {\n}"
     assert norm_code(a) == norm_code(b)
+
+
+def test_norm_code_strips_a_non_word_fence_tag_whole():
+    # `re.sub(r"```\w*", ...)` left `++`/`#` in the compare stream, so EVERY C++/C# block compared
+    # unequal and landed on the divergence branch (code_flagged) even when the passes agreed.
+    for tag in ["c++", "c#", "objective-c", "java {highlight=2}"]:
+        a = f"```{tag}\nint x = 1;\n```"
+        assert norm_code(a) == norm_code("int x = 1;"), tag
+    assert strip_fence("```c++\nint x = 1;\n```\n") == "int x = 1;\n"
+
+
+def test_norm_code_strips_a_deeply_indented_fence():
+    # anchoring the pattern at `^[ \t]{0,3}` left a 4+-space-indented fence (a code block inside a
+    # list item) in the stream -> false divergence, and the flat fallback emitted a stray ``` that
+    # closed the surrounding fence early.
+    a = "    ```python\ndef f():\nreturn 1\n    ```"
+    b = "```python\ndef f():\n    return 1\n```"
+    assert norm_code(a) == norm_code(b)
+
+
+def test_norm_code_keeps_a_tilde_run_as_content():
+    # `~~~` runs are real content in console output / ASCII art. Erasing them made a genuine
+    # pipeline-vs-hybrid divergence compare equal, so VLM text shipped as `code_verified` unflagged.
+    a = "output:\n~~~~~~~~\nvalue = 1\n"
+    b = "output:\n~~~~~~~~~~~~~~~~\nvalue = 1\n"
+    assert norm_code(a) != norm_code(b)
+
+
+def test_transplant_indent_keeps_a_tilde_line_on_both_sides():
+    # the fence filter must classify lines the same way for hybrid and pipeline, else a `~~~` line
+    # survives on one side only, the 1:1 count check fails, and the line is dropped from the output.
+    disp, reindented = transplant_indent(
+        "def f():\n    ~~~~~~~~~~\n    return 1", "def f():\n~~~~~~~~~~\nreturn 2"
+    )
+    assert reindented and disp == "def f():\n    ~~~~~~~~~~\n    return 2"
 
 
 def test_norm_code_collapses_long_blobs():

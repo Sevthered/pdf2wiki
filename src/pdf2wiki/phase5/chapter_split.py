@@ -21,7 +21,8 @@ import json
 import os
 import re
 
-FENCE = re.compile(r"^```")
+from . import fences
+
 H1 = re.compile(r"^# (.+)$")
 APPENDIX_H2 = re.compile(r"^## (Appendix [A-Z]\..+)$")
 
@@ -29,12 +30,11 @@ APPENDIX_H2 = re.compile(r"^## (Appendix [A-Z]\..+)$")
 def find_boundaries(lines: list[str]) -> list[tuple[int, str]]:
     """Return list of (line_index, heading_text) for chapter-level boundaries, fence-aware."""
     bounds = []
-    in_fence = False
+    # shared lexer: the old `^```` toggle mis-tracked tilde fences, longer fence runs, and any
+    # info string it could not parse (a `c++` opener flipped the toggle out of step).
+    in_code = fences.code_lines(lines)
     for i, ln in enumerate(lines):
-        if FENCE.match(ln):
-            in_fence = not in_fence
-            continue
-        if in_fence:
+        if i in in_code:
             continue
         m = H1.match(ln)
         if m:

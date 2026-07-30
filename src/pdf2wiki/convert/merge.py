@@ -356,6 +356,16 @@ def strip_listing_numbers(s: str) -> str:
 
 
 CAPTION = re.compile(r"^\s*(Listing|Figure|Table)\s+\d")  # caption line bled into a code block
+# A whole fence line, tag and all. Line-anchored (re.M) and greedy to end-of-line so a non-word info
+# string (```c++, ```c#, ```java {hl}) is removed WHOLE — a `\w*` tag match left `++`/`#` behind in
+# the compare stream, which flagged every C++ block as diverged. Anchoring also keeps a stray
+# mid-line ``` in a markdown-about-markdown snippet from eating the rest of its line.
+# Deliberately BACKTICK-only and indent-agnostic, matching both the old `` ```\w* `` and the
+# `l.strip().startswith("```")` test in transplant_indent: MinerU emits only backtick fences, a `~~~`
+# run is real content in console output / ASCII art (erasing it hid genuine VLM divergence), and a
+# 4+-space-indented fence must still be stripped (leaving it in flagged correct blocks as diverged).
+FENCE_LINE = re.compile(r"^[ \t]*`{3,}[^\n]*$", re.M)
+FENCE_LINE_NL = re.compile(r"^[ \t]*`{3,}[^\n]*\n?", re.M)  # + its newline (no blank line left)
 
 
 def norm_code(s: str) -> str:
@@ -363,7 +373,7 @@ def norm_code(s: str) -> str:
     noise that causes false divergence flags: fences, merged captions, markdown-escaped `\\_`,
     and long base64/JWT/key blobs (collapsed to a placeholder so OCR l/1 O/0 confusions in
     illustrative tokens don't flag)."""
-    s = re.sub(r"```\w*", "", s or "")
+    s = FENCE_LINE.sub("", s or "")
     s = strip_listing_numbers(s)  # printed listing numbers: text layer has them, VLM omits them
     s = "\n".join(l for l in s.split("\n") if not CAPTION.match(l))
     s = strip_callouts(s).replace("\\", "")
@@ -379,7 +389,7 @@ PY_MARK = re.compile(r"\b(def|class|import|from|async\s+def|lambda)\b")
 
 
 def strip_fence(s: str) -> str:
-    return re.sub(r"```\w*\n?", "", s or "")
+    return FENCE_LINE_NL.sub("", s or "")
 
 
 def indent_suspect(body: str) -> bool:
@@ -409,7 +419,7 @@ def transplant_indent(hybrid_body: str, pipe_body: str) -> tuple[str, bool]:
     Returns (display_body, reindented_bool)."""
     hy = [l for l in (hybrid_body or "").split("\n") if not l.strip().startswith("```")]
     pi: list[str] = []
-    for l in strip_listing_numbers(re.sub(r"```\w*", "", pipe_body or "")).split("\n"):
+    for l in strip_listing_numbers(FENCE_LINE.sub("", pipe_body or "")).split("\n"):
         if CAPTION.match(l):
             continue
         # Unescape MARKDOWN-punct escapes ($ * ~ _ ` # @ % & !) — pipeline's md emitter escapes bare

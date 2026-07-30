@@ -19,6 +19,8 @@ Never touches ```mermaid. Idempotent.
 import collections
 import re
 
+from . import fences
+
 EXT = {
     "py": "python",
     "js": "javascript",
@@ -63,15 +65,18 @@ GENERIC = {"", "code", "txt", "text", "algorithm", "plaintext", "none"}
 # normalize a few aliases to canonical fence names
 CANON = {
     "shell": "bash",
-    "sh": "bash",
-    "yml": "yaml",
     "plaintext": "text",
-    "txt": "text",
     "c++": "cpp",
-    "cc": "cpp",
+    "c#": "csharp",
+    "objective-c": "objectivec",
+    "objc": "objectivec",
     "props": "properties",
-    "kotlin": "kotlin",
+    "make": "makefile",
+    "mk": "makefile",
 }
+# Aliases that are also FILE EXTENSIONS (sh, yml, txt, js, ts, py, rs, kt, cs, cc, cxx, h, hpp,
+# proto, ...) live in EXT ALONE: `detect` falls back to EXT, so one table serves both the
+# `# file: x.ext` hint and the fence tag. Do not re-add them here — two tables drift.
 VALID = set(EXT.values()) | {
     "bash",
     "python",
@@ -98,8 +103,20 @@ VALID = set(EXT.values()) | {
     "c",
     "cpp",
     "csharp",
+    "objectivec",
     "scala",
     "php",
+    # tags real books/authors emit correctly and the keyword heuristic cannot detect. Without them
+    # a SPECIFIC tag falls through to `heuristic()` and lands on `text` — a downgrade. Kept
+    # separate from MinerU's KNOWN-WRONG guesses (swift, erlang), which must stay re-detected.
+    "makefile",
+    "cmake",
+    "hcl",
+    "qml",
+    "vhdl",
+    "gherkin",
+    "graphql",
+    "pseudocode",
 }
 
 
@@ -207,13 +224,12 @@ def detect(cur_tag: str, body: str) -> tuple[str, str]:
     m = re.search(r"#\s*file:\s*\S+\.([A-Za-z0-9]+)", body)  # 1. file-ext hint
     if m and m.group(1).lower() in EXT:
         return EXT[m.group(1).lower()], "ext"
-    canon_cur = CANON.get(cur_tag, cur_tag)
+    # one alias table: explicit fence-tag aliases first, then the file-extension map (a fence tag is
+    # very often just the extension: `py`, `rs`, `kt`, `js`, `proto`).
+    canon_cur = CANON.get(cur_tag, EXT.get(cur_tag, cur_tag))
     if canon_cur not in GENERIC and canon_cur in VALID:  # 2. trust specific MinerU tag
         return canon_cur, "kept"
     return heuristic(body), "kw"  # 3. heuristic (4. -> text)
-
-
-FENCE = re.compile(r"^(```)([a-zA-Z]*)\n(.*?)^```", re.S | re.M)
 
 
 def retag(md: str) -> tuple[str, list[tuple[str, str, str, str]], collections.Counter[str]]:
@@ -221,15 +237,23 @@ def retag(md: str) -> tuple[str, list[tuple[str, str, str, str]], collections.Co
     changes: list[tuple[str, str, str, str]] = []
     stats: collections.Counter[str] = collections.Counter()
 
-    def repl(mo: re.Match[str]) -> str:
-        tag, body = mo.group(2), mo.group(3)
-        if tag == "mermaid" or not body.strip():
-            return mo.group(0)
-        new, why = detect(tag, body)
+    def repl(blk: fences.Block) -> str | None:
+        body = blk.body
+        if blk.is_mermaid or not body.strip():
+            return None
+        info = blk.info.strip()
+        if info.startswith("{"):
+            # Pandoc/attribute syntax (```{.python .numberLines}): the language is fused into the
+            # attribute list, so rewriting the first whitespace-separated token would emit a
+            # malformed info string. Leave the block alone.
+            return None
+        raw_tag = info.split(None, 1)[0] if info else ""  # verbatim first token (case, punctuation)
+        new, why = detect(blk.lang, body)
         stats[why] += 1
-        if (tag or "<none>") != new:
-            changes.append((tag or "<none>", new, why, body.strip().split("\n")[0][:55]))
-        return f"```{new}\n{body}```"
+        if raw_tag == new:  # already canonical -> leave the block byte-identical
+            return None
+        changes.append((raw_tag or "<none>", new, why, body.strip().split("\n")[0][:55]))
+        return blk.rebuild(lang=new)
 
-    out = FENCE.sub(repl, md)
+    out = fences.transform(md, repl)
     return out, changes, stats

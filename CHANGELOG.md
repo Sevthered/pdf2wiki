@@ -6,6 +6,47 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Phase 5 no longer rewrites prose as code.** Each phase-5 step carried its own
+  ``^(```)([a-zA-Z]*)\n(.*?)^``` `` regex. That pattern cannot match a fence whose info string is not
+  letters-only (```` ```c++ ````, ```` ```c# ````, ```` ```objective-c ````,
+  ```` ```java {highlight=2} ````) or a fence indented inside a list item — and instead of skipping
+  such a block it began matching at the block's **closing** fence and paired it with the **next**
+  block's opener, handing the text in between (prose included) to the step as a code body. Observed:
+  `code_unescape` stripped markdown escapes out of prose, which its documentation forbids, and
+  `lang_retag` wrote a language tag onto a closing fence, breaking the document. All five steps and
+  `chapter_split` now share one lexer, `pdf2wiki.phase5.fences`, which follows CommonMark's fenced-code
+  rules: indent up to three spaces, backtick **or tilde** fences of any length ≥ 3, a closing fence of
+  the same character and at least the opener's length, and free-form info strings. Re-emitting an
+  untouched block is byte-identical. An opener with **no matching closer is not treated as a block**:
+  CommonMark would render it as code to end of document, but these steps *rewrite* what they match, and
+  letting one stray fence claim the document tail would strip escapes out of prose and make
+  `chapter_split` swallow every later chapter boundary. A fence whose info string is Pandoc attribute
+  syntax (```` ```{.python .numberLines} ````) is left alone rather than rewritten, and a caption lifted
+  out of an indented fence keeps that indent so it stays inside its list item.
+- **Language tags that the heuristic cannot detect are kept instead of downgraded to `text`.** With
+  non-letter and indented fences finally visible, a specific-but-unrecognised tag fell through to the
+  keyword heuristic. Added `pseudocode`, `cmake`, `makefile` (`make`, `mk`), `hcl`, `qml`, `vhdl`,
+  `gherkin`, `graphql`, `c++`→`cpp`, `c#`/`cs`→`csharp`, `objective-c`/`objc`→`objectivec`,
+  `js`→`javascript`, `ts`→`typescript`, `proto`→`protobuf`. MinerU's known-wrong guesses (`swift`,
+  `erlang`) are still re-detected on purpose. Measured on a 1674-page reference vault, this preserves
+  250+ correct author tags that the previous version rewrote. Tag resolution now consults the
+  file-extension map as a fallback, so the alias table lives in one place instead of two.
+- **The mermaid guard is case-insensitive** and tolerates an info-string suffix, so a
+  ```` ```MERMAID ```` or ```` ```mermaid {theme} ```` block is no longer treated as ordinary code.
+- **Mermaid node labels are no longer truncated.** `mermaid_repair` finished label sanitising with
+  `s.strip("<br> ")`. `str.strip` takes a *character set*, so every label ending in `b`, `r`, `<`,
+  `>`, or a space lost that run: `Load Balancer` → `Load Balance`, `Web` → `We`, `Broker` → `Broke`.
+  Only whole leading/trailing `<br>` tokens are stripped now. Books converted with earlier versions
+  carry the truncation in their output and need re-running from a pre-phase-5 markdown to recover it.
+- **The code token-verify compare no longer flags every C++ block as diverged.** `convert/merge.py`
+  stripped fences with `` ```\w* ``, which left `++` (or `#`) from a non-word info string in the
+  compare stream. It now removes the whole fence line, anchored to line start — but stays
+  backtick-only and indent-agnostic, matching the predicate the hybrid side of the comparison already
+  used: a `~~~` run is real content in console output, and erasing it would have hidden genuine
+  pipeline-vs-hybrid divergence, while refusing to strip a deeply indented fence would have flagged
+  correct blocks.
+
 ### Changed
 - **llm-wiki plugin 0.1.1** — the bundled Claude Code plugin is versioned independently of the
   converter (`plugin/.claude-plugin/plugin.json`) and is delivered from `main` via

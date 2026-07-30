@@ -16,9 +16,10 @@ All notable changes to this project are documented here. The format is based on
   `code_unescape` stripped markdown escapes out of prose, which its documentation forbids, and
   `lang_retag` wrote a language tag onto a closing fence, breaking the document. All five steps and
   `chapter_split` now share one lexer, `pdf2wiki.phase5.fences`, which follows CommonMark's fenced-code
-  rules: indent up to three spaces, backtick **or tilde** fences of any length ≥ 3, a closing fence of
-  the same character and at least the opener's length, and free-form info strings. Re-emitting an
-  untouched block is byte-identical. An opener with **no matching closer is not treated as a block**:
+  rules as far as converter output needs: indent up to three spaces, backtick fences of any length ≥ 3
+  (see the tilde entry below for why not tildes too), a closing fence at least the opener's length,
+  and free-form info strings. Re-emitting an untouched block is byte-identical. An opener with **no
+  matching closer is not treated as a block**:
   CommonMark would render it as code to end of document, but these steps *rewrite* what they match, and
   letting one stray fence claim the document tail would strip escapes out of prose and make
   `chapter_split` swallow every later chapter boundary. A fence whose info string is Pandoc attribute
@@ -46,6 +47,37 @@ All notable changes to this project are documented here. The format is based on
   used: a `~~~` run is real content in console output, and erasing it would have hidden genuine
   pipeline-vs-hybrid divergence, while refusing to strip a deeply indented fence would have flagged
   correct blocks.
+- **`fences.py` no longer treats `~~~` as a fence character.** MinerU emits only backtick fences, and
+  every book converted so far uses `~~~` runs as real content (console output, ASCII art) — but a
+  **pair** of tilde divider rows in prose still lexed as one closed block, so `code_unescape`/
+  `dash_normalize` rewrote the prose between them and `chapter_split` dropped any chapter boundary
+  inside. A single stray tilde row was already inert (no matching closer); the pair was not. The
+  lexer is backtick-only now, matching `convert/merge.py`'s `FENCE_LINE`, which already made this
+  choice for the same reason. Measured on the 1674-page reference vault: zero blocks change (no
+  tilde fences present), so the narrowing costs nothing there.
+- **`lang_retag`'s new brace-family branches (previous entry) had five overclaim defects**, found by a
+  blind review of their own diff and confirmed by executing the heuristic against the reference vault.
+  Each guard was priced (old-vs-new FIXED/BROKEN over all 1674 pages) before landing and costs **0
+  BROKEN**; a sixth, unrelated dead-code cleanup from the same review is listed last:
+  - A bare `enum X {` (no `export`) is Java/C/C++/Rust far more often than TypeScript in this corpus;
+    `TS_STRONG`'s enum alternative exempted it from the export-required rule the rest of the branch
+    states as its own design rationale. `enum` now requires `export` like `interface`/`type`.
+  - `C_FAMILY`'s `#\s*(include|define|...)` matched an ordinary comment whose first word happened to
+    be "define"/"include" (`# define a helper` above a Python `def`, `# include the sidecar` above a
+    YAML `services:`). The directive must now be glued to `#`; `#include` additionally requires the
+    real `<...>`/`"..."` header syntax a comment never has.
+  - `MAKEFILE`'s target-plus-recipe pattern (`target:` followed by a TAB-indented line) matched
+    Python's `else:` and Go's `default:`/`case N:` with tab-indented bodies, since it needed only a
+    bare colon-terminated token. The target name can no longer be a language keyword.
+  - `MAKEFILE`'s built-in-function list included `basename`, which is as much a POSIX coreutils
+    idiom (`$(basename "$0")`) as a Make call; `dirname` was already excluded by its own `\b` boundary
+    but `basename` was not. Dropped.
+  - The `html` gate only required a block to open with `<` and an HTML element name from its list;
+    those names overlap non-HTML XML vocabularies (Atom `<link>`/`<title>`, DocBook `<table>`). A
+    leading `<?xml` now short-circuits straight to the xml branch.
+  - `mermaid_repair._san_inner` ended with a dead second `.strip()` (`str.strip` is idempotent) — a
+    leftover from replacing the earlier `s.strip("<br> ")` character-set bug (previous entry). No
+    behavior change; removed because it read as if the two calls did something different.
 
 ### Added
 - **`lang_retag` detects C, C++, CMake, Rust, Go, JavaScript and TypeScript.** The keyword heuristic

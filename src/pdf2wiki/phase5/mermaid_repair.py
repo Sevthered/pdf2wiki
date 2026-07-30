@@ -41,7 +41,7 @@ def _san_inner(s: str) -> str:
     # Strip a leading/trailing <br> TOKEN. `str.strip("<br> ")` was a character set: it ate the
     # final letters of every label ending in b/r/</>/space ("Load Balancer" -> "Load Balance",
     # "Web" -> "We"), silently truncating node text in shipped books.
-    return BR_EDGE.sub("", s).strip().strip()
+    return BR_EDGE.sub("", s).strip()
 
 
 def _fix_segment(seg: str) -> str:

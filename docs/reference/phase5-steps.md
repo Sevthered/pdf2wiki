@@ -14,8 +14,12 @@ info-string suffix).
 All six steps find code blocks through one shared lexer, `pdf2wiki.phase5.fences`, rather than their own
 regex. It follows CommonMark's fenced-code rules as far as converter output needs:
 
-- **opener** — up to three spaces of indent, then three or more backticks **or** tildes, then a
-  free-form info string. A backtick fence's info string may not contain a backtick.
+- **opener** — up to three spaces of indent, then three or more backticks, then a free-form info
+  string. A backtick fence's info string may not contain a backtick. Backtick-only, deliberately:
+  MinerU emits only backtick fences, and a `~~~` run is real content (console output, ASCII art) in
+  every book converted so far — treating it as a fence let a *pair* of tilde divider rows in prose
+  lex as one code block, corrupting the prose between them and costing `chapter_split` any chapter
+  boundary inside.
 - **closer** — the same fence character, at least as long as the opener, with nothing but whitespace
   after it.
 - **language** — the first whitespace-separated token of the info string, lowercased. Any remainder
@@ -88,10 +92,13 @@ several languages share, so the families with an unmistakable marker are resolve
     `properties`, generic `yaml` — then `text`.
 
 **Known limits.** A schema/IDL language with no branch of its own can borrow a neighbour's tag when
-its syntax overlaps: GraphQL SDL and a FlatBuffers schema can read as `typescript`, a Thrift `struct`
-as `c`. Measured over a 1674-page, 13240-block reference vault, that affects 8 blocks — all of which
-were `text` before. Allman-braced JavaScript can read as `pseudocode` (2 blocks), and a `kubectl -o
-go-template=…` command as `go` (1 block).
+its syntax overlaps: a FlatBuffers `table`/`namespace` block reads as `typescript` (its field syntax
+is the same `name:type` shape as a TS property annotation) and a Thrift `struct` can read as `c`.
+Measured over a 1674-page, 13240-block reference vault, that's 2 blocks, both `text` before any
+brace-family branch existed. (A prior, larger count here bundled in four C/C++/Rust `enum` blocks
+that were misdetected as `typescript`; that was a real defect, not a schema-overlap limit — fixed by
+requiring `export` on an `enum` before it counts as TypeScript.) Allman-braced JavaScript can read as
+`pseudocode` (2 blocks), and a `kubectl -o go-template=…` command as `go` (1 block).
 
 ## Why this order
 

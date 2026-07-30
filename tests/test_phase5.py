@@ -306,6 +306,69 @@ def test_html_page_with_inline_script_is_html():
     assert tag(body) == "html"
 
 
+# ---------- lang_retag: overclaim guards (found reviewing PR #43/#44 against their own diffs) ----------
+# Session-22 added the brace-family branches; each of these overclaimed blocks that already had a
+# correct home. All priced against the 1674-page reference vault before landing: 0 BROKEN.
+
+
+def test_bare_enum_is_not_typescript():
+    # A bare `enum X {` is Java/C/C++/Rust far more often than TS in this corpus (TS_STRONG used to
+    # exempt `enum` from its own export-required rule).
+    assert tag("enum Suit {\n    HEARTS, SPADES;\n}\n") != "typescript"
+    assert tag("enum State {\n    IDLE,\n    RUNNING\n};\n") != "typescript"
+
+
+def test_exported_enum_is_still_typescript():
+    assert tag("export enum Suit {\n  Hearts, Spades\n}\n") == "typescript"
+
+
+def test_comment_starting_define_or_include_is_not_c():
+    # `#\s*define`/`#\s*include` matched an ordinary comment whose first word happened to be
+    # "define"/"include" -- the directive must be glued to `#`, and `#include` needs the real
+    # `<...>`/`"..."` header syntax.
+    assert tag("# define a helper\ndef square(n):\n    return n * n\n") == "python"
+    assert tag("# include the sidecar\nservices:\n  web:\n    image: nginx\n") == "yaml"
+
+
+def test_real_preprocessor_directives_still_match_c():
+    assert tag("#include <stdio.h>\nint main() { return 0; }\n") == "c"
+    assert tag("#define MAX 100\nint x = MAX;\n") == "c"
+
+
+def test_language_keyword_target_line_is_not_makefile():
+    # `else:`/`default:` followed by a TAB-indented body matched the Make target-plus-recipe
+    # pattern, which needs only a bare colon-terminated token. Neither snippet carries another
+    # signal strong enough to name its real language (no `def`/`func`/`package`), so `text` --
+    # not `makefile` -- is the correct result; that's the defect this guards against.
+    assert tag('for i in range(3):\n\tprint(i)\nelse:\n\tprint("done")\n') != "makefile"
+    assert tag('switch v {\ncase 1:\n\treturn "one"\ndefault:\n\treturn "other"\n}\n') != "makefile"
+
+
+def test_language_keyword_target_line_with_a_real_signal_is_still_detected():
+    # Once the block carries its own language signal, the keyword guard doesn't interfere.
+    assert tag("def square(n):\n    return n * n\nelse:\n\tpass\n") == "python"
+
+
+def test_ordinary_target_line_is_still_makefile():
+    assert tag("build:\n\tgcc -o out main.c\n") == "makefile"
+
+
+def test_basename_call_is_not_makefile():
+    # `$(basename "$0")` is a POSIX coreutils idiom as much as a Make function call.
+    assert tag("#!/bin/bash\nDIR=$(basename $0)\nchmod +x $DIR\n") == "bash"
+
+
+def test_make_builtin_functions_still_match_makefile():
+    assert tag("SRC := $(wildcard *.c)\nOBJ := $(patsubst %.c,%.o,$(SRC))\n") == "makefile"
+
+
+def test_xml_prolog_is_not_html():
+    # The html gate's element-name list overlaps non-HTML XML vocabularies (Atom `<link>`, DocBook
+    # `<table>`); a leading `<?xml` must win first.
+    body = '<?xml version="1.0"?>\n<feed>\n  <entry><title>t</title><link href="/a"/></entry>\n</feed>\n'
+    assert tag(body) == "xml"
+
+
 def test_javascript_building_markup_in_a_string_stays_javascript():
     body = 'function build() {\n    let html = "<h1>Friends</h1><table>";\n    return html;\n}\n'
     assert tag(body) == "javascript"

@@ -12,6 +12,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      # codeql-action's sub-actions are separate Dependabot dependencies
+      # (dependency-name: github/codeql-action/init, .../analyze, .../upload-sarif), so ungrouped it
+      # opens one PR per sub-action. codeql.yml runs init and analyze from the SAME SHA, and CodeQL
+      # refuses a mismatched pair -- "Not all workflow steps that use `github/codeql-action` actions
+      # use the same version" -> "CodeQL job status was configuration error". So a per-sub-action PR
+      # fails its own required check and CANNOT go green alone (observed on #47 and #48, 2026-07-30).
+      # Grouping makes one PR bump all of them together, which is the same matched-pair rule the
+      # ignore: block below states in prose for upload/download-artifact.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
     ignore:
       # Keep upload/download-artifact as a matched v4 pair. Their major bumps only run in publish.yml
       # (never exercised by PR CI) and mixing majors risks a broken Trusted-Publishing release; bump

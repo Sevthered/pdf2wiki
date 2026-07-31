@@ -84,6 +84,26 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
     from .phase5 import run_chain
 
     report = run_chain(a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply)
+    sp = report["symbol_pua"]
+    sp2 = report["symbol_pua_post_caption"]
+    print(
+        f"symbol_pua: {sp['total_changes'] + sp2['total_changes']} changes "
+        f"(list {sp['list_markers'] + sp2['list_markers']}, "
+        f"heading {sp['heading_markers'] + sp2['heading_markers']}, "
+        f"stray {sp['stray_markers'] + sp2['stray_markers']})"
+    )
+    if sp["skipped_crlf"]:
+        print("  ⚠ SKIPPED — document has CRLF line endings; fence detection is LF-only")
+    if sp["stray_unhandled"] + sp2["stray_unhandled"]:
+        print(
+            f"  ⚠ {sp['stray_unhandled'] + sp2['stray_unhandled']} mid-word marker(s) LEFT IN PLACE"
+            " — no safe reading; inspect by hand"
+        )
+    if sp["in_code"]:
+        print(f"  · verified glyphs left inside code fences: {sp['in_code']}")
+    if sp["unknown"] or sp2["unknown"]:
+        print(f"  ⚠ UNVERIFIED PUA codepoints left as-is: {sp['unknown'] or sp2['unknown']}")
+        print("    Render the source page, confirm the character, then add it to phase5.symbol_pua")
     print(f"caption_unbleed: {report['caption_unbleed']['unwrapped']} unwrapped")
     lr = report["lang_retag"]
     print(f"lang_retag: {lr['changes']} changes {lr['stats']}")

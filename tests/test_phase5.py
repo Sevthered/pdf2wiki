@@ -17,6 +17,7 @@ from pdf2wiki.phase5 import (
     dash_normalize,
     lang_retag,
     mermaid_repair,
+    symbol_pua,
 )
 
 # ---------- caption_unbleed ----------
@@ -542,3 +543,147 @@ def test_split_no_boundaries_raises(tmp_path):
         assert False, "expected NoBoundariesError"
     except chapter_split.NoBoundariesError:
         pass
+
+
+# ---------- symbol_pua ----------
+# Fixtures use the exact shapes found in the corpus; each is annotated with the source page that
+# was rendered to confirm what the book actually prints (see bug-symbol-font-pua-glyphs-dropped).
+
+PI, SIGMA, ARROW, BULLET = "", "", "", ""
+
+
+def test_pua_inline_symbols_remapped():
+    # Math for Programmers p504 prints "or 2π radians ... every 2π units".
+    md = f"if you rotate 360 degrees or 2{PI} radians, every 2{PI} units\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "if you rotate 360 degrees or 2π radians, every 2π units\n"
+    assert stats["remap_f070"] == 2
+    assert stats["unknown"] == {}
+
+
+def test_pua_sigma_is_capital_sigma_not_summation():
+    # U+F0E5 is Adobe Symbol's SUMMATION slot, but Advanced Algorithms p209 prints capital Sigma.
+    md = f"given an alphabet {SIGMA} with |{SIGMA}|=k symbols\n"
+    out, _ = symbol_pua.remap(md)
+    assert out == "given an alphabet Σ with |Σ|=k symbols\n"
+    assert "∑" not in out  # NOT the summation sign
+
+
+def test_pua_arrow_remapped():
+    # Microservices Patterns p440.
+    md = f"becomes Service {ARROW} Source Envoy {ARROW} Destination Envoy\n"
+    out, _ = symbol_pua.remap(md)
+    assert out == "becomes Service → Source Envoy → Destination Envoy\n"
+
+
+def test_pua_bullet_becomes_list_item():
+    # Deep Learning with Python p197: a "This chapter covers" bulleted list.
+    md = f"{BULLET} Using built-in Keras training and evaluation loops\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "- Using built-in Keras training and evaluation loops\n"
+    assert stats["list_markers"] == 1
+
+
+def test_pua_bullet_behind_stray_emphasis_opener():
+    # Deep Learning with Python p71: MinerU emitted the emphasis opener before the bullet.
+    md = f"*{BULLET} Dense layer with relu activation: An important observation\n"
+    out, _ = symbol_pua.remap(md)
+    assert out == "- Dense layer with relu activation: An important observation\n"
+
+
+def test_pua_bullet_in_heading_keeps_heading_level():
+    # Deep Learning with Python p399 prints these as list items, but the vault already has them as
+    # headings; this step must NOT restructure the document, only drop the glyph.
+    md = f"## {BULLET} With temperature=0.2\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "## With temperature=0.2\n"
+    assert stats["heading_markers"] == 1
+    assert stats["list_markers"] == 0
+
+
+def test_pua_code_blocks_are_untouched_and_reported():
+    md = f"prose 2{PI} here\n\n```text\n{BULLET} not a list item\n2{PI} literal\n```\n"
+    out, stats = symbol_pua.remap(md)
+    assert "prose 2π here" in out
+    assert f"{BULLET} not a list item" in out  # byte-identical inside the fence
+    assert f"2{PI} literal" in out
+    # verified glyphs inside a fence are a benign residue, NOT an unknown codepoint
+    assert stats["in_code"] == {"f0a1": 1, "f070": 1}
+    assert stats["unknown"] == {}
+
+
+def test_pua_unknown_codepoint_left_alone_and_reported():
+    md = "an  unverified glyph\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == md  # untouched — never guess
+    assert stats["unknown"] == {"f0ff": 1}
+    assert stats["in_code"] == {}
+
+
+def test_pua_idempotent():
+    md = f"{BULLET} item with 2{PI} and {ARROW}\n\n## {BULLET} Heading\n"
+    once, _ = symbol_pua.remap(md)
+    twice, stats = symbol_pua.remap(once)
+    assert once == twice
+    assert stats["total_changes"] == 0
+
+
+def test_pua_clean_document_unchanged():
+    md = "Ordinary prose.\n\n- a list\n\n```python\nx = 1\n```\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == md
+    assert stats["total_changes"] == 0
+
+
+# --- regression tests for the review findings (all reproduced before being fixed) ---
+
+
+def test_pua_stray_marker_never_joins_words():
+    # BLOCKER: `BULLET + [ \t]*` ate the marker AND the only space separating two real words,
+    # reporting "word next" -> "wordnext" as a successful fix.
+    out, stats = symbol_pua.remap(f"word{BULLET} next\n")
+    assert out == "word next\n"
+    assert stats["stray_markers"] == 1
+
+
+def test_pua_stray_marker_flush_between_words_is_left_alone():
+    # No safe reading — was it a separator or a decoration? Don't guess; report it.
+    md = f"acceptable{BULLET}unacceptable and more text\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == md  # untouched
+    assert stats["stray_unhandled"] == 1
+    assert stats["stray_markers"] == 0
+    assert stats["total_changes"] == 0  # leaving it in place is not a "change"
+
+
+def test_pua_isolated_stray_marker_leaves_no_double_space():
+    out, _ = symbol_pua.remap(f"before {BULLET} after\n")
+    assert out == "before after\n"
+
+
+def test_pua_double_marker_in_heading_leaves_no_double_space():
+    out, _ = symbol_pua.remap(f"## {BULLET} {BULLET} text\n")
+    assert out == "## text\n"
+
+
+def test_pua_crlf_document_is_refused_not_corrupted():
+    # fences.blocks() is LF-only, so on CRLF input it reports ZERO blocks and code would be
+    # rewritten as prose. Refuse instead.
+    md = f"a\r\n```text\r\n{BULLET} not a list item\r\n```\r\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == md
+    assert stats["skipped_crlf"] is True
+    assert stats["total_changes"] == 0
+
+
+def test_pua_glyph_unwrapped_by_caption_unbleed_is_still_remapped():
+    # HIGH: symbol_pua runs first and correctly skips a glyph inside a caption-only fence, but
+    # caption_unbleed then promotes that fence to prose — leaving a raw PUA byte in permanent text
+    # unless the chain re-runs the step.
+    md = f"prose\n\n```text\nTable 3.1 alphabet {SIGMA} notation\n```\n\nafter\n"
+    once, _ = symbol_pua.remap(md)
+    unwrapped, _ = caption_unbleed.unbleed(once)
+    assert SIGMA in unwrapped  # the hole the second pass exists to close
+    final, stats = symbol_pua.remap(unwrapped)
+    assert SIGMA not in final
+    assert "alphabet Σ notation" in final

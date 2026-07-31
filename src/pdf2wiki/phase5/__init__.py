@@ -4,13 +4,17 @@
 
 """Phase 5 post-processing chain — fixed order, each step sees the previous step's output:
 
-    caption_unbleed -> lang_retag -> dash_normalize -> mermaid_repair -> code_unescape -> chapter_split
+    symbol_pua -> caption_unbleed -> lang_retag -> dash_normalize -> mermaid_repair
+               -> code_unescape -> chapter_split
 
-Order matters: caption_unbleed removes caption-only junk fences and lifts leading captions so
-lang_retag detects on clean code; lang tags before dash-normalize scopes to code fences;
-dash/mermaid fixes must land before the md is split into chapters; code_unescape strips leftover
-markdown-punct escapes inside code fences last (both merge paths). Re-run whenever the converter
-output changes upstream — do not reuse stale artifacts.
+Order matters: symbol_pua runs FIRST because it repairs characters and line-level structure that
+every later step parses — a Private-Use-Area bullet marker at line start otherwise reaches
+chapter_split as a fake heading, and a dropped symbol silently corrupts prose no later step can
+detect; caption_unbleed removes caption-only junk fences and lifts leading captions so lang_retag
+detects on clean code; lang tags before dash-normalize scopes to code fences; dash/mermaid fixes
+must land before the md is split into chapters; code_unescape strips leftover markdown-punct
+escapes inside code fences last (both merge paths). Re-run whenever the converter output changes
+upstream — do not reuse stale artifacts.
 """
 
 from typing import Any
@@ -22,6 +26,7 @@ from . import (
     dash_normalize,
     lang_retag,
     mermaid_repair,
+    symbol_pua,
 )
 
 
@@ -40,8 +45,18 @@ def run_chain(
         md = f.read()
     report: dict[str, Any] = {}
 
+    md, pua = symbol_pua.remap(md)
+    report["symbol_pua"] = pua
+
     md, captions = caption_unbleed.unbleed(md)
     report["caption_unbleed"] = {"unwrapped": len(captions), "captions": captions}
+
+    # caption_unbleed UNWRAPS caption-only fences, promoting their text to prose. Any PUA glyph
+    # that the first pass correctly left alone as `in_code` is now running prose, and no later step
+    # would ever remap it — it would ship as an invisible codepoint in permanent text. Re-run on the
+    # unwrapped output. This pass is a no-op when nothing was unwrapped (the step is idempotent).
+    md, pua2 = symbol_pua.remap(md)
+    report["symbol_pua_post_caption"] = pua2
 
     md, retags, stats = lang_retag.retag(md)
     report["lang_retag"] = {

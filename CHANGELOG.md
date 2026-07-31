@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-07-31
+
+A phase-5 correctness release. Every fix here is present in every earlier published release
+(0.1.0 through 0.2.6), so books converted with those versions carry the defects in their output and
+need re-running from a pre-phase-5 markdown to recover. Three of them were found by reviewing the
+diffs of the other two.
+
 ### Fixed
 - **Phase 5 no longer rewrites prose as code.** Each phase-5 step carried its own
   ``^(```)([a-zA-Z]*)\n(.*?)^``` `` regex. That pattern cannot match a fence whose info string is not
@@ -312,7 +319,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.3...v0.2.4

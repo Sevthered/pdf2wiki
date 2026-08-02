@@ -33,7 +33,7 @@ Precise, complete descriptions of the machinery.
 - [CLI reference](reference/cli.md) — every command, flag, and default
 - [Configuration](reference/configuration.md) — the config file schema
 - [Pipeline stages](reference/pipeline-stages.md) — stages and their on-disk artifacts
-- [Phase 5 steps](reference/phase5-steps.md) — the six post-processors
+- [Phase 5 steps](reference/phase5-steps.md) — the eight post-processors
 - [Output layout](reference/output-layout.md) — what gets written, and the fidelity markers
 
 ## [Explanation](explanation/) — understand why

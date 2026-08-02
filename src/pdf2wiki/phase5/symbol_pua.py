@@ -155,8 +155,9 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
 
     # `fences.blocks()` is LF-only: its `_CLOSE` pattern allows no trailing `\r`, so a CRLF
     # document yields ZERO blocks and every code block would be treated as prose — this step would
-    # then rewrite bullets and glyphs *inside* code. Since this is the first step that rewrites
-    # bytes, refuse rather than corrupt. MinerU emits LF, so this is a guard, not a code path.
+    # then rewrite bullets and glyphs *inside* code. Since this is the first step whose edits are
+    # scoped to prose — `illegal_codepoints` runs before it, but is fence-agnostic and so has no
+    # LF dependency — refuse rather than corrupt. MinerU emits LF, so this is a guard, not a path.
     if "\r\n" in md:
         return md, {
             "list_markers": 0,

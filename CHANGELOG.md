@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **New phase-5 step `illegal_codepoints`, first in the chain: raw NUL and Unicode noncharacters are
+  removed from converted markdown.** A source PDF's text layer can hold `U+FFFF` where a font subset
+  failed to encode a character (*Modern C++ Tutorial* p55: a CJK word inside a C++ string literal,
+  printing blank), and MinerU writes each one out as a raw `U+0000` — confirmed in MinerU's own raw
+  chunk output, upstream of any merge code. A NUL makes the page **binary** to most tooling: `grep`
+  silently stops matching, so the page becomes invisible to the dead-link, orphan and content lints
+  that are supposed to guard it. The new step removes `U+0000`, the `U+FDD0`–`U+FDEF` block and the
+  plane-end `U+FFFE`/`U+FFFF` pairs across the **whole document, code fences included** — the
+  occurrence that motivated it is inside a ```` ```cpp ```` block, which `symbol_pua` is deliberately
+  scoped never to enter. Private Use Area codepoints are **not** touched; those carry real characters
+  and remain `symbol_pua`'s job. The codepoints are dropped rather than replaced with `U+FFFD`,
+  matching what the page prints (they are blank) and avoiding a character the source never had inside
+  a string literal. A removal that sat between two alphanumerics joins two words, so each is counted
+  as `word_joins` and flagged by the CLI instead of passing silently.
+
 ## [0.2.7] - 2026-07-31
 
 A phase-5 correctness release. Every fix here is present in every earlier published release

@@ -15,6 +15,7 @@ from pdf2wiki.phase5 import (
     chapter_split,
     code_unescape,
     dash_normalize,
+    illegal_codepoints,
     lang_retag,
     mermaid_repair,
     symbol_pua,
@@ -687,3 +688,104 @@ def test_pua_glyph_unwrapped_by_caption_unbleed_is_still_remapped():
     final, stats = symbol_pua.remap(unwrapped)
     assert SIGMA not in final
     assert "alphabet Σ notation" in final
+
+
+# ---------- illegal_codepoints ----------
+# The corpus fixture is *Modern C++ Tutorial* p55: the PDF's own text layer carries two U+FFFF
+# noncharacters inside a string literal (a CJK word the font subset failed to encode, printing
+# blank), and MinerU's pipeline backend writes them out as raw NUL bytes — verified in its own raw
+# chunk output, base_40_79/.../txt/modern-cpp-tutorial.md. See bug-converter-maps-uffff-to-nul.
+
+NUL = chr(0x0000)
+NONCHAR_FFFF = chr(0xFFFF)
+NONCHAR_FFFE = chr(0xFFFE)
+NONCHAR_ARABIC = chr(0xFDD0)  # first of the U+FDD0-U+FDEF block
+NONCHAR_PLANE1 = chr(0x1FFFF)  # plane-end pair, SMP
+
+
+def test_illegal_nul_removed_inside_a_code_fence():
+    # The real defect: it sits INSIDE a ```cpp fence, which is exactly where symbol_pua refuses to
+    # go — so only a step scoped to the whole document can remove it.
+    md = f'```cpp\nthrow std::out_of_range("{NUL}{NUL}.");\n```\n'
+    out, stats = illegal_codepoints.strip(md)
+    assert out == '```cpp\nthrow std::out_of_range(".");\n```\n'
+    assert NUL not in out
+    assert stats["removed"] == 2
+    assert stats["counts"] == {"0000": 2}
+    assert stats["word_joins"] == 0  # flanked by `"` and `.`, not by letters
+
+
+def test_illegal_noncharacters_removed_from_prose():
+    md = f"a sentence{NONCHAR_FFFF} with{NONCHAR_FFFE} noncharacters{NONCHAR_ARABIC}\n"
+    out, stats = illegal_codepoints.strip(md)
+    assert out == "a sentence with noncharacters\n"
+    assert stats["counts"] == {"ffff": 1, "fffe": 1, "fdd0": 1}
+
+
+def test_illegal_plane_end_noncharacter_removed():
+    md = f"astral{NONCHAR_PLANE1} text\n"
+    out, stats = illegal_codepoints.strip(md)
+    assert out == "astral text\n"
+    assert stats["counts"] == {"1ffff": 1}
+
+
+def test_illegal_leaves_legitimate_text_byte_identical():
+    md = (
+        "# Heading\n\nProse with π, Σ, → and an em-dash — plus CJK 越界.\n\n"
+        "```python\nx = '\\u0000 is a literal, not a byte'\n```\n"
+    )
+    out, stats = illegal_codepoints.strip(md)
+    assert out == md
+    assert stats["removed"] == 0
+    assert stats["counts"] == {}
+
+
+def test_illegal_does_not_touch_private_use_area():
+    # PUA glyphs belong to symbol_pua, whose table is verified against rendered pages. A blanket
+    # sanitizer that ate them would silently destroy π/Σ/→ before that step ever ran.
+    md = f"rotate 2{PI} radians, alphabet {SIGMA}, {BULLET} bullet\n"
+    out, stats = illegal_codepoints.strip(md)
+    assert out == md
+    assert stats["removed"] == 0
+
+
+def test_illegal_is_idempotent():
+    md = f"one{NUL} two{NONCHAR_FFFF}\n"
+    once, _ = illegal_codepoints.strip(md)
+    twice, stats = illegal_codepoints.strip(once)
+    assert twice == once
+    assert stats["removed"] == 0
+
+
+def test_illegal_counts_a_word_join_so_it_stays_visible():
+    # Removing an illegal codepoint between two alphanumerics MERGES two words. It is still the
+    # right call (the codepoint is illegal in interchange and prints nothing), but it must be
+    # reported, not silent — the same failure class the symbol_pua fix once reintroduced.
+    md = f"word{NUL}next and 2{NONCHAR_FFFF}3\n"
+    out, stats = illegal_codepoints.strip(md)
+    assert out == "wordnext and 23\n"
+    assert stats["word_joins"] == 2
+
+
+def test_illegal_run_of_codepoints_counts_as_one_join():
+    md = f"word{NUL}{NUL}{NONCHAR_FFFF}next\n"
+    out, stats = illegal_codepoints.strip(md)
+    assert out == "wordnext\n"
+    assert stats["removed"] == 3
+    assert stats["word_joins"] == 1
+
+
+def test_illegal_works_on_crlf_input():
+    # This step is fence-agnostic, so unlike symbol_pua it has no LF-only dependency and must NOT
+    # bail on CRLF — it runs before every fence-parsing step precisely so a NUL can never reach one.
+    md = f'```cpp\r\nauto s = "{NUL}";\r\n```\r\n'
+    out, stats = illegal_codepoints.strip(md)
+    assert out == '```cpp\r\nauto s = "";\r\n```\r\n'
+    assert stats["removed"] == 1
+
+
+def test_illegal_handles_codepoint_at_string_edges():
+    out, stats = illegal_codepoints.strip(f"{NUL}edge{NUL}")
+    assert out == "edge"
+    assert stats["removed"] == 2
+    assert stats["word_joins"] == 0

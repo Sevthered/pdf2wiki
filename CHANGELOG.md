@@ -6,7 +6,33 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-08-02
+
+A codepoint-fidelity release: two new phase-5 steps for characters that arrive in the markdown as
+something no reader can see. Both defects are **silent** — the output stays grammatical and plausible,
+so no coverage gate, linter or token-verify can catch either, and both are present in every earlier
+published release.
+
 ### Added
+- **New phase-5 step `symbol_pua`: Symbol-font glyphs that render as nothing are remapped to the
+  characters the page prints.** Publisher PDFs (the four affected books in the reference corpus are all
+  Manning) embed a `SymbolMT` subset and emit its glyphs as **Private Use Area** codepoints with **no
+  `ToUnicode` map**. `pymupdf` returns them verbatim and MinerU carries them into the markdown, where
+  they have no glyph in any normal font: `2<U+F070> radians` reads as **"2 radians"**, and `sin(4πt)`
+  as `sin(4t)`. Both converter backends produce it — they share the embedded text layer for prose — so
+  no backend choice avoids it. The step runs first in the chain and **again right after
+  `caption_unbleed`**, which unwraps caption-only fences and so can promote a glyph that the first pass
+  correctly skipped as in-code into prose that no later step would fix.
+  **The mapping table is ground truth, not the font spec:** every entry was verified by rendering the
+  source page. `U+F0E5` occupies Adobe Symbol's *summation* slot, but the book that uses it prints a
+  capital Sigma — deriving the table from the encoding would have written the wrong character.
+  Unverified PUA codepoints are left untouched and reported rather than guessed. `U+F0A1` is a list
+  *marker*, not a character, so a line opening with it becomes a real markdown list item; a marker
+  promoted into a heading only loses the glyph, since demoting the heading would restructure documents
+  whose chapters are already split and whose headings may be link targets. Scoped outside fenced code
+  throughout, with a CRLF guard that refuses rather than corrupt (`fences` is LF-only). A marker left
+  flush between two non-space characters is **not** removed — it is counted as `stray_unhandled`,
+  because removing it there would silently weld two words together.
 - **New phase-5 step `illegal_codepoints`, first in the chain: raw NUL and Unicode noncharacters are
   removed from converted markdown.** A source PDF's text layer can hold `U+FFFF` where a font subset
   failed to encode a character (*Modern C++ Tutorial* p55: a CJK word inside a C++ string literal,

@@ -84,6 +84,13 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
     from .phase5 import run_chain
 
     report = run_chain(a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply)
+    ic = report["illegal_codepoints"]
+    print(f"illegal_codepoints: {ic['removed']} removed {ic['counts'] or ''}".rstrip())
+    if ic["word_joins"]:
+        print(
+            f"  ⚠ {ic['word_joins']} removal(s) sat between two alphanumerics — those words are now"
+            " joined; check them against the rendered page"
+        )
     sp = report["symbol_pua"]
     sp2 = report["symbol_pua_post_caption"]
     print(

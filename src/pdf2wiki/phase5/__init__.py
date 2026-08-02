@@ -4,10 +4,14 @@
 
 """Phase 5 post-processing chain — fixed order, each step sees the previous step's output:
 
-    symbol_pua -> caption_unbleed -> lang_retag -> dash_normalize -> mermaid_repair
-               -> code_unescape -> chapter_split
+    illegal_codepoints -> symbol_pua -> caption_unbleed -> lang_retag -> dash_normalize
+                       -> mermaid_repair -> code_unescape -> chapter_split
 
-Order matters: symbol_pua runs FIRST because it repairs characters and line-level structure that
+Order matters: illegal_codepoints runs FIRST because a raw NUL makes the file binary to grep-based
+tooling and is a byte no fence lexer, language detector or splitter below is written to expect — it
+is also the only step scoped to the whole document, code fences included, since MinerU emits these
+inside code (see its module docstring); symbol_pua runs next because it repairs characters and
+line-level structure that
 every later step parses — a Private-Use-Area bullet marker at line start otherwise reaches
 chapter_split as a fake heading, and a dropped symbol silently corrupts prose no later step can
 detect; caption_unbleed removes caption-only junk fences and lifts leading captions so lang_retag
@@ -24,6 +28,7 @@ from . import (
     chapter_split,
     code_unescape,
     dash_normalize,
+    illegal_codepoints,
     lang_retag,
     mermaid_repair,
     symbol_pua,
@@ -44,6 +49,9 @@ def run_chain(
     with open(md_path, encoding="utf-8") as f:
         md = f.read()
     report: dict[str, Any] = {}
+
+    md, illegal = illegal_codepoints.strip(md)
+    report["illegal_codepoints"] = illegal
 
     md, pua = symbol_pua.remap(md)
     report["symbol_pua"] = pua

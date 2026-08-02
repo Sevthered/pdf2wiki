@@ -1,7 +1,7 @@
 # Phase 5 steps reference
 
-`phase5` runs six post-processors in a fixed order on a converted `.md`. The first five transform the
-Markdown string; the sixth splits it into chapter files. Order matters — each step depends on the
+`phase5` runs eight post-processors in a fixed order on a converted `.md`. The first seven transform
+the Markdown string; the eighth splits it into chapter files. Order matters — each step depends on the
 previous one's output. See [post-process and split](../how-to/post-process-and-split.md) for how to run
 it, and [`phase5` in the CLI reference](cli.md#phase5) for flags.
 
@@ -11,8 +11,10 @@ info-string suffix).
 
 ## How fences are recognised
 
-All six steps find code blocks through one shared lexer, `pdf2wiki.phase5.fences`, rather than their own
-regex. It follows CommonMark's fenced-code rules as far as converter output needs:
+Every step that treats code differently from prose finds code blocks through one shared lexer,
+`pdf2wiki.phase5.fences`, rather than its own regex. (`illegal_codepoints` is the one exception: it
+edits the whole document, fences included, so it parses no structure at all.) The lexer follows
+CommonMark's fenced-code rules as far as converter output needs:
 
 - **opener** — up to three spaces of indent, then three or more backticks, then a free-form info
   string. A backtick fence's info string may not contain a backtick. Backtick-only, deliberately:
@@ -37,12 +39,14 @@ regex. It follows CommonMark's fenced-code rules as far as converter output need
 
 | # | Step | Reads | Does | Produces |
 |---|------|-------|------|----------|
-| 1 | `caption_unbleed` | md | Lifts a `Listing/Figure/Table/Example N.M …` caption that MinerU trapped inside a code fence out to a bold line above the fence, or drops a caption-only fence entirely. | md with captions un-bled from code |
-| 2 | `lang_retag` | md | Re-detects each code fence's language by precedence — a `# file: x.ext` hint, then a trusted specific MinerU tag (resolved through the alias/extension table), then a keyword heuristic, else `text` — and rewrites the fence tag. Tags the heuristic cannot detect but books do emit (`hcl`, `qml`, `vhdl`, `gherkin`, `graphql`) are trusted as-is; MinerU's known-wrong guesses (`swift`, `erlang`) are always re-detected. See [the detection order](#lang_retag-detection-order). | md with reliable language tags |
-| 3 | `dash_normalize` | md | Inside code fences only, converts a typographic en/em-dash used as a long-flag prefix (`–dev`) to `--` and a U+2212 minus to `-`. | md with correct dashes in code |
-| 4 | `mermaid_repair` | md | Sanitizes ```mermaid``` node labels so the diagram parses — literal `\n` → `<br>`, inner quotes → `'`, inner brackets → `()`, closes unclosed labels, drops orphan brackets. | md with parseable Mermaid |
-| 5 | `code_unescape` | md | Inside code fences only, strips MinerU's markdown-punctuation escapes (`\$ \* \~ \_` `` \` `` `\# \@ \% \& \!`) while preserving real string/regex escapes (`\n \t \d \s \" \\`). | md with clean code fences |
-| 6 | `chapter_split` | md file | Splits at fence-aware H1 boundaries (plus mistagged `## Appendix X.` H2s) into per-chapter files with YAML frontmatter. | `00-front-matter.md` + `NN-slug.md` files |
+| 1 | `illegal_codepoints` | md | Removes codepoints that are illegal in interchange text — raw `U+0000`, the `U+FDD0`–`U+FDEF` block, and the plane-end `U+FFFE`/`U+FFFF` pairs — across the **whole document, code fences included**. Private Use Area codepoints are left for `symbol_pua`. Drops rather than substitutes (the characters print as nothing); a removal between two alphanumerics joins two words and is reported as `word_joins`. | md that is text, not binary |
+| 2 | `symbol_pua` | md | Remaps Private Use Area codepoints that publisher PDFs emit for `SymbolMT` glyphs (π, Σ, →) from a table where every entry was verified against a rendered page, and turns a PUA bullet marker at line start into a real list item. Scoped **outside** code fences; unrecognised PUA is left alone and reported. Runs a second time after `caption_unbleed`, whose unwrapping can promote a glyph from code to prose. | md with real characters instead of invisible ones |
+| 3 | `caption_unbleed` | md | Lifts a `Listing/Figure/Table/Example N.M …` caption that MinerU trapped inside a code fence out to a bold line above the fence, or drops a caption-only fence entirely. | md with captions un-bled from code |
+| 4 | `lang_retag` | md | Re-detects each code fence's language by precedence — a `# file: x.ext` hint, then a trusted specific MinerU tag (resolved through the alias/extension table), then a keyword heuristic, else `text` — and rewrites the fence tag. Tags the heuristic cannot detect but books do emit (`hcl`, `qml`, `vhdl`, `gherkin`, `graphql`) are trusted as-is; MinerU's known-wrong guesses (`swift`, `erlang`) are always re-detected. See [the detection order](#lang_retag-detection-order). | md with reliable language tags |
+| 5 | `dash_normalize` | md | Inside code fences only, converts a typographic en/em-dash used as a long-flag prefix (`–dev`) to `--` and a U+2212 minus to `-`. | md with correct dashes in code |
+| 6 | `mermaid_repair` | md | Sanitizes ```mermaid``` node labels so the diagram parses — literal `\n` → `<br>`, inner quotes → `'`, inner brackets → `()`, closes unclosed labels, drops orphan brackets. | md with parseable Mermaid |
+| 7 | `code_unescape` | md | Inside code fences only, strips MinerU's markdown-punctuation escapes (`\$ \* \~ \_` `` \` `` `\# \@ \% \& \!`) while preserving real string/regex escapes (`\n \t \d \s \" \\`). | md with clean code fences |
+| 8 | `chapter_split` | md file | Splits at fence-aware H1 boundaries (plus mistagged `## Appendix X.` H2s) into per-chapter files with YAML frontmatter. | `00-front-matter.md` + `NN-slug.md` files |
 
 ## Chapter frontmatter
 
@@ -102,7 +106,13 @@ requiring `export` on an `enum` before it counts as TypeScript.) Allman-braced J
 
 ## Why this order
 
-`caption_unbleed` first, so `lang_retag` detects language on clean code. `lang_retag` before
-`dash_normalize` and `code_unescape`, which scope their edits to code fences. `mermaid_repair` before
-the split, so diagrams are fixed while still in one document. `chapter_split` last, because the
-other five must land before the Markdown is cut into files.
+`illegal_codepoints` first: a raw NUL makes the page binary to grep-based tooling and is a byte no
+lexer, detector or splitter below is written to expect, so it is removed before anything parses the
+document. `symbol_pua` next, because it repairs characters and line-level structure every later step
+parses — a PUA bullet marker at line start otherwise reaches `chapter_split` as a fake heading, and a
+glyph it misses corrupts prose invisibly. `caption_unbleed` then, so `lang_retag` detects language on
+clean code (and `symbol_pua` re-runs after it, since unwrapping a caption-only fence can promote a
+glyph the first pass correctly skipped into prose). `lang_retag` before `dash_normalize` and
+`code_unescape`, which scope their edits to code fences. `mermaid_repair` before the split, so
+diagrams are fixed while still in one document. `chapter_split` last, because the other seven must
+land before the Markdown is cut into files.

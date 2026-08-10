@@ -1,0 +1,308 @@
+# SPDX-FileCopyrightText: 2026 Sevthered <Sevthered@users.noreply.github.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Wiring tests for the batch driver's SUCCESS path and its run-control switches.
+
+`tests/test_batch.py` covers the failure-isolation contract (one book's error must not abort the
+run). Everything a *successful* book does afterwards was unproven: fetch, phase 5, the images
+copy that makes chapter image refs resolve, vault placement, and the manifest entry that makes
+the next run skip it. Also covered here: the four ways a run is deliberately cut short
+(`--only`, `--max-books`, the STOP file, an already-done book) and the corrupt-manifest refusal.
+
+The converter is faked — it writes the markdown a real conversion would leave behind — but phase 5
+runs for real, so the chapter files and their frontmatter are the actual artifact.
+"""
+
+import json
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+import pdf2wiki.batch as batch
+from pdf2wiki.config import Config
+from pdf2wiki.executor import LocalExecutor
+
+BOOK_MD = """Front matter line.
+
+# Chapter 1. Beginnings
+
+Body of the first chapter.
+
+![fig](images/fig.png)
+
+# Chapter 2. Endings
+
+Body of the second chapter.
+"""
+
+
+def _cfg(tmp_path):
+    cfg = Config()
+    cfg.convert.out_root = str(tmp_path / "out")
+    return cfg
+
+
+def _books_toml(tmp_path, n=2, domain="d"):
+    body = "\n".join(
+        f'[[book]]\npdf = "b{i}.pdf"\nslug = "book-{i}"\ndomain = "{domain}"\n' for i in range(n)
+    )
+    p = tmp_path / "books.toml"
+    p.write_text(body)
+    return str(p)
+
+
+class FakeLocal(LocalExecutor):
+    """A converter that succeeds: leaves the same on-disk shape a real conversion does.
+
+    Subclasses the real LocalExecutor on purpose — `fetch()` and `artifacts_dir()` are the real
+    implementations, so the local artifact hand-off is exercised rather than stubbed away.
+    """
+
+    def convert(self, pdf_path, slug, out_root, timeout, cfg=None):
+        d = os.path.join(os.path.expanduser(out_root), slug)
+        os.makedirs(os.path.join(d, "images"), exist_ok=True)
+        with open(os.path.join(d, f"{slug}.md"), "w", encoding="utf-8") as f:
+            f.write(BOOK_MD)
+        with open(os.path.join(d, "images", "fig.png"), "wb") as f:
+            f.write(b"\x89PNG")
+        return True, "converted"
+
+
+def test_successful_book_is_split_staged_and_recorded(tmp_path, monkeypatch):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    cfg = _cfg(tmp_path)
+
+    manifest = batch.run_batch(_books_toml(tmp_path, 1), cfg, str(tmp_path / "stage"))
+
+    entry = manifest["book-0"]
+    assert entry["status"] == "done" and entry["domain"] == "d"
+    assert isinstance(entry["minutes"], float)
+    chapters = os.path.join(str(tmp_path / "out"), "book-0", "chapters")
+    names = sorted(os.listdir(chapters))
+    assert "01-chapter-1-beginnings.md" in names and "02-chapter-2-endings.md" in names
+    # the images dir must sit NEXT TO the chapters or every `images/...` ref 404s in the vault
+    assert os.path.exists(os.path.join(chapters, "images", "fig.png"))
+    with open(os.path.join(chapters, "01-chapter-1-beginnings.md"), encoding="utf-8") as f:
+        body = f.read()
+    assert body.startswith("---\n") and 'source: "b0.pdf"' in body  # PDF name, not a staging path
+    # the manifest is written, not just returned — that file is the resume backbone
+    on_disk = json.loads((tmp_path / "stage" / "manifest.json").read_text(encoding="utf-8"))
+    assert on_disk["book-0"]["status"] == "done"
+
+
+def test_vault_placement_copies_chapters_and_records_the_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    vault = tmp_path / "vault"
+
+    manifest = batch.run_batch(
+        _books_toml(tmp_path, 1), _cfg(tmp_path), str(tmp_path / "stage"), vault=str(vault)
+    )
+
+    dest = vault / "d" / "book-0"  # domain becomes the subfolder
+    assert manifest["book-0"]["vault_path"] == str(dest)
+    assert (dest / "01-chapter-1-beginnings.md").exists()
+    assert (dest / "images" / "fig.png").exists()
+
+
+def test_book_without_domain_lands_directly_under_the_vault_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    p = tmp_path / "nodomain.toml"
+    p.write_text('[[book]]\npdf = "b0.pdf"\nslug = "book-0"\n')
+    vault = tmp_path / "vault"
+
+    manifest = batch.run_batch(str(p), _cfg(tmp_path), str(tmp_path / "stage"), vault=str(vault))
+
+    assert manifest["book-0"]["vault_path"] == str(vault / "book-0")  # no empty path segment
+
+
+def test_done_book_is_skipped_on_re_run(tmp_path, monkeypatch):
+    # the resume contract: a second run must not re-convert what already finished.
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    cfg, stage = _cfg(tmp_path), str(tmp_path / "stage")
+    books = _books_toml(tmp_path, 1)
+    batch.run_batch(books, cfg, stage)
+
+    converts = []
+
+    class Recorder(FakeLocal):
+        def convert(self, pdf_path, slug, out_root, timeout, cfg=None):
+            converts.append(slug)
+            return super().convert(pdf_path, slug, out_root, timeout, cfg)
+
+    monkeypatch.setattr(batch, "LocalExecutor", Recorder)
+    manifest = batch.run_batch(books, cfg, stage)
+
+    assert converts == []  # nothing re-converted
+    assert manifest["book-0"]["status"] == "done"  # and the entry survived the round-trip
+
+
+def test_only_runs_the_named_slug(tmp_path, monkeypatch):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+
+    manifest = batch.run_batch(
+        _books_toml(tmp_path, 3), _cfg(tmp_path), str(tmp_path / "stage"), only="book-1"
+    )
+
+    assert list(manifest) == ["book-1"]
+
+
+def test_max_books_stops_after_n_attempts(tmp_path, monkeypatch):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+
+    manifest = batch.run_batch(
+        _books_toml(tmp_path, 4), _cfg(tmp_path), str(tmp_path / "stage"), max_books=2
+    )
+
+    assert list(manifest) == ["book-0", "book-1"]  # the rest are untouched, not failed
+
+
+def test_stop_file_halts_between_books_and_is_consumed(tmp_path, monkeypatch):
+    # the operator's clean brake. It must be removed on halt, or the next run stops immediately
+    # and the batch looks permanently wedged.
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "STOP").write_text("")
+
+    manifest = batch.run_batch(_books_toml(tmp_path, 2), _cfg(tmp_path), str(stage))
+
+    assert manifest == {}
+    assert not (stage / "STOP").exists()
+
+
+def test_corrupt_manifest_refuses_instead_of_restarting_every_book(tmp_path, monkeypatch):
+    # silently treating an unreadable manifest as empty would re-convert a finished 10-book batch.
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "manifest.json").write_text("{not json")
+
+    with pytest.raises(SystemExit, match="corrupt"):
+        batch.run_batch(_books_toml(tmp_path, 1), _cfg(tmp_path), str(stage))
+
+
+def test_books_toml_missing_a_required_key_is_rejected(tmp_path):
+    p = tmp_path / "bad.toml"
+    p.write_text('[[book]]\npdf = "b.pdf"\n')  # no slug: everything downstream is named by it
+
+    with pytest.raises(ValueError, match="needs `pdf` and `slug`"):
+        batch.load_books(str(p))
+
+
+def test_fetch_returning_false_marks_the_book_fetch_failed(tmp_path, monkeypatch):
+    # distinct from a raised fetch error (covered in test_batch.py): a clean False means the
+    # artifacts never landed, and phase 5 must not run on a missing file.
+    class NoArtifacts(FakeLocal):
+        def fetch(self, slug, out_root, dest_dir, timeout=None):
+            return False
+
+    monkeypatch.setattr(batch, "LocalExecutor", NoArtifacts)
+    monkeypatch.setattr(
+        batch, "run_chain", lambda *a, **k: pytest.fail("phase 5 ran without artifacts")
+    )
+
+    manifest = batch.run_batch(_books_toml(tmp_path, 1), _cfg(tmp_path), str(tmp_path / "stage"))
+
+    assert manifest["book-0"] == {"status": "fetch_failed", "domain": "d", "error_class": "fetch"}
+
+
+def test_phase5_failure_is_isolated_to_its_book(tmp_path, monkeypatch):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+
+    def boom(*a, **k):
+        raise RuntimeError("no chapter boundaries found")
+
+    monkeypatch.setattr(batch, "run_chain", boom)
+
+    manifest = batch.run_batch(_books_toml(tmp_path, 2), _cfg(tmp_path), str(tmp_path / "stage"))
+
+    assert [e["status"] for e in manifest.values()] == ["phase5_failed", "phase5_failed"]
+    assert manifest["book-0"]["error_class"] == "phase5"  # both books still attempted
+
+
+class FakeRemote:
+    """A stand-in for SSHExecutor. Deliberately does NOT subclass LocalExecutor.
+
+    That inheritance is load-bearing: `run_batch` branches on `isinstance(ex, LocalExecutor)` to
+    decide whether the artifacts are already on disk or arrived via `fetch()` into the stage dir.
+    A fake that inherits LocalExecutor drives the LOCAL branch no matter what it is called, so the
+    remote path would look covered while never running. `artifacts_dir` raises here exactly as the
+    real SSHExecutor does.
+    """
+
+    def __init__(self, host, books_dir, workdir, connect, convert_t, fetch_t, reap):
+        self.args = dict(
+            host=host,
+            books_dir=books_dir,
+            workdir=workdir,
+            connect=connect,
+            convert_t=convert_t,
+            fetch_t=fetch_t,
+            reap=reap,
+        )
+        FakeRemote.last = self
+
+    def check(self):
+        pass
+
+    def convert(self, pdf_filename, slug, out_root, timeout=None):
+        return True, "remote log"
+
+    def fetch(self, slug, out_root, dest_dir, timeout=None):
+        # what scp does: the artifacts land in dest_dir, NOT in a local out_root
+        os.makedirs(os.path.join(dest_dir, "images"), exist_ok=True)
+        with open(os.path.join(dest_dir, f"{slug}.md"), "w", encoding="utf-8") as f:
+            f.write(BOOK_MD)
+        with open(os.path.join(dest_dir, "images", "fig.png"), "wb") as f:
+            f.write(b"\x89PNG")
+        return True
+
+    def artifacts_dir(self, slug, out_root):
+        raise AssertionError("remote artifacts must be fetched, never read from a local out_root")
+
+
+def test_remote_mode_builds_the_executor_with_the_configured_arguments(tmp_path, monkeypatch):
+    # every remote timeout is config-driven; a dropped or misordered argument here silently
+    # reverts one of them to a default and the Timeouts-Pattern guarantees stop holding.
+    monkeypatch.setattr(batch, "SSHExecutor", FakeRemote)
+    cfg = _cfg(tmp_path)
+    cfg.remote.books_dir = "~/books"
+    cfg.remote.connect_timeout = 11
+
+    batch.run_batch(_books_toml(tmp_path, 1), cfg, str(tmp_path / "stage"), remote="gpu-box")
+
+    seen = FakeRemote.last.args
+    assert seen["host"] == "gpu-box" and seen["books_dir"] == "~/books"
+    assert seen["connect"] == 11 and seen["convert_t"] == cfg.remote.convert_timeout
+    assert seen["fetch_t"] == cfg.remote.fetch_timeout and seen["reap"] == cfg.remote.reap_grace
+
+
+def test_remote_run_phase5s_the_fetched_stage_dir_not_a_local_out_root(tmp_path, monkeypatch):
+    """The remote branch end to end: nothing is ever read from the local `out_root`.
+
+    `run_batch` only rewrites `work` to `ex.artifacts_dir(...)` for a LocalExecutor. On the remote
+    path `work` must stay the stage dir that `fetch()` filled, because on this machine `out_root`
+    holds nothing at all — the conversion happened on another host. Getting this wrong means phase 5
+    runs on a missing file, or worse, on a stale local book of the same slug.
+    """
+    monkeypatch.setattr(batch, "SSHExecutor", FakeRemote)
+    cfg = _cfg(tmp_path)
+    stage = tmp_path / "stage"
+    vault = tmp_path / "vault"
+
+    manifest = batch.run_batch(
+        _books_toml(tmp_path, 1), cfg, str(stage), remote="gpu-box", vault=str(vault)
+    )
+
+    assert manifest["book-0"]["status"] == "done"
+    # chapters were produced from the FETCHED markdown, under the stage dir
+    chapters = stage / "book-0" / "chapters"
+    assert (chapters / "01-chapter-1-beginnings.md").exists()
+    assert (chapters / "images" / "fig.png").exists()
+    assert (vault / "d" / "book-0" / "01-chapter-1-beginnings.md").exists()
+    # and the local out_root was never even created, let alone read
+    assert not os.path.exists(os.path.join(str(tmp_path / "out"), "book-0"))

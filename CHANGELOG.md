@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Removed a dead `cli.py` branch that printed a "SKIPPED — CRLF" warning that could never fire
+  through the `phase5` CLI (`run_chain` reads every file in universal-newline mode, so `symbol_pua`'s
+  own CRLF guard never sees a `\r\n` to trip on). `run_chain`'s docstring now says explicitly that
+  the chain normalizes line endings to LF as a side effect. No behavior change — this documents and
+  cleans up what already shipped, and corrects the 0.2.8 entry below's overclaim about where that
+  guard is reachable. See bug-pdf2wiki-crlf-guard-unreachable.
+
 ## [0.2.8] - 2026-08-02
 
 A codepoint-fidelity release: two new phase-5 steps for characters that arrive in the markdown as
@@ -30,7 +38,13 @@ published release.
   *marker*, not a character, so a line opening with it becomes a real markdown list item; a marker
   promoted into a heading only loses the glyph, since demoting the heading would restructure documents
   whose chapters are already split and whose headings may be link targets. Scoped outside fenced code
-  throughout, with a CRLF guard that refuses rather than corrupt (`fences` is LF-only). A marker left
+  throughout. `remap()` itself refuses on CRLF input rather than risk a mis-lexed fence (`fences` is
+  LF-only) — but `phase5`'s chain reads every file in universal-newline mode, so that guard is for a
+  direct library caller, not what a CLI user sees: a CRLF book runs through normally and is rewritten
+  with LF endings as a side effect of the chain running at all.
+  <!-- corrected 2026-08-10 — original wording here overclaimed a guard reachable from the CLI; see
+       bug-pdf2wiki-crlf-guard-unreachable. Historical release entry, correcting for accuracy only. -->
+  A marker left
   flush between two non-space characters is **not** removed — it is counted as `stray_unhandled`,
   because removing it there would silently weld two words together.
 - **New phase-5 step `illegal_codepoints`, first in the chain: raw NUL and Unicode noncharacters are

@@ -99,8 +99,6 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
         f"heading {sp['heading_markers'] + sp2['heading_markers']}, "
         f"stray {sp['stray_markers'] + sp2['stray_markers']})"
     )
-    if sp["skipped_crlf"]:
-        print("  ⚠ SKIPPED — document has CRLF line endings; fence detection is LF-only")
     if sp["stray_unhandled"] + sp2["stray_unhandled"]:
         print(
             f"  ⚠ {sp['stray_unhandled'] + sp2['stray_unhandled']} mid-word marker(s) LEFT IN PLACE"

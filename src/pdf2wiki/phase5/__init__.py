@@ -45,6 +45,15 @@ def run_chain(
     """Run the full chain on md_path. With apply=False (dry-run), computes and reports every
     step in memory and writes NOTHING (the split step reports planned files only).
     Returns a report dict.
+
+    Line endings: the file is read in Python's default universal-newline mode, so any `\\r\\n` or
+    bare `\\r` in the source is translated to `\\n` before any step sees the text — every step below
+    is LF-only and this is what makes that a safe assumption rather than a silent gap. A CRLF book
+    is therefore repaired like any other and, with apply=True, written back out with LF endings —
+    that line-ending change is a side effect of the chain running at all, not a separate decision.
+    `symbol_pua.remap()` additionally carries its own CRLF guard for callers that hand it text
+    directly rather than through this function; that guard cannot fire on anything read via
+    `run_chain`, by construction (see bug-pdf2wiki-crlf-guard-unreachable).
     """
     with open(md_path, encoding="utf-8") as f:
         md = f.read()

@@ -27,7 +27,7 @@ import pdf2wiki.cli as cli
 from pdf2wiki.phase5 import symbol_pua
 
 PI = next(k for k, v in symbol_pua.GLYPHS.items() if v == "\N{GREEK SMALL LETTER PI}")
-UNKNOWN_PUA = ""  # inside the PUA class, deliberately absent from the verified table
+UNKNOWN_PUA = "\uf0ff"  # inside the PUA class, deliberately absent from the verified table
 
 
 def _md(tmp_path, body):

@@ -550,7 +550,7 @@ def test_split_no_boundaries_raises(tmp_path):
 # Fixtures use the exact shapes found in the corpus; each is annotated with the source page that
 # was rendered to confirm what the book actually prints (see bug-symbol-font-pua-glyphs-dropped).
 
-PI, SIGMA, ARROW, BULLET = "", "", "", ""
+PI, SIGMA, ARROW, BULLET = "\uf070", "\uf0e5", "\uf0ae", "\uf0a1"
 
 
 def test_pua_inline_symbols_remapped():
@@ -575,6 +575,148 @@ def test_pua_arrow_remapped():
     md = f"becomes Service {ARROW} Source Envoy {ARROW} Destination Envoy\n"
     out, _ = symbol_pua.remap(md)
     assert out == "becomes Service → Source Envoy → Destination Envoy\n"
+
+
+def test_pua_math_greek_letters_remapped():
+    # Math for Programmers: the book names the letter it prints, so the page is its own ground
+    # truth -- p87 theta, p120 phi, p480 alpha, p654 lambda. Written as escapes: a literal PUA
+    # character is invisible in this file too.
+    md = (
+        "the sine and cosine of an angle \uf071 (the Greek letter theta)\n"
+        "we label it with the Greek letter \uf066 (phi)\n"
+        "where \uf061 (the Greek letter alpha) is a number giving the magnitude of drag\n"
+        "comes from the Greek letter \uf06c, written lambda\n"
+    )
+    out, stats = symbol_pua.remap(md)
+    assert out == (
+        "the sine and cosine of an angle θ (the Greek letter theta)\n"
+        "we label it with the Greek letter φ (phi)\n"
+        "where α (the Greek letter alpha) is a number giving the magnitude of drag\n"
+        "comes from the Greek letter λ, written lambda\n"
+    )
+    assert stats["unknown"] == {}
+
+
+def test_pua_math_operators_remapped():
+    # Math for Programmers p211 (x), p182 (!=), p444 (identical-to), p86 (approx), p446 (nabla).
+    md = (
+        "as in a 3\uf0b43 matrix or a 3\uf0b41 matrix\n"
+        "and T(0) \uf0b9 0, where 0 represents the vector\n"
+        "I use the \uf0ba sign to indicate that these notations are equivalent\n"
+        "tan(37 degrees) \uf0bb 3/4\n"
+        "its gradient and written \uf0d1U\n"
+    )
+    out, stats = symbol_pua.remap(md)
+    assert out == (
+        "as in a 3×3 matrix or a 3×1 matrix\n"
+        "and T(0) ≠ 0, where 0 represents the vector\n"
+        "I use the ≡ sign to indicate that these notations are equivalent\n"
+        "tan(37 degrees) ≈ 3/4\n"
+        "its gradient and written ∇U\n"
+    )
+    assert stats["unknown"] == {}
+
+
+def test_pua_two_codepoints_print_the_same_dot():
+    # p80 sets the dot at 4 pt (U+F0B7) and p133 at 10 pt (U+F0D7); both print a centered
+    # multiplication dot, so both map to MIDDLE DOT -- a mapping that only rendering both pages
+    # produces, since the two codepoints sit in different slots of the font's encoding.
+    md = "points where r\uf0b7u + s\uf0b7v, and its length is sqrt(a\uf0d7a + b\uf0d7b)\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "points where r·u + s·v, and its length is sqrt(a·a + b·b)\n"
+    assert stats["remap_f0b7"] == 2
+    assert stats["remap_f0d7"] == 2
+
+
+def test_pua_symbol_font_parens_and_space_are_restored():
+    # Math for Programmers p118 sets the parentheses of a radical in Symbol; p677's index line sets
+    # the space after the pi. Dropping either silently rewrites the expression.
+    md = "has length sqrt\uf0284^2 + 3^2\uf029 = sqrt25\n\uf070\uf020(pi) symbol 56\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "has length sqrt(4^2 + 3^2) = sqrt25\nπ (pi) symbol 56\n"
+    assert stats["unknown"] == {}
+
+
+def test_pua_checkmark_and_infinity_from_blockchain_book():
+    # Mastering Blockchain p511 prints a check mark in a terminal transcript, p699 an infinity sign
+    # used as a footnote marker.
+    md = "\uf0fc Preparing to download box\n\uf0a5 TPS results for Hyperledger Fabric\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "✓ Preparing to download box\n∞ TPS results for Hyperledger Fabric\n"
+    assert stats["unknown"] == {}
+
+
+def test_pua_line_leading_dot_is_never_interpreted():
+    # U+F0B7 is verified INLINE (Math p80, 4 pt, between two vectors). At the start of a line the
+    # same glyph is what a publisher template uses for a bullet, and no rendered page in the corpus
+    # settles it -- so it must be left alone, not flattened into middle-dot paragraphs.
+    md = "\uf0b7 Chunked transfer encoding\n\uf0b7 Server-sent events\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == md  # untouched — never guess
+    assert stats["line_leading_dot_deferred"] == 2
+    assert stats["total_changes"] == 0  # a refusal to guess is not a repair
+    assert "remap_f0b7" not in stats
+
+
+def test_pua_inline_dot_still_remapped_on_a_line_that_opens_with_one():
+    # The deferral is positional, not a blanket opt-out: the inline dots on the same line are the
+    # verified reading and must still be restored.
+    md = "\uf0b7 r\uf0b7u + s\uf0b7v\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "\uf0b7 r·u + s·v\n"
+    assert stats["line_leading_dot_deferred"] == 1
+    assert stats["remap_f0b7"] == 2
+
+
+def test_pua_symbol_space_does_not_defeat_the_bullet_pass():
+    # The structural passes test for real whitespace and "\uf020".isspace() is False, so a bullet
+    # separated from its text by a Symbol space used to survive into the output as an invisible
+    # codepoint with its list item lost. Both books that emit \uf0a1 also emit \uf020.
+    md = "\uf0a1\uf020Using built-in Keras training and evaluation loops\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "- Using built-in Keras training and evaluation loops\n"
+    assert stats["list_markers"] == 1
+    assert "\uf0a1" not in out
+
+
+def test_pua_symbol_space_at_a_line_edge_is_dropped_not_spaced():
+    # Two trailing spaces are a CommonMark hard break and a whitespace-only line is a blank line;
+    # neither is structure the printed page has.
+    out, _ = symbol_pua.remap("the value of x\uf020\uf020\nnext line\n")
+    assert out == "the value of x\nnext line\n"
+    out, _ = symbol_pua.remap("para one\n\uf020\npara two\n")
+    assert out == "para one\n\npara two\n"
+
+
+def test_glyph_table_values_are_never_private_use():
+    # A replacement that is itself a PUA codepoint would break the documented "a second pass is a
+    # no-op" guarantee and feed an unbounded `unknown` residue, with no other test failing.
+    for key, value in symbol_pua.GLYPHS.items():
+        assert not any(0xE000 <= ord(c) <= 0xF8FF for c in value), key
+
+
+def test_pua_every_glyph_is_idempotent_and_fence_scoped():
+    # The invariants were only ever exercised against the three original codepoints.
+    for key in symbol_pua.GLYPHS:
+        if key == symbol_pua.DOT:
+            continue  # positional; covered by its own tests above
+        md = f"prose {key} here\n\n```text\nliteral {key} inside\n```\n"
+        once, _ = symbol_pua.remap(md)
+        twice, stats = symbol_pua.remap(once)
+        assert once == twice, key
+        assert stats["total_changes"] == 0, key
+        assert f"literal {key} inside" in once, key  # fence copied byte-for-byte
+        assert stats["in_code"] == {f"{ord(key):04x}": 1}, key
+        assert stats["unknown"] == {}, key
+
+
+def test_glyph_table_keys_are_single_private_use_codepoints():
+    # A key that is not a lone PUA codepoint cannot be what MinerU carried through, and would make
+    # the `unknown` residue -- the signal that asks for a human -- lie.
+    for key in symbol_pua.GLYPHS:
+        assert len(key) == 1, key
+        assert 0xE000 <= ord(key) <= 0xF8FF, key
+    assert symbol_pua.BULLET not in symbol_pua.GLYPHS  # structural, handled separately
 
 
 def test_pua_bullet_becomes_list_item():
@@ -614,7 +756,7 @@ def test_pua_code_blocks_are_untouched_and_reported():
 
 
 def test_pua_unknown_codepoint_left_alone_and_reported():
-    md = "an  unverified glyph\n"
+    md = "an \uf0ff unverified glyph\n"
     out, stats = symbol_pua.remap(md)
     assert out == md  # untouched — never guess
     assert stats["unknown"] == {"f0ff": 1}

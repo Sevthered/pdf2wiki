@@ -4,14 +4,14 @@
 
 r"""Remap Private-Use-Area glyphs that publisher PDFs emit for Symbol-font characters.
 
-Several publisher templates (all four affected books in this corpus are Manning) embed a
-``SymbolMT`` subset and emit its glyphs as **Private Use Area** codepoints with **no ``ToUnicode``
-map**. `pymupdf` returns the PUA codepoint verbatim and MinerU carries it straight into the
+Several publisher templates embed a ``SymbolMT`` subset (the Manning books in this corpus all do,
+and at least one book mixes in a Wingdings-family slot as well) and emit its glyphs as **Private
+Use Area** codepoints with **no ``ToUnicode`` map**. `pymupdf` returns the PUA codepoint verbatim and MinerU carries it straight into the
 markdown, where it is **invisible** -- it has no glyph in any normal font, so a terminal, a diff and
 a reader all see nothing:
 
     ground truth   "if you rotate 360 degrees or 2\N{GREEK SMALL LETTER PI} radians"
-    converted      "if you rotate 360 degrees or 2 radians"    # renders as "2 radians"
+    converted      "if you rotate 360 degrees or 2\uf070 radians"    # renders as "2 radians"
 
 ``2\N{GREEK SMALL LETTER PI} radians`` reading as ``2 radians`` is grammatical, plausible, and false
 -- no coverage gate, lint or token-verify can see it. Both converter backends produce it, because
@@ -30,6 +30,32 @@ came from.**
 
 Unrecognised PUA codepoints are deliberately **left untouched** and reported, so the next book's
 glyphs get verified rather than guessed.
+
+Two consequences of "render it, don't derive it" that the table makes visible:
+
+- **Distinct codepoints can print the same character.** ``U+F0B7`` (4 pt, between vectors) and
+  ``U+F0D7`` (10 pt, inside a radical) both print a centered multiplication dot in *Math for
+  Programmers*, so both map to ``MIDDLE DOT``. ``U+F053`` and ``U+F0E5`` likewise both print a
+  capital Sigma, in two different books.
+- **Not every entry is a letter.** ``U+F020`` is a Symbol-font *space*, ``U+F028``/``U+F029`` are
+  Symbol-font parentheses inside a formula, and ``U+F0FC`` is the check mark a terminal transcript
+  prints. Restoring them as the characters they print is what keeps the sentence readable; leaving
+  them is what turns ``sqrt(4^2 + 3^2)`` into ``sqrt4^2 + 3^2``.
+
+Where Unicode offers a glyph variant, the entry follows the corpus rather than the typeface: the
+phi printed by ``U+F066`` is the straight variant (``U+03D5``), but it maps to ``U+03C6``, the phi
+the rest of the converted vault already carries, so one search finds both.
+
+.. warning::
+
+   **The table is keyed by codepoint alone, and the corpus already spans more than one embedded
+   font.** Most entries come from a ``SymbolMT`` subset, but ``U+F0FC`` (check mark, *Mastering
+   Blockchain* p511) is a Wingdings-family slot, and PUA codepoints are only meaningful relative to
+   the font that emitted them. A book embedding a *different* font that reuses the same slots would
+   therefore be rewritten with the wrong characters, silently and with an empty ``unknown``. Every
+   entry is annotated with the book and page it was read from precisely so that collision is
+   traceable; the durable fix is to key on the embedded font name, which needs font information
+   MinerU does not currently carry into the markdown.
 
 ``U+F0A1`` is a list *marker*, not a character -- restoring it as a bullet glyph would leave the
 list structure lost, so a line that starts with it becomes a real markdown list item. Two shapes
@@ -58,17 +84,55 @@ from . import fences
 
 #: PUA codepoint -> replacement. EVERY entry verified against a rendered source page.
 #: See the module docstring before adding one.
+#:
+#: Keys are written as ``\uXXXX`` escapes rather than as the literal characters: a literal is
+#: invisible in an editor, a diff and a review, which is the very property that makes this defect
+#: class hard to see. Page numbers are the printed PDF page of the cited book.
 GLYPHS: dict[str, str] = {
-    "": "\N{GREEK SMALL LETTER PI}",  # Math for Programmers p504, "or 2pi radians"
-    "": "\N{GREEK CAPITAL LETTER SIGMA}",  # Advanced Algorithms p209, "an alphabet Sigma"
-    "": "\N{RIGHTWARDS ARROW}",  # Microservices Patterns p440, "Service -> Source Envoy"
+    "\uf020": " ",  # Math for Programmers p677, index line "<pi> (pi) symbol 56" -- a Symbol space
+    "\uf028": "(",  # Math for Programmers p118, "sqrt(4^2 + 3^2)" -- a Symbol-font paren
+    "\uf029": ")",  # Math for Programmers p118, the closer of the same pair
+    "\uf053": "\N{GREEK CAPITAL LETTER SIGMA}",  # Math p314, "the summation symbol Sigma"
+    "\uf061": "\N{GREEK SMALL LETTER ALPHA}",  # Math p480, "where a (the Greek letter alpha)"
+    "\uf066": "\N{GREEK SMALL LETTER PHI}",  # Math p120, "with the Greek letter f (phi)"
+    "\uf06c": "\N{GREEK SMALL LETTER LAMDA}",  # Math p654, "the Greek letter l, written lambda"
+    "\uf070": "\N{GREEK SMALL LETTER PI}",  # Math for Programmers p504, "or 2pi radians"
+    "\uf071": "\N{GREEK SMALL LETTER THETA}",  # Math p87, "an angle q (the Greek letter theta)"
+    "\uf0a5": "\N{INFINITY}",  # Mastering Blockchain p699, footnote marker "oo TPS results for"
+    "\uf0ae": "\N{RIGHTWARDS ARROW}",  # Microservices Patterns p440, "Service -> Source Envoy"
+    "\uf0b4": "\N{MULTIPLICATION SIGN}",  # Math p211, "a 3x3 matrix or a 3x1 matrix"
+    "\uf0b7": "\N{MIDDLE DOT}",  # Math p80, "points where r.u + s.v could end up"
+    "\uf0b9": "\N{NOT EQUAL TO}",  # Math p182, "T(0) != 0, where 0 represents ..."
+    "\uf0ba": "\N{IDENTICAL TO}",  # Math p444, "I use the = sign to indicate ... equivalent"
+    "\uf0bb": "\N{ALMOST EQUAL TO}",  # Math p86, "tan(37 deg) ~= 3/4"
+    "\uf0d1": "\N{NABLA}",  # Math p446, "its gradient and written grad-U"
+    "\uf0d7": "\N{MIDDLE DOT}",  # Math p133, "its length is sqrt(a.a + b.b + ...)"
+    "\uf0e5": "\N{GREEK CAPITAL LETTER SIGMA}",  # Advanced Algorithms p209, "an alphabet Sigma"
+    "\uf0fc": "\N{CHECK MARK}",  # Mastering Blockchain p511, terminal log "ok Preparing to down"
 }
 
 #: Handled structurally rather than as a character; see the module docstring.
-BULLET = ""  # Deep Learning with Python p197 / p399 / p71
+BULLET = "\uf0a1"  # Deep Learning with Python p197 / p399 / p71
 
-_PUA_CLASS = "[-]"
+#: A Symbol-font *space*. It is in :data:`GLYPHS`, but it is also whitespace, and the structural
+#: passes below test for real whitespace -- ``"\uf020".isspace()`` is ``False``. It is therefore
+#: substituted before them, so a bullet separated from its text by one of these is still seen as a
+#: bullet rather than left in place as an invisible codepoint.
+SPACE = "\uf020"
+
+#: Every reading of this codepoint verified so far is an inline multiplication dot (*Math for
+#: Programmers* p80, set at 4 pt between two vectors). At the START of a line the same glyph is what
+#: a publisher template uses for a list bullet, and no rendered page in the corpus shows that case --
+#: so it is **left alone and counted**, never rewritten. Restoring it as a middle dot there would
+#: flatten a list into paragraphs, and reported as a successful change; that is the exact silent
+#: rewrite this module refuses to make for :data:`BULLET` on the same grounds.
+DOT = "\uf0b7"
+
+_PUA_CLASS = "[\ue000-\uf8ff]"
 _PUA = re.compile(_PUA_CLASS)
+
+# A line-opening DOT, which this module deliberately does not interpret; see :data:`DOT`.
+_LEADING_DOT = re.compile(r"^[ \t]{0,3}\*?" + DOT)
 
 # A bullet marker opening a line, optionally behind a stray emphasis opener MinerU misplaced.
 _LIST_MARKER = re.compile(r"^([ \t]{0,3})\*?" + BULLET + r"[ \t]+")
@@ -115,23 +179,54 @@ def _strip_stray(ln: str, stats: Counter[str]) -> str:
     return "".join(out)
 
 
+def _remap_line(ln: str, stats: Counter[str]) -> str:
+    """Substitute the verified glyphs in one line, with two exceptions the table cannot express.
+
+    ``SPACE`` at a line edge is **dropped rather than spaced**: two of them at end of line would
+    render as a CommonMark hard break, and a line holding nothing else would become blank and split
+    a paragraph in two -- structure the printed page does not have.
+
+    A line-opening ``DOT`` is left in place and counted; see :data:`DOT` for why guessing there is
+    the one rewrite this module must not make.
+    """
+    head = ""
+    m = _LEADING_DOT.match(ln)
+    if m:
+        stats["line_leading_dot_deferred"] += 1  # never guess: bullet or dot, no rendered evidence
+        head, ln = ln[: m.end()], ln[m.end() :]
+
+    if SPACE in ln:
+        stats["remap_f020"] += ln.count(SPACE)
+        ln = ln.strip(SPACE).replace(SPACE, " ")
+
+    for pua, real in GLYPHS.items():
+        if pua == SPACE:
+            continue  # already handled, edge-aware, above
+        n = ln.count(pua)
+        if n:
+            stats["remap_" + f"{ord(pua):04x}"] += n
+            ln = ln.replace(pua, real)
+    return head + ln
+
+
 def _fix_prose(text: str, stats: Counter[str]) -> str:
-    """Apply every rewrite to a run of text that is known to be outside a code block."""
+    """Apply every rewrite to a run of text that is known to be outside a code block.
+
+    ``_remap_line`` runs **first**: the structural passes below all test for real whitespace, and a
+    Symbol-font space is not whitespace, so a bullet separated from its text by one would otherwise
+    be left in the output as an invisible codepoint and its list item lost.
+    """
     out = []
     for ln in text.split("\n"):
-        new = _HEADING_MARKER.sub(r"\1 ", ln)
-        if new != ln:
+        remapped = _remap_line(ln, stats)
+        new = _HEADING_MARKER.sub(r"\1 ", remapped)
+        if new != remapped:
             stats["heading_markers"] += 1
         else:
-            new = _LIST_MARKER.sub(r"\1- ", ln)
-            if new != ln:
+            new = _LIST_MARKER.sub(r"\1- ", remapped)
+            if new != remapped:
                 stats["list_markers"] += 1
         new = _strip_stray(new, stats)
-        for pua, real in GLYPHS.items():
-            n = new.count(pua)
-            if n:
-                stats["remap_" + f"{ord(pua):04x}"] += n
-                new = new.replace(pua, real)
         out.append(new)
     return "\n".join(out)
 
@@ -150,6 +245,10 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
     ``unknown``
         A codepoint this module has never seen. **This is the one that needs a human**: render the
         source page, confirm what it prints, then extend :data:`GLYPHS`.
+    ``line_leading_dot_deferred``
+        A :data:`DOT` opening a line, left in place because the corpus has no rendered page showing
+        whether it is a bullet or a dot there. Also needs a human, for the same reason ``unknown``
+        does; it is counted separately only because the codepoint itself IS verified inline.
     """
     stats: Counter[str] = Counter()
 
@@ -164,6 +263,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "heading_markers": 0,
             "stray_markers": 0,
             "stray_unhandled": 0,
+            "line_leading_dot_deferred": 0,
             "in_code": {},
             "unknown": {},
             "total_changes": 0,
@@ -198,11 +298,14 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "heading_markers": 0,
         "stray_markers": 0,
         "stray_unhandled": 0,
+        "line_leading_dot_deferred": 0,
         "skipped_crlf": False,
     }
     report.update(stats)
     report["in_code"] = dict(in_code)
     report["unknown"] = dict(unknown)
-    # `stray_unhandled` counts markers deliberately LEFT IN PLACE — not a change.
-    report["total_changes"] = sum(v for k, v in stats.items() if k != "stray_unhandled")
+    # `stray_unhandled` and `line_leading_dot_deferred` count glyphs deliberately LEFT IN PLACE —
+    # not changes. Counting them would make a refusal to guess read as a successful repair.
+    deliberate = {"stray_unhandled", "line_leading_dot_deferred"}
+    report["total_changes"] = sum(v for k, v in stats.items() if k not in deliberate)
     return out, report

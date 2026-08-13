@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`symbol_pua` now covers the Symbol-font glyphs a math book actually uses**: the table grew from
+  3 verified codepoints to 20. `Math for Programmers` alone emits **17 distinct** Private Use Area
+  codepoints, of which the table held `π` and the structurally-handled bullet, so a converted math
+  page dropped `θ`, `φ`, `α`, `λ`, `Σ`, `×`, `·`, `≠`, `≡`, `≈`, `∇`, a Symbol-font space and the
+  parentheses of a radical — each one silently, since a PUA codepoint has no glyph in any normal
+  font. `Mastering Blockchain` adds `∞` and `✓`, also new here. Measured on a converted
+  10-page slice of that book's chapter 12: `unknown: {f071: 4, f061: 3, f066: 1}`, `total_changes: 0`
+  before, 8 remaps and an empty `unknown` after, with `where α (the Greek letter alpha)` and
+  `–αv/m` restored to what the page prints.
+- Every entry was verified by rendering the page it came from and reading the printed character, as
+  the module requires. One finding that only rendering can produce: `U+F0B7` (set at 4 pt) and
+  `U+F0D7` (10 pt) print the **same** centered multiplication dot, so both map to `MIDDLE DOT`,
+  while `U+F053` and `U+F0E5` both print a capital Sigma in two different books — a per-codepoint
+  table derived from an encoding chart would have split all four differently.
+
+### Changed
+- **The two rewrites the table cannot express are now positional, not blanket.** `U+F0B7` is
+  verified *inline* as a multiplication dot, but the same glyph opens a bulleted line in publisher
+  templates and no rendered page in the corpus settles that case — so a line-leading one is **left
+  alone** and reported as `line_leading_dot_deferred` rather than flattening a list into middle-dot
+  paragraphs. The Symbol-font space `U+F020` is substituted **before** the bullet/heading passes
+  (which test for real whitespace, and `"\uf020".isspace()` is `False`, so a bullet separated from
+  its text by one used to survive into the output as an invisible codepoint with its list item
+  lost), and one landing at a line edge is dropped rather than spaced — two of them at end of line
+  are a CommonMark hard break, and a line holding only one becomes blank and splits a paragraph.
+- Every PUA codepoint in `symbol_pua.py` and in the tests is now written as a `\uXXXX` escape
+  instead of the literal character. A literal is invisible in an editor, a diff and a review — the
+  same property that makes this whole defect class hard to see. No behavior change.
+
 ### Fixed
 - Removed a dead `cli.py` branch that printed a "SKIPPED — CRLF" warning that could never fire
   through the `phase5` CLI (`run_chain` reads every file in universal-newline mode, so `symbol_pua`'s

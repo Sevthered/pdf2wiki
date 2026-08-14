@@ -71,7 +71,7 @@ vault = "~/Obsidian/MyVault"
 
 ## `[remote]`
 
-Experimental — SSH-driven remote conversion. See [set up a remote GPU host](../how-to/set-up-remote-gpu.md).
+Experimental — SSH-driven remote conversion. See [configure a remote GPU host](../how-to/set-up-remote-gpu.md).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

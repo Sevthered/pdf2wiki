@@ -68,7 +68,7 @@ ssh <host> echo ok
 ```
 
 Fix your `~/.ssh/config` / keys until that prints `ok` with no password prompt, then retry. See
-[set up a remote GPU host](set-up-remote-gpu.md).
+[configure a remote GPU host](set-up-remote-gpu.md).
 
 ## Remote convert marked failed but the box continued
 

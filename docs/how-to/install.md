@@ -98,4 +98,4 @@ If `pdf2wiki convert` later reports that `mineru` was not found, either put it o
 ## Next
 
 - Convert one book end-to-end: the [tutorial](../tutorials/convert-your-first-book.md).
-- Convert on a separate GPU box: [set up a remote GPU host](set-up-remote-gpu.md).
+- Convert on a separate GPU box: [configure a remote GPU host](set-up-remote-gpu.md).

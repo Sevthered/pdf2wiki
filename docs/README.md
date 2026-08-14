@@ -3,10 +3,10 @@
 pdf2wiki converts native-text technical-book PDFs into clean, chapter-split, LLM-ready Markdown using a
 dual-pass MinerU pipeline plus fidelity-preserving post-processing.
 
-The documentation is organized by what you are trying to do. Pick the entry point that matches your
+The documentation is organized by what you want to do. Pick the entry point that matches your
 need — a high-level sense of the layout will tell you where to look.
 
-## [Tutorials](tutorials/) — learning by doing
+## [Tutorials](tutorials/) — learn by doing
 
 Start here if pdf2wiki is new to you.
 
@@ -21,12 +21,13 @@ For when you already know the tool and need to accomplish something.
 - [Post-process and split into chapters](how-to/post-process-and-split.md)
 - [Run a batch](how-to/run-a-batch.md)
 - [QA a conversion](how-to/qa-a-conversion.md)
-- [Set up a remote GPU host](how-to/set-up-remote-gpu.md) *(experimental)*
+- [Configure a remote GPU host](how-to/set-up-remote-gpu.md) *(experimental)*
 - [Offload the hybrid pass to a server](how-to/offload-hybrid-to-a-server.md) — no local GPU
-- [Convert in the cloud](how-to/convert-in-the-cloud.md) — no GPU, no MinerU *(sends the PDF to a third-party cloud)*
+- [Convert in the cloud](how-to/convert-in-the-cloud.md) — no GPU, no MinerU
+  *(sends the PDF to a third-party cloud)*
 - [Troubleshooting](how-to/troubleshoot.md)
 
-## [Reference](reference/) — look up the facts
+## [Reference](reference/) — find the facts
 
 Precise, complete descriptions of the machinery.
 
@@ -51,9 +52,9 @@ Background and design rationale.
 
 ## [llm-wiki plugin (Claude Code)](llm-wiki/)
 
-A standalone Claude Code plugin to **consult** and **review your code against** a knowledge vault of
-the shape pdf2wiki builds — the query side of the "LLM Wiki" pattern. It works with any such vault and
-does not require pdf2wiki. See the [llm-wiki docs](llm-wiki/README.md).
+A standalone Claude Code plugin. It can **consult** a knowledge vault of the shape pdf2wiki builds,
+and **review your code against** one. This is the query side of the "LLM Wiki" pattern. It works
+with any such vault and does not require pdf2wiki. See the [llm-wiki docs](llm-wiki/README.md).
 
 ---
 

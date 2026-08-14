@@ -19,9 +19,9 @@ CommonMark's fenced-code rules as far as converter output needs:
 - **opener** — up to three spaces of indent, then three or more backticks, then a free-form info
   string. A backtick fence's info string may not contain a backtick. Backtick-only, deliberately:
   MinerU emits only backtick fences. In every book converted so far, a `~~~` run is real content such
-  as console output or ASCII art. Treating it as a fence let a *pair* of tilde divider rows in prose
-  lex as one code block. That corrupted the prose between them, and cost `chapter_split` any chapter
-  boundary inside.
+  as console output or ASCII art. When the lexer treated it as a fence, a *pair* of tilde divider rows
+  in prose lexed as one code block. That corrupted the prose between them, and cost `chapter_split`
+  any chapter boundary inside.
 - **closer** — the same fence character, at least as long as the opener, with nothing but whitespace
   after it.
 - **language** — the first whitespace-separated token of the info string, lowercased. Any remainder
@@ -32,15 +32,15 @@ CommonMark's fenced-code rules as far as converter output needs:
   document as code. These steps *rewrite* what they match, so a single stray fence would strip escapes
   out of prose and cost `chapter_split` every later chapter boundary. Malformed input is left
   byte-for-byte alone instead.
-- Re-emitting a block without changing it is byte-identical, including its indent and fence run, so a
-  step can only alter what it means to alter.
+- A block re-emitted without a change is byte-identical, down to its indent and fence run. A step can
+  therefore only alter what it means to alter.
 
 ## The chain
 
 | # | Step | Reads | Does | Produces |
 |---|------|-------|------|----------|
 | 1 | `illegal_codepoints` | md | Removes codepoints that are illegal in interchange text. Those are raw `U+0000`, the `U+FDD0`–`U+FDEF` block, and the plane-end `U+FFFE`/`U+FFFF` pairs. Scoped to the **whole document, code fences included**. Private Use Area codepoints are left for `symbol_pua`. Drops rather than substitutes, because the characters print as nothing. A removal between two alphanumerics joins two words and is reported as `word_joins`. | md that is text, not binary |
-| 2 | `symbol_pua` | md | Remaps Private Use Area codepoints that publisher PDFs emit for `SymbolMT` glyphs (π, Σ, →). Every entry in its table was verified against a rendered page. Also turns a PUA bullet marker at line start into a real list item. Scoped **outside** code fences. Unrecognized PUA is left alone and reported. Runs a second time after `caption_unbleed`, whose unwrapping can promote a glyph from code to prose. | md with real characters instead of invisible ones |
+| 2 | `symbol_pua` | md | Remaps Private Use Area codepoints that publisher PDFs emit for `SymbolMT` glyphs (π, Σ, →). Every entry in its table was verified against a rendered page. Also turns a PUA bullet marker at line start into a real list item. Scoped **outside** code fences. Unrecognized PUA is left alone and reported. Runs a second time after `caption_unbleed`, which can promote a glyph from code to prose when it unwraps a fence. | md with real characters instead of invisible ones |
 | 3 | `caption_unbleed` | md | Lifts a `Listing/Figure/Table/Example N.M …` caption that MinerU trapped inside a code fence out to a bold line above the fence, or drops a caption-only fence entirely. | md with captions un-bled from code |
 | 4 | `lang_retag` | md | Re-detects each code fence's language, then rewrites the fence tag. Precedence is a `# file: x.ext` hint, then a trusted specific MinerU tag (resolved through the alias/extension table), then a keyword heuristic, else `text`. Tags the heuristic cannot detect but books do emit (`hcl`, `qml`, `vhdl`, `gherkin`, `graphql`) are trusted as-is. MinerU's known-wrong guesses (`swift`, `erlang`) are always re-detected. See [the detection order](#lang_retag-detection-order). | md with reliable language tags |
 | 5 | `dash_normalize` | md | Inside code fences only, converts a typographic en/em-dash used as a long-flag prefix (`–dev`) to `--` and a U+2212 minus to `-`. | md with correct dashes in code |
@@ -65,20 +65,20 @@ tags: [book]
 Files are named `00-front-matter.md` (all content before the first boundary) then `NN-slug.md`, where
 `NN` is the two-digit order and the slug is the lowercased, hyphenated, 60-char-truncated heading.
 Image paths are **not** rewritten — chapter files share the same directory as `images/`, so relative
-references keep resolving.
+references stay correct.
 
 If the Markdown has no detectable boundary, `chapter_split` raises an error rather than emit a single
 undivided file — fix the headings and re-run.
 
 ## `lang_retag` detection order
 
-The keyword heuristic is precision-first: a block it cannot identify becomes `text` rather than
-borrowing a neighboring language's tag. Order matters, because the loose branches key off tokens
+The keyword heuristic is precision-first: a block it cannot identify becomes `text`. It does not
+borrow a neighboring language's tag. Order matters, because the loose branches key off tokens
 several languages share, so the families with an unmistakable marker are resolved first:
 
 1. **`http`** — a request line or a header block.
 2. **`bash`** — the block *opens* with a `$ `/`➜ ` prompt, so it is a terminal session whatever
-   language its output quotes. Only the opening line counts: books also print a program's output as
+   language its output quotes. Only the first line counts: books also print a program's output as
    a trailing `$ …` line inside the source block.
 3. **`pseudocode`** — an assignment arrow (`←`) or a brace-less `function f(x)` header.
 4. **`html`** — the block opens with markup and uses HTML element names. JavaScript that assembles
@@ -118,7 +118,7 @@ parses. A PUA bullet marker at line start otherwise reaches `chapter_split` as a
 glyph it misses corrupts prose invisibly.
 
 `caption_unbleed` runs then, so that `lang_retag` detects language on clean code. `symbol_pua` runs a
-second time after it, because unwrapping a caption-only fence can promote a glyph into prose that the
+second time after it, because an unwrapped caption-only fence can promote a glyph into prose that the
 first pass correctly skipped.
 
 `lang_retag` runs before `dash_normalize` and `code_unescape`, which scope their edits to code fences.

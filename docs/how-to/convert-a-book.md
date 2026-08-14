@@ -8,7 +8,7 @@ You have MinerU installed and a native-text PDF. This guide converts it to merge
 pdf2wiki convert ~/books/my-book.pdf --name my-book
 ```
 
-This writes `~/pdf2wiki/out/my-book/` containing `my-book.md`, `images/`, and `blocks.json`. Change the
+This writes `~/pdf2wiki/out/my-book/`, which holds `my-book.md`, `images/`, and `blocks.json`. Change the
 output root with `--out DIR` or the `[convert] out_root` [config](../reference/configuration.md) field.
 
 The run does a fast pipeline pass over every page. It then runs hybrid VLM passes on the pages that

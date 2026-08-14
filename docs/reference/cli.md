@@ -8,7 +8,7 @@ pdf2wiki [--config PATH] <command> ...
 ```
 
 `--config PATH` points at an explicit config TOML. Without it, pdf2wiki reads
-`./pdf2wiki.toml` then `~/.config/pdf2wiki/config.toml`, falling back to built-in defaults — see
+`./pdf2wiki.toml` then `~/.config/pdf2wiki/config.toml`, then the built-in defaults — see
 [configuration](configuration.md).
 
 **Dry-run convention:** mutating commands default to dry-run and require `--apply` to write. The
@@ -35,11 +35,13 @@ pdf2wiki convert <pdf> --name <slug> [--out DIR]
 | `--cloud-model` | no | `mineru_cloud.model_version` (`pipeline`) | Cloud parse model, only with `--mineru-cloud`: `pipeline` (code-safe, flat indent) · `vlm` (indent/tables but corrupts code) · `MinerU-HTML` · `merge` (runs both `pipeline`+`vlm` in the cloud and splices locally = clean code **and** indent/tables, GPU-less, and costs 2× quota). |
 
 `--remote`, `--hybrid-server-url`, and `--mineru-cloud` are **mutually exclusive** convert strategies.
-Passing more than one exits with code `2` and a message naming the conflict, rather than choosing
-silently.
+If you pass more than one, the command exits with code `2` and a message that names the conflict.
+It does not choose one silently.
 
 Writes `<out>/<slug>/<slug>.md`, `images/`, and `blocks.json` — see [output layout](output-layout.md).
-Exit code `0` on success, `1` on failure (a MinerU/cloud pass failed, or the [coverage gate](../explanation/how-the-merge-works.md#the-coverage-gate) hard-stopped), `2` on a mutually-exclusive-flag misuse.
+Exit code `0` on success. Exit code `1` on failure: a MinerU or cloud pass failed, or the
+[coverage gate](../explanation/how-the-merge-works.md#the-coverage-gate) hard-stopped. Exit code `2`
+on a mutually-exclusive-flag misuse.
 
 ## `phase5`
 

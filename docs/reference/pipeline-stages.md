@@ -32,7 +32,7 @@ Artifacts under `<out_root>/<slug>/`:
 | `base_<a>_<b>/`, `hy_<a>_<b>/` | Per-pass MinerU output dirs, each with a `.log` and a `.done` cache sentinel. |
 
 The `.done` sentinels make convert resumable: a completed pass is reused, so a fixed re-run continues
-past it instead of restarting. See [output layout](output-layout.md) for the full tree and the
+past it instead of a restart. See [output layout](output-layout.md) for the full tree and the
 code-verify markers.
 
 ## Stage 2 — phase5 (`pdf2wiki phase5`)

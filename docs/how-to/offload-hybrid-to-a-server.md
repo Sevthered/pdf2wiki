@@ -7,10 +7,10 @@
 pdf2wiki runs two MinerU passes: a **pipeline** pass (the byte-perfect code/text skeleton, CPU-capable)
 and a **hybrid** VLM pass (tables, Mermaid, LaTeX, charts — GPU-heavy). `--hybrid-server-url` sends
 **only the hybrid pass** to a remote OpenAI-compatible MinerU server. The pipeline pass stays local. A
-machine with no usable GPU can convert by offloading just the heavy half.
+machine with no usable GPU can convert if it offloads just the heavy half.
 
 This is a different mode from [`--remote`](set-up-remote-gpu.md), which runs the **whole** conversion on
-a GPU host over SSH. The two are mutually exclusive — passing both exits with an error.
+a GPU host over SSH. The two are mutually exclusive. If you pass both, the command exits with an error.
 
 ## When to use which
 
@@ -27,7 +27,7 @@ a GPU host over SSH. The two are mutually exclusive — passing both exits with 
 - **Client:** MinerU on `PATH` for the pipeline pass — the lightweight extra is enough, no local vLLM:
   `uv pip install "mineru[core]"`. Force CPU for the pipeline pass on a GPU-less (or small-GPU) box:
   `export MINERU_DEVICE_MODE=cpu`.
-- **Server (BYO):** any OpenAI-compatible endpoint serving a MinerU2.5 VLM. pdf2wiki owns no server
+- **Server (BYO):** any OpenAI-compatible endpoint that serves a MinerU2.5 VLM. pdf2wiki owns no server
   lifecycle — you start it (see below).
 - Network reachability from client to server (see [Security](#security-no-auth) — an SSH tunnel is the
   recommended path).
@@ -88,7 +88,7 @@ Otherwise front the server with a reverse proxy that adds auth, on a trusted net
 
 ## If the server is unreachable
 
-The hybrid pass **fails fast and loud**, naming the server and the page range. It does **not** silently
+The hybrid pass **fails fast and loud**, and names the server and the page range. It does **not** silently
 fall back to local hybrid, which would need the GPU you offloaded. Nor does it fall back to
 pipeline-only, which would drop tables, diagrams, and Mermaid. Completed passes are cached under the
 output dir behind `.done` sentinels. Once the server is back, re-run it: the run resumes straight to

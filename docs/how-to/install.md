@@ -44,9 +44,9 @@ That single install includes the cloud converter (`--mineru-cloud`) — no extra
 
 ## Build from source
 
-pdf2wiki is a **pure-Python** package built with [hatchling](https://hatch.pypa.io/latest/). Building it
-compiles nothing and needs no GPU, no MinerU and no C toolchain. (The `build-essential` requirement above
-belongs to MinerU's vLLM backend at *conversion* time, not to building pdf2wiki.)
+pdf2wiki is a **pure-Python** package built with [hatchling](https://hatch.pypa.io/latest/). The build
+compiles nothing and needs no GPU, no MinerU and no C toolchain. (The `build-essential` requirement
+above belongs to MinerU's vLLM backend at *conversion* time, not to the pdf2wiki build.)
 
 ```bash
 git clone https://github.com/Sevthered/pdf2wiki.git

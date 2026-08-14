@@ -4,7 +4,7 @@ Recipes for the failures you are most likely to hit. Each entry is a symptom and
 
 ## `mineru` not found
 
-**Symptom:** `convert` fails with a `FileNotFoundError` naming `mineru`.
+**Symptom:** `convert` fails with a `FileNotFoundError` that names `mineru`.
 
 **Fix:** MinerU is not on your `PATH`. Either add it, or set the explicit path in
 [config](../reference/configuration.md):
@@ -36,22 +36,22 @@ pages can still spike. Completed passes are cached, so re-running resumes.
 
 ## Coverage gate hard-stop
 
-**Symptom:** `convert` exits with a `CoverageError` naming one or more pages.
+**Symptom:** `convert` exits with a `CoverageError` that names one or more pages.
 
 **Why:** those pages have real text in the PDF but produced zero extracted blocks — extraction dropped
 them. pdf2wiki [refuses to emit a book with a silent hole](../explanation/how-the-merge-works.md#the-coverage-gate).
 
 **Fix:** inspect the named pages. If they are genuinely content (not blank/decorative), the PDF may
-have an unusual text layer. Try re-running (transient), or [QA-sample](qa-a-conversion.md) around those
-pages to see what MinerU produces. This gate is a feature — it surfaces a real gap rather than shipping
-one.
+have an unusual text layer. Try the run again, since the fault may be transient. Or
+[QA-sample](qa-a-conversion.md) around those pages to see what MinerU produces. This gate is a
+feature: it surfaces a real gap, so a book with a hidden gap never ships.
 
-## A cryptic `FileNotFoundError` mentioning `--host`
+## A cryptic `FileNotFoundError` that mentions `--host`
 
-**Symptom:** a MinerU subprocess fails with an odd error referencing something like `--host`.
+**Symptom:** a MinerU subprocess fails with an odd error that references something like `--host`.
 
 **Why:** MinerU imports stdlib modules (`profile`, `inspect`, `code`, …) at runtime. If it runs from a
-directory containing a file named after one of those, Python imports your file instead.
+directory that holds a file named after one of those, Python imports your file instead.
 
 **Fix:** you should not hit this in normal use — pdf2wiki runs MinerU from a clean working directory
 (`[convert] workdir`). If you customized `workdir`, make sure it contains no `.py` files named after
@@ -70,10 +70,10 @@ ssh <host> echo ok
 Fix your `~/.ssh/config` / keys until that prints `ok` with no password prompt, then retry. See
 [set up a remote GPU host](set-up-remote-gpu.md).
 
-## Remote convert marked failed but the box kept working
+## Remote convert marked failed but the box continued
 
 **Symptom:** a long remote `convert`/`batch` reports `convert_failed` (and the log tail shows an
-`ssh: … Operation timed out` when fetching the remote log), yet the converter is still running on the
+`ssh: … Operation timed out` when it fetches the remote log), yet the converter still runs on the
 host and eventually finishes.
 
 **Why:** during a long MinerU pass all output goes to a remote log file, so the SSH channel is silent
@@ -82,12 +82,12 @@ pdf2wiki now sends SSH keepalives (`ServerAliveInterval`) on every remote call t
 which prevents this in almost all cases.
 
 **Fix / recovery:** if it still drops, just re-run — completed conversion passes are cached with a
-`.done` sentinel, so the re-run resumes rather than restarting. If your network is especially aggressive,
+`.done` sentinel, so the re-run resumes instead of a restart. If your network is especially aggressive,
 raise `ServerAliveInterval`/`ServerAliveCountMax` via a `Host` block in `~/.ssh/config` for the box.
 
 ## Corrupt batch manifest
 
-**Symptom:** `batch` exits telling you the manifest could not be parsed.
+**Symptom:** `batch` exits and tells you the manifest could not be parsed.
 
 **Fix:** `<stage>/manifest.json` is not valid JSON (e.g. a kill mid-write on an old version). Repair
 the JSON, or delete the file to start the manifest fresh — already-`done` books will simply re-run.

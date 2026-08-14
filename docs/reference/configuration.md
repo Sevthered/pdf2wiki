@@ -90,12 +90,12 @@ cannot send offsite.** See [convert in the cloud](../how-to/convert-in-the-cloud
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `token` | string | `""` | Bearer token. Empty → falls back to env `MINERU_API_TOKEN`, then `token_file`. **Prefer env/file so the token never lands in a committed config.** |
-| `token_file` | string | `""` | Path to a file holding the token (e.g. `~/.mineru_net_token`), kept out of VCS. |
+| `token_file` | string | `""` | Path to a file that holds the token (e.g. `~/.mineru_net_token`), kept out of VCS. |
 | `base_url` | string | `"https://mineru.net/api/v4"` | Precision API base URL. |
 | `model_version` | string | `"pipeline"` | Default cloud model when `--cloud-model` is not given: `pipeline` (code-safe, flat indent) · `vlm` (indent/tables, corrupts code) · `MinerU-HTML`. (`merge` is a CLI-only pseudo-model, not a config value.) |
 | `language` | string | `"en"` | OCR language hint (mineru.net defaults to `ch`). |
 | `extra_formats` | list | `[]` | Extra output formats to request, e.g. `["latex"]` for formula-heavy books. |
-| `poll_timeout` | int (s) | `1800` | How long to wait for a cloud task before failing. |
+| `poll_timeout` | int (s) | `1800` | How long pdf2wiki waits for a cloud task before it stops and reports a timeout. |
 | `max_pages` | int | `200` | Per-file page cap (mineru.net Precision limit). Larger PDFs fail fast rather than truncate. |
 
 ## `[output]`

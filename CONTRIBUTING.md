@@ -1,7 +1,7 @@
 # Contributing to pdf2wiki
 
 Thanks for your interest. This guide covers the development setup and the conventions the project
-follows. By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). See
+follows. If you participate, you agree to obey our [Code of Conduct](CODE_OF_CONDUCT.md). See
 [GOVERNANCE.md](GOVERNANCE.md) for how decisions are made and who maintains the project.
 
 ## Good first issues
@@ -47,7 +47,7 @@ tests for any behavior change and keep the suite green.
 
 ## Lint & license compliance
 
-CI runs `ruff check` (including the `flake8-bandit` security-lint rules, `S`), `ruff format --check`,
+CI runs `ruff check` (with the `flake8-bandit` security-lint rules, `S`), `ruff format --check`,
 `reuse lint`, `mypy`, and `pytest`, plus an OpenSSF Scorecard scan. Run the first set locally
 with `uv run <tool>`. The project is [REUSE](https://reuse.software/) 3.3 compliant — every source
 file carries an SPDX header (`src/**` is AGPL-3.0-or-later, `plugin/**` is MIT). Non-code files are
@@ -64,8 +64,8 @@ How dependencies are selected, pinned, and tracked is documented in
 
 - **Coding standards.** Python code follows [PEP 8](https://peps.python.org/pep-0008/). Style and imports
   are enforced by `ruff`, formatting by `ruff format`, and types by `mypy --strict` (all configured in
-  `pyproject.toml` and gated in CI), so contributions must pass them. Beyond that, match the surrounding
-  code and keep changes surgical.
+  `pyproject.toml` and gated in CI), so contributions must pass them. Beyond that, match the code around it
+  and keep changes surgical.
 - **Dry-run by default.** Any command that modifies existing files must default to a dry-run and
   require `--apply` (see [design principles](docs/explanation/design-principles.md)). `convert` and
   `qa` are the only exceptions — they only create new artifacts.
@@ -82,13 +82,13 @@ How dependencies are selected, pinned, and tracked is documented in
 2. Make the change with tests and docs updated.
 3. Ensure `uv run pytest -q` passes.
 4. Commit with a sign-off: `git commit -s` (see [Sign your work](#sign-your-work-dco) below).
-5. Open a pull request describing what changed and why.
+5. Open a pull request that describes what changed, and why.
 
 ## Code review
 
-Every change — including the maintainer's own — lands through a pull request and is reviewed before it
-is merged. Reviews are conducted on GitHub against the checklist below. A change is **acceptable only
-when all of it holds**:
+Every change lands through a pull request and is reviewed before it is merged. This applies to the
+maintainer's own changes. Reviews are conducted on GitHub against the checklist below. A change is
+**acceptable only when all of it holds**:
 
 - **CI is green.** The full test suite passes on Python 3.11–3.13, and `ruff check`, `ruff format
   --check`, `mypy --strict`, and `reuse lint` all pass (enforced as required status checks).
@@ -124,10 +124,10 @@ This appends a trailer to the commit message using your configured `user.name` /
 Signed-off-by: Your Name <you@example.com>
 ```
 
-If you forgot it on the most recent commit, amend with `git commit --amend -s`. By adding the
-sign-off you certify the four statements of the DCO 1.1 linked above.
+If you forgot it on the most recent commit, amend with `git commit --amend -s`. When you add the
+sign-off, you certify the four statements of the DCO 1.1 linked above.
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the project's
+If you contribute, you agree that your contributions are licensed under the project's
 [AGPL-3.0-or-later](LICENSE) license.

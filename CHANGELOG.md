@@ -21,8 +21,23 @@ All notable changes to this project are documented here. The format is based on
   `U+F0D7` (10 pt) print the **same** centered multiplication dot, so both map to `MIDDLE DOT`,
   while `U+F053` and `U+F0E5` both print a capital Sigma in two different books — a per-codepoint
   table derived from an encoding chart would have split all four differently.
+- **A "Build from source" section in the install guide** (`docs/how-to/install.md`), linked from
+  CONTRIBUTING: clone, `uv build` (or `python -m build`), install the resulting wheel, and the
+  dev-environment commands CI runs. Every command was executed before it was documented. This closes
+  **OSPS-DO-07.01**, a control the OSPS Baseline added in its `2026-02-19` release.
 
 ### Changed
+- **`security-insights.yml` now self-attests OSPS Baseline Level 2** (cumulative on Level 1), and —
+  the part that matters for anyone reading the claim — **names the baseline version it was assessed
+  against**, `2026-02-19`. The previous Level 1 attestation was measured against `2025-02-25`; two
+  releases since then added five controls (`BR-03.02`, `BR-07.01`, `QA-05.02`, `BR-01.03` at Level 1,
+  `DO-07.01` at Level 2) and removed one, so a conformance claim naming no version decays silently as
+  the standard moves. Four of the five were already met — secret-scanning push protection, no binary
+  artifacts in version control, no workflow granting credentials to untrusted code, and a
+  Trusted-Publishing distribution path — and the fifth is the build documentation above. Level 3 is
+  explicitly **not** claimed: `QA-07.01` requires a non-author approver, which a single-maintainer
+  project cannot honestly meet. Also filled the previously empty
+  `project.documentation.design` field with the architecture document.
 - **The two rewrites the table cannot express are now positional, not blanket.** `U+F0B7` is
   verified *inline* as a multiplication dot, but the same glyph opens a bulleted line in publisher
   templates and no rendered page in the corpus settles that case — so a line-leading one is **left

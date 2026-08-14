@@ -33,6 +33,9 @@ You do **not** need a GPU or MinerU to work on most of the code: the converter's
 whole `phase5` chain, `scan`, and the executors are all unit-tested without one. Only running an actual
 `convert` needs MinerU and a GPU — see the [install guide](docs/how-to/install.md).
 
+To build the distributable wheel and sdist rather than work on the source, see
+[Build from source](docs/how-to/install.md#build-from-source).
+
 ## Run the tests
 
 ```bash

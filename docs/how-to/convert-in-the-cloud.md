@@ -105,7 +105,7 @@ extra_formats = ["latex"]            # optional; e.g. LaTeX for formula-heavy bo
 ## Limits & behavior
 
 - **≤ 200 pages per file** (mineru.net Precision limit). Larger books must be split first — the command
-  fails fast with a clear message rather than truncate silently. **1000 pages/day** at top priority.
+  fails fast with a clear message. It does not truncate silently. **1000 pages/day** at top priority.
 - **Fail fast, loud.** Any API error (bad token, oversized file, parse failure, unreachable) aborts
   and names the cause. There is no silent fallback to a local converter.
 - The token is read from config/env/file and is **never logged or written to disk** by pdf2wiki.

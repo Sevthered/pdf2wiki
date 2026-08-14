@@ -40,7 +40,7 @@ CommonMark's fenced-code rules as far as converter output needs:
 | # | Step | Reads | Does | Produces |
 |---|------|-------|------|----------|
 | 1 | `illegal_codepoints` | md | Removes codepoints that are illegal in interchange text. Those are raw `U+0000`, the `U+FDD0`–`U+FDEF` block, and the plane-end `U+FFFE`/`U+FFFF` pairs. Scoped to the **whole document, code fences included**. Private Use Area codepoints are left for `symbol_pua`. Drops rather than substitutes, because the characters print as nothing. A removal between two alphanumerics joins two words and is reported as `word_joins`. | md that is text, not binary |
-| 2 | `symbol_pua` | md | Remaps Private Use Area codepoints that publisher PDFs emit for `SymbolMT` glyphs (π, Σ, →). Every entry in its table was verified against a rendered page. Also turns a PUA bullet marker at line start into a real list item. Scoped **outside** code fences. Unrecognized PUA is left alone and reported. Runs a second time after `caption_unbleed`, whose unwrapping can promote a glyph from code to prose. | md with real characters instead of invisible ones |
+| 2 | `symbol_pua` | md | Remaps Private Use Area codepoints that publisher PDFs emit for `SymbolMT` glyphs (π, Σ, →). Every entry in its table was verified against a rendered page. Also turns a PUA bullet marker at line start into a real list item. Scoped **outside** code fences. Unrecognized PUA is left alone and reported. Runs a second time after `caption_unbleed`, which can promote a glyph from code to prose when it unwraps a fence. | md with real characters instead of invisible ones |
 | 3 | `caption_unbleed` | md | Lifts a `Listing/Figure/Table/Example N.M …` caption that MinerU trapped inside a code fence out to a bold line above the fence, or drops a caption-only fence entirely. | md with captions un-bled from code |
 | 4 | `lang_retag` | md | Re-detects each code fence's language, then rewrites the fence tag. Precedence is a `# file: x.ext` hint, then a trusted specific MinerU tag (resolved through the alias/extension table), then a keyword heuristic, else `text`. Tags the heuristic cannot detect but books do emit (`hcl`, `qml`, `vhdl`, `gherkin`, `graphql`) are trusted as-is. MinerU's known-wrong guesses (`swift`, `erlang`) are always re-detected. See [the detection order](#lang_retag-detection-order). | md with reliable language tags |
 | 5 | `dash_normalize` | md | Inside code fences only, converts a typographic en/em-dash used as a long-flag prefix (`–dev`) to `--` and a U+2212 minus to `-`. | md with correct dashes in code |
@@ -72,8 +72,8 @@ undivided file — fix the headings and re-run.
 
 ## `lang_retag` detection order
 
-The keyword heuristic is precision-first: a block it cannot identify becomes `text` rather than borrow
-a neighboring language's tag. Order matters, because the loose branches key off tokens
+The keyword heuristic is precision-first: a block it cannot identify becomes `text`. It does not
+borrow a neighboring language's tag. Order matters, because the loose branches key off tokens
 several languages share, so the families with an unmistakable marker are resolved first:
 
 1. **`http`** — a request line or a header block.

@@ -45,8 +45,13 @@ All notable changes to this project are documented here. The format is based on
   Troubleshooting*) or as a modifier inside one. Every other use — a gerund after a preposition, a
   reduced relative participle, a progressive verb — is rewritten: *before uploading* → *before you
   upload*, *a directory containing a file* → *a directory that holds a file*, *the box kept working* →
-  *the box continued*. That last one was a heading, so its inbound anchor moved with it. **54
-  instances were rewritten.** A further **31** were never violations at all: the checker's allow-list
+  *the box continued*. **Three headings changed, so three anchors changed with them** — the
+  data-usage-and-privacy heading in the cloud guide, and two in the troubleshooting guide. The one
+  in-repo link that pointed at an old slug was updated, and every cross-file anchor was re-verified,
+  but an **external** deep link to any of the three now lands at the top of the page instead of the
+  section. **54 instances were rewritten**, counted as instances the checker no longer reports rather
+  than as `-ing` tokens removed from the diff, which is a larger number because some rewrites
+  eliminated a word the checker never flagged. A further **31** were never violations at all: the checker's allow-list
   was missing words the standard itself permits, so fixing the checker rather than the prose accounts
   for them — measured by re-running the corrected checker against the pre-change text, which reports
   79 rather than 110. The remaining **25** are the permitted kind — `a listing`, `working directory`,

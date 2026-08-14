@@ -42,9 +42,9 @@ pages can still spike. Completed passes are cached, so re-running resumes.
 them. pdf2wiki [refuses to emit a book with a silent hole](../explanation/how-the-merge-works.md#the-coverage-gate).
 
 **Fix:** inspect the named pages. If they are genuinely content (not blank/decorative), the PDF may
-have an unusual text layer. Try re-running (transient), or [QA-sample](qa-a-conversion.md) around those
-pages to see what MinerU produces. This gate is a feature: it surfaces a real gap rather than ship
-one.
+have an unusual text layer. Try the run again, since the fault may be transient. Or
+[QA-sample](qa-a-conversion.md) around those pages to see what MinerU produces. This gate is a
+feature: it surfaces a real gap, so a book with a hidden gap never ships.
 
 ## A cryptic `FileNotFoundError` that mentions `--host`
 
@@ -82,7 +82,7 @@ pdf2wiki now sends SSH keepalives (`ServerAliveInterval`) on every remote call t
 which prevents this in almost all cases.
 
 **Fix / recovery:** if it still drops, just re-run — completed conversion passes are cached with a
-`.done` sentinel, so the re-run resumes rather than restart. If your network is especially aggressive,
+`.done` sentinel, so the re-run resumes instead of a restart. If your network is especially aggressive,
 raise `ServerAliveInterval`/`ServerAliveCountMax` via a `Host` block in `~/.ssh/config` for the box.
 
 ## Corrupt batch manifest

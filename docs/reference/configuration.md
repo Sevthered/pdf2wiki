@@ -95,7 +95,7 @@ cannot send offsite.** See [convert in the cloud](../how-to/convert-in-the-cloud
 | `model_version` | string | `"pipeline"` | Default cloud model when `--cloud-model` is not given: `pipeline` (code-safe, flat indent) · `vlm` (indent/tables, corrupts code) · `MinerU-HTML`. (`merge` is a CLI-only pseudo-model, not a config value.) |
 | `language` | string | `"en"` | OCR language hint (mineru.net defaults to `ch`). |
 | `extra_formats` | list | `[]` | Extra output formats to request, e.g. `["latex"]` for formula-heavy books. |
-| `poll_timeout` | int (s) | `1800` | How long to wait for a cloud task before it fails. |
+| `poll_timeout` | int (s) | `1800` | How long pdf2wiki waits for a cloud task before it stops and reports a timeout. |
 | `max_pages` | int | `200` | Per-file page cap (mineru.net Precision limit). Larger PDFs fail fast rather than truncate. |
 
 ## `[output]`

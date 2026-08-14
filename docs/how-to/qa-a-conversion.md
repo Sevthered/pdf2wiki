@@ -9,8 +9,8 @@ the Markdown against the rendered PDF pages.
 pdf2wiki qa sample ~/books/my-book.pdf my-book
 ```
 
-This draws 20 random pages (change with `-n`) from the middle 5–95% of the book. It skips front and
-back matter — and writes to `~/pdf2wiki/qa/my-book/`:
+This draws 20 random pages (change with `-n`) from the middle 5–95% of the book, and skips front and
+back matter. It writes to `~/pdf2wiki/qa/my-book/`:
 
 - `my-book_sample.pdf` — a small PDF of just those pages
 - `pages/*.png` — each sampled page rendered at 140 DPI (change with `--dpi`)

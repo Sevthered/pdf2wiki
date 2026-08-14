@@ -103,8 +103,10 @@ repositories. The bundled `llm-wiki` Claude Code plugin ships in-repo under [`pl
 
 ## Status
 
-**Alpha.** All stages are functional. The converter was ported from a production deployment validated
-on several full technical books, and the coverage gate hard-stops rather than drop content silently.
+**Alpha.** All stages are functional. The converter was ported from a production deployment
+validated on several full technical books. The coverage gate hard-stops on a gap rather than a
+silent loss.
+
 Remote (SSH) and cloud (`--mineru-cloud`) modes each have a verified end-to-end run on a real
 GPU box. Those runs were a single-book conversion over SSH, and a cloud dual-pass merge. Neither mode
 has been exercised at full-book batch scale yet, so prefer local mode for large runs.

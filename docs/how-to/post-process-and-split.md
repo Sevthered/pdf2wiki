@@ -44,6 +44,6 @@ the converted `.md` before splitting.
 
 ## Next
 
-- Repair or inspect diagrams: the Mermaid step runs automatically; see
+- Repair or inspect diagrams: the Mermaid step runs automatically. See
   [troubleshooting](troubleshoot.md).
 - Do this for many books at once: [run a batch](run-a-batch.md).

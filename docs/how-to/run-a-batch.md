@@ -19,7 +19,7 @@ slug = "microservices-patterns"
 domain = "distributed-systems"
 ```
 
-`pdf` and `slug` are required. `domain` is optional; when set (and you use `--vault`), it becomes a
+`pdf` and `slug` are required. `domain` is optional. When set (and you use `--vault`), it becomes a
 subfolder under the vault. In [remote mode](set-up-remote-gpu.md), `pdf` is a filename under the remote
 `books_dir`, not a local path.
 
@@ -61,5 +61,5 @@ The batch finishes the current book, consumes the `STOP` file, and exits. Re-run
 
 Each slug's status is one of `convert_failed`, `fetch_failed`, `phase5_failed`, or `done` — see
 [manifest states](../reference/pipeline-stages.md#batch-manifest-states). A failure is recorded and the
-batch moves on; it never aborts the whole run. Inspect `manifest.json` to see what failed, fix it, and
+batch moves on. It never aborts the whole run. Inspect `manifest.json` to see what failed, fix it, and
 re-run.

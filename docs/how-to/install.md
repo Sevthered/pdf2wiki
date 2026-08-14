@@ -4,7 +4,7 @@
 
 - **Python ≥ 3.11** (always).
 
-The rest depends on **how you convert**. Local conversion needs a GPU + MinerU; the offload and cloud
+The rest depends on **how you convert**. Local conversion needs a GPU + MinerU. The offload and cloud
 paths need neither:
 
 | Convert mode | GPU | Local MinerU | Extra requirement |
@@ -76,8 +76,8 @@ uv run mypy                 # strict
 uv run pytest -q --cov=pdf2wiki --cov-report=term-missing
 ```
 
-Ask the **installed package** for its version, not the package manager — an editable install's
-`dist-info` records the version at install time and goes stale as the source moves:
+Ask the **installed package** for its version, not the package manager. An editable install's
+`dist-info` records the version at install time, and it goes stale as the source moves:
 
 ```bash
 python -c "import pdf2wiki; print(pdf2wiki.__version__)"

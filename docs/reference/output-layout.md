@@ -16,7 +16,7 @@ What `convert`, `phase5`, and `batch` write to disk, and how to read the fidelit
 ```
 
 `<out_root>` defaults to `~/pdf2wiki/out` (config `[convert] out_root`, or `--out`). The `base_*` and
-`hy_*` directories are the MinerU pass caches; their `.done` sentinels drive
+`hy_*` directories are the MinerU pass caches. Their `.done` sentinels drive
 [resumability](pipeline-stages.md#stage-1--convert-pdf2wiki-convert).
 
 ## After phase5
@@ -36,8 +36,8 @@ Each file carries YAML frontmatter (`title`, `book`, `chapter`, `source`, `tags:
 ## Code-verify markers
 
 The converter never silently trusts VLM-transcribed code. When a code block's hybrid and pipeline
-versions diverge, the block keeps the pipeline tokens (the truth) and carries an HTML comment so a
-downstream reader (or human) can reconcile:
+versions diverge, the block keeps the pipeline tokens, which are the truth. It also carries an HTML
+comment, so that a downstream reader or a human can reconcile the two:
 
 ```
 <!-- ⚠ code-verify: hybrid tokens diverged from pipeline; showing pipeline tokens -->
@@ -49,7 +49,7 @@ A second marker flags a block whose tokens agreed but whose hybrid indentation f
 
 ## Stats glossary
 
-`convert` reports merge stats; here is what each counter means.
+`convert` reports merge stats. Here is what each counter means.
 
 | Stat | Meaning |
 |------|---------|

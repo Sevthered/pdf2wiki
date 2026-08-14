@@ -6,7 +6,7 @@
 
 pdf2wiki runs two MinerU passes: a **pipeline** pass (the byte-perfect code/text skeleton, CPU-capable)
 and a **hybrid** VLM pass (tables, Mermaid, LaTeX, charts — GPU-heavy). `--hybrid-server-url` sends
-**only the hybrid pass** to a remote OpenAI-compatible MinerU server; the pipeline pass stays local. A
+**only the hybrid pass** to a remote OpenAI-compatible MinerU server. The pipeline pass stays local. A
 machine with no usable GPU can convert by offloading just the heavy half.
 
 This is a different mode from [`--remote`](set-up-remote-gpu.md), which runs the **whole** conversion on
@@ -52,7 +52,7 @@ Verify it: `curl http://localhost:30000/v1/models` returns a model list (HTTP 20
 
 > **Gotcha — FastAPI too new for vLLM.** On vLLM 0.20.2, FastAPI ≥ 0.139 breaks every server route with
 > `'_IncludedRouter' object has no attribute 'path'` (all requests 500). Pin a compatible FastAPI in the
-> server's environment: `uv pip install "fastapi==0.115.6"`, then restart. This affects only the server;
+> server's environment: `uv pip install "fastapi==0.115.6"`, then restart. This affects only the server.
 > the local pipeline pass never imports FastAPI.
 
 ## Convert
@@ -62,7 +62,7 @@ export MINERU_DEVICE_MODE=cpu          # GPU-less client: run the pipeline pass 
 pdf2wiki convert book.pdf --name my-book --hybrid-server-url http://gpu-host:30000
 ```
 
-The pipeline pass runs locally; the hybrid pass calls the server (`hybrid-http-client -u <url>`). MinerU
+The pipeline pass runs locally. The hybrid pass calls the server (`hybrid-http-client -u <url>`). MinerU
 appends the OpenAI path itself — pass the **base** URL (`http://host:30000`), not `/v1/...`. `--effort`
 and image analysis are preserved, so Mermaid and chart transcription still work.
 
@@ -88,7 +88,8 @@ Otherwise front the server with a reverse proxy that adds auth, on a trusted net
 
 ## If the server is unreachable
 
-The hybrid pass **fails fast and loud**, naming the server and page range, and does **not** silently fall
-back to local hybrid (which would need the GPU you offloaded) or to pipeline-only (which would drop
-tables, diagrams, and Mermaid). Completed passes are cached under the output dir (`.done` sentinels), so
-once the server is back, re-run and it resumes straight to the hybrid pass — no pipeline re-run.
+The hybrid pass **fails fast and loud**, naming the server and the page range. It does **not** silently
+fall back to local hybrid, which would need the GPU you offloaded. Nor does it fall back to
+pipeline-only, which would drop tables, diagrams, and Mermaid. Completed passes are cached under the
+output dir behind `.done` sentinels. Once the server is back, re-run it: the run resumes straight to
+the hybrid pass, with no pipeline re-run.

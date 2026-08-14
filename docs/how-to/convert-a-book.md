@@ -11,8 +11,9 @@ pdf2wiki convert ~/books/my-book.pdf --name my-book
 This writes `~/pdf2wiki/out/my-book/` containing `my-book.md`, `images/`, and `blocks.json`. Change the
 output root with `--out DIR` or the `[convert] out_root` [config](../reference/configuration.md) field.
 
-The run does a fast pipeline pass over every page, then hybrid VLM passes on the pages that carry
-tables, images, code, equations, or charts, then merges them. Progress streams to your terminal.
+The run does a fast pipeline pass over every page. It then runs hybrid VLM passes on the pages that
+carry tables, images, code, equations, or charts, and merges the two. Progress streams to your
+terminal.
 
 ## Convert a page range
 

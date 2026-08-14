@@ -1,7 +1,7 @@
 # Contributing to pdf2wiki
 
 Thanks for your interest. This guide covers the development setup and the conventions the project
-follows. By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md); see
+follows. By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). See
 [GOVERNANCE.md](GOVERNANCE.md) for how decisions are made and who maintains the project.
 
 ## Good first issues
@@ -12,10 +12,10 @@ New or casual contributors should start with issues labeled
 These are scoped to be completable without deep knowledge of the whole pipeline. Small, always-welcome
 tasks include:
 
-- documentation fixes and clarifications under `docs/`;
-- adding a test for an untested branch (see the coverage report);
-- a new language mapping in `phase5/lang_retag.py` or a phase-5 edge case;
-- tightening an error message or a `--help` string.
+- documentation fixes and clarifications under `docs/`
+- a test for an untested branch (see the coverage report)
+- a new language mapping in `phase5/lang_retag.py`, or a phase-5 edge case
+- a clearer error message or `--help` string
 
 If nothing suitable is open, propose a small change in an issue first and it can be labeled accordingly.
 
@@ -29,9 +29,9 @@ cd pdf2wiki
 uv sync            # create the venv and install dev dependencies
 ```
 
-You do **not** need a GPU or MinerU to work on most of the code: the converter's pure functions, the
-whole `phase5` chain, `scan`, and the executors are all unit-tested without one. Only running an actual
-`convert` needs MinerU and a GPU — see the [install guide](docs/how-to/install.md).
+You do **not** need a GPU or MinerU to work on most of the code. The converter's pure functions, the
+whole `phase5` chain, `scan`, and the executors are all unit-tested without one. Only an actual
+`convert` needs MinerU and a GPU. See the [install guide](docs/how-to/install.md).
 
 To build the distributable wheel and sdist rather than work on the source, see
 [Build from source](docs/how-to/install.md#build-from-source).
@@ -50,7 +50,7 @@ tests for any behavior change and keep the suite green.
 CI runs `ruff check` (including the `flake8-bandit` security-lint rules, `S`), `ruff format --check`,
 `reuse lint`, `mypy`, and `pytest`, plus an OpenSSF Scorecard scan. Run the first set locally
 with `uv run <tool>`. The project is [REUSE](https://reuse.software/) 3.3 compliant — every source
-file carries an SPDX header (`src/**` is AGPL-3.0-or-later, `plugin/**` is MIT); non-code files are
+file carries an SPDX header (`src/**` is AGPL-3.0-or-later, `plugin/**` is MIT). Non-code files are
 covered by `REUSE.toml`. Install the pre-commit hook to catch a missing header before you commit:
 
 ```bash
@@ -73,7 +73,7 @@ How dependencies are selected, pinned, and tracked is documented in
 - **Fidelity first.** Never silently trust VLM-transcribed code — divergences are flagged, not hidden.
 - **Docs-as-code.** Documentation lives in `docs/`, organized by the [Diátaxis](https://diataxis.fr/)
   framework (tutorials / how-to / reference / explanation). Update the relevant page in the same change
-  as the code, and keep one topic to one page. Documentation is kept current with the code; known
+  as the code, and keep one topic to one page. Documentation is kept current with the code. Known
   documentation defects are tracked as GitHub issues and fixed.
 
 ## Submitting changes
@@ -87,7 +87,7 @@ How dependencies are selected, pinned, and tracked is documented in
 ## Code review
 
 Every change — including the maintainer's own — lands through a pull request and is reviewed before it
-is merged. Reviews are conducted on GitHub against the checklist below; a change is **acceptable only
+is merged. Reviews are conducted on GitHub against the checklist below. A change is **acceptable only
 when all of it holds**:
 
 - **CI is green.** The full test suite passes on Python 3.11–3.13, and `ruff check`, `ruff format
@@ -108,9 +108,9 @@ blocks the merge until the required checks pass.
 ## Sign your work (DCO)
 
 Contributions must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/)
-(DCO) — a lightweight statement that you wrote the patch, or otherwise have the right to submit it under
-the project's license. It is *not* a CLA and assigns no copyright; it is the same mechanism the Linux
-kernel and many CNCF projects use.
+(DCO). It is a lightweight statement that you wrote the patch, or otherwise have the right to submit it
+under the project's license. It is *not* a CLA and assigns no copyright. It is the same mechanism the
+Linux kernel and many CNCF projects use.
 
 Add the sign-off automatically with the `-s` flag:
 

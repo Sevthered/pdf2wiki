@@ -9,15 +9,15 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13768/badge)](https://www.bestpractices.dev/projects/13768)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/13768/baseline)](https://www.bestpractices.dev/projects/13768)
 
-Convert heavily technical books (native-text PDFs) into clean, chapter-split, **LLM-ready Markdown** —
-code byte-perfect, tables intact, diagrams transcribed to Mermaid — suitable for an Obsidian vault or
-any Markdown-native knowledge base.
+Convert heavily technical books (native-text PDFs) into clean, chapter-split, **LLM-ready Markdown**.
+Code stays byte-perfect, tables stay intact, and diagrams are transcribed to Mermaid. The output suits
+an Obsidian vault or any Markdown-native knowledge base.
 
-Built on [MinerU](https://github.com/opendatalab/MinerU) with a **dual-pass strategy**: a pipeline pass
-(`-m txt`) takes byte-perfect code and text from the PDF's embedded text layer, a hybrid/VLM pass
-(`--effort high`) reconstructs table grids and transcribes diagrams to Mermaid, and a base-driven merge
-grafts the good parts together — token-verifying code so a hallucinating VLM never corrupts a listing.
-A six-step post-processing chain then cleans and splits the result into per-chapter files.
+Built on [MinerU](https://github.com/opendatalab/MinerU) with a **dual-pass strategy**. A pipeline pass
+(`-m txt`) takes byte-perfect code and text from the PDF's embedded text layer. A hybrid/VLM pass
+(`--effort high`) reconstructs table grids and transcribes diagrams to Mermaid. A base-driven merge then
+grafts the good parts together, and token-verifies the code so a hallucinating VLM never corrupts a
+listing. A six-step post-processing chain cleans the result and splits it into per-chapter files.
 
 Why two backends instead of one: [why a dual-backend pipeline](docs/explanation/why-dual-backend.md).
 
@@ -29,9 +29,10 @@ Why two backends instead of one: [why a dual-backend pipeline](docs/explanation/
 - A C compiler for vLLM's Triton JIT: `sudo apt install build-essential python3-dev`
 
 Only the conversion needs the GPU — `phase5`, `qa`, and `scan` run anywhere Python runs. No GPU at all?
-[offload the hybrid pass to a server](docs/how-to/offload-hybrid-to-a-server.md) (pipeline local on CPU,
-VLM pass remote), use a [remote GPU](docs/how-to/set-up-remote-gpu.md), or — with no local setup at all —
-[convert in the cloud](docs/how-to/convert-in-the-cloud.md) via the managed mineru.net API.
+[offload the hybrid pass to a server](docs/how-to/offload-hybrid-to-a-server.md), which keeps the
+pipeline pass local on CPU. Or use a [remote GPU](docs/how-to/set-up-remote-gpu.md). Or, with no local
+setup at all, [convert in the cloud](docs/how-to/convert-in-the-cloud.md) via the managed mineru.net
+API.
 
 ## Install
 
@@ -59,8 +60,8 @@ New here? Follow the guided [tutorial: convert your first book](docs/tutorials/c
 
 ## Query the vault: the `llm-wiki` plugin
 
-pdf2wiki *builds* a knowledge vault; the bundled **`llm-wiki`** Claude Code plugin *reads* one — so
-Claude can consult it while you plan, and review your code against it, always citing the exact
+pdf2wiki *builds* a knowledge vault. The bundled **`llm-wiki`** Claude Code plugin *reads* one. Claude
+can consult it while you plan, and review your code against it. It always cites the exact
 `[[Page-Name]]`. It's the "LLM Wiki" pattern (an alternative to RAG/embeddings): plain Markdown read
 just-in-time, with coverage discovered from the vault itself. Standalone (works with any vault in the
 shape pdf2wiki produces) and **MIT-licensed**.
@@ -70,7 +71,7 @@ claude plugin marketplace add https://github.com/Sevthered/pdf2wiki
 claude plugin install llm-wiki@pdf2wiki
 ```
 
-Query-side (consult + review) ships now; ingest-side is a later release. Details:
+The query side (consult + review) ships now. The ingest side is a later release. Details:
 [`plugin/`](plugin/) · [llm-wiki documentation](docs/llm-wiki/).
 
 ## Documentation
@@ -97,15 +98,15 @@ version, environment, steps to reproduce, and expected vs actual behavior. **Sec
 reported privately per [SECURITY.md](SECURITY.md), never as a public issue.
 
 **Repository scope.** pdf2wiki is a single repository with no separate subprojects or additional
-repositories; the bundled `llm-wiki` Claude Code plugin ships in-repo under [`plugin/`](plugin/).
+repositories. The bundled `llm-wiki` Claude Code plugin ships in-repo under [`plugin/`](plugin/).
 
 ## Status
 
-**Alpha.** All stages are functional; the converter was ported from a production deployment validated
+**Alpha.** All stages are functional. The converter was ported from a production deployment validated
 on several full technical books, and the coverage gate hard-stops rather than silently dropping
-content. Remote (SSH) and cloud (`--mineru-cloud`) modes now have a verified end-to-end run on a real
-GPU box — a single-book conversion over SSH and a cloud dual-pass merge — but have not yet been
-exercised at full-book batch scale, so prefer local mode for large runs.
+content. Remote (SSH) and cloud (`--mineru-cloud`) modes each have a verified end-to-end run on a real
+GPU box. Those runs were a single-book conversion over SSH, and a cloud dual-pass merge. Neither mode
+has been exercised at full-book batch scale yet, so prefer local mode for large runs.
 
 ## License
 

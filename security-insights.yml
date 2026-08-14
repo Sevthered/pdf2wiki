@@ -1,13 +1,16 @@
 header:
   schema-version: 2.2.0
-  last-updated: '2026-07-24'
-  last-reviewed: '2026-07-24'
+  last-updated: '2026-08-14'
+  last-reviewed: '2026-08-14'
   url: https://github.com/Sevthered/pdf2wiki/blob/main/security-insights.yml
   comment: |
     OpenSSF Security Insights (spec v2.2.0) for pdf2wiki — the machine-readable
     self-attestation of the project's security posture. The project self-attests
-    OSPS Baseline Level 1 and holds an OpenSSF Best Practices Silver badge
-    (bestpractices.dev project 13768). Single-repository project.
+    OSPS Baseline Level 2 (which is cumulative on Level 1), assessed against
+    baseline version 2026-02-19, and holds an OpenSSF Best Practices Silver badge
+    (bestpractices.dev project 13768). Level 3 is not claimed: OSPS-QA-07.01
+    requires a non-author human approval before merge, which a single-maintainer
+    project cannot honestly meet. Single-repository project.
 
 project:
   name: pdf2wiki
@@ -22,6 +25,7 @@ project:
   documentation:
     quickstart-guide: https://github.com/Sevthered/pdf2wiki#quickstart
     detailed-guide: https://github.com/Sevthered/pdf2wiki/tree/main/docs
+    design: https://github.com/Sevthered/pdf2wiki/blob/main/docs/architecture/architecture.md
     code-of-conduct: https://github.com/Sevthered/pdf2wiki/blob/main/CODE_OF_CONDUCT.md
     support-policy: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md
     signature-verification: https://github.com/Sevthered/pdf2wiki/blob/main/SECURITY.md

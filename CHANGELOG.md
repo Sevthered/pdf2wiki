@@ -40,6 +40,19 @@ All notable changes to this project are documented here. The format is based on
   active voice, one topic per sentence) are not claimed. STE is a controlled language built to reduce
   ambiguity for non-native readers, for translators, and — per the standard itself — for language
   models, which is the audience this project's output is written for.
+- **Rule 9.3, the phrasal-verb ban, applied to the documentation.** STE forbids combining two approved
+  words into a phrasal verb, because the combination carries a meaning neither word's own entry covers
+  and the dictionary does not flag it — so the writer, not a lookup, is the check. Six instances, all
+  replaced by a single word that states the meaning directly: *set up a remote GPU host* → **configure**
+  a remote GPU host (the page title and its four inbound link texts), and *a file you keep out of
+  version control* → a file you **exclude** from version control. The file name
+  `docs/how-to/set-up-remote-gpu.md` is deliberately unchanged: STE governs prose, not file naming, and
+  renaming a published page would break external links for no gain in clarity.
+- **`docs/README.md` is now inside the documentation corpus.** It is the index to the pages already
+  covered, and leaving it out was an oversight in how the corpus was named rather than a decision. It
+  carried a 27-word sentence, an over-wide line, a progressive verb (*what you are trying to do*) and
+  two phrasal verbs (*set up*, *look up the facts*) — including the one that made the index disagree
+  with the page it points at.
 - **Rule 3.5, the `-ing` restriction, applied to the same corpus.** STE permits an `-ing` form only as
   a technical noun (its own examples are *Cleaning, Testing, Handling, Packaging, Shipping,
   Troubleshooting*) or as a modifier inside one. Every other use — a gerund after a preposition, a

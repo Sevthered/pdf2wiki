@@ -1,4 +1,4 @@
-# Set up a remote GPU host
+# Configure a remote GPU host
 
 > **Experimental.** Remote mode works but has no full public end-to-end validation yet. For production
 > use, prefer local mode until this note is lifted.

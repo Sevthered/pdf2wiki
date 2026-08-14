@@ -27,6 +27,19 @@ All notable changes to this project are documented here. The format is based on
   **OSPS-DO-07.01**, a control the OSPS Baseline added in its `2026-02-19` release.
 
 ### Changed
+- **The user-facing documentation is now written to ASD-STE100 Simplified Technical English.** The
+  corpus is `README.md`, `CONTRIBUTING.md`, `docs/how-to/`, `docs/tutorials/` and `docs/reference/`.
+  Measured against the mechanically-decidable rules, it went from **97 violations to 0**: 60 semicolons
+  (rule 8.1, which STE bans outright), 27 descriptive sentences over 25 words (6.3), 8 procedural
+  sentences over 20 words (5.1), one over-long parenthetical (8.5) and two British spellings (1.14).
+  Sentence length was measured under the standard's own counting rules 8.4–8.6 rather than by splitting
+  on whitespace, so a parenthetical counts as one word in its host sentence and as a sentence of its
+  own, while a number-plus-unit, an abbreviation or an alphanumeric identifier each count as one word.
+  No behavior changed, and no factual claim, number or data-egress warning was altered — that was the
+  explicit subject of an independent review of the diff. Judgment-dependent rules (approved meanings,
+  active voice, one topic per sentence) are not claimed. STE is a controlled language built to reduce
+  ambiguity for non-native readers, for translators, and — per the standard itself — for language
+  models, which is the audience this project's output is written for.
 - **`security-insights.yml` now self-attests OSPS Baseline Level 2** (cumulative on Level 1), and —
   the part that matters for anyone reading the claim — **names the baseline version it was assessed
   against**, `2026-02-19`. The previous Level 1 attestation was measured against `2025-02-25`; two

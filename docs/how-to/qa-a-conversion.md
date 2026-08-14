@@ -12,8 +12,8 @@ pdf2wiki qa sample ~/books/my-book.pdf my-book
 This draws 20 random pages (change with `-n`) from the middle 5–95% of the book — skipping front and
 back matter — and writes to `~/pdf2wiki/qa/my-book/`:
 
-- `my-book_sample.pdf` — a small PDF of just those pages;
-- `pages/*.png` — each sampled page rendered at 140 DPI (change with `--dpi`);
+- `my-book_sample.pdf` — a small PDF of just those pages
+- `pages/*.png` — each sampled page rendered at 140 DPI (change with `--dpi`)
 - `mapping.json` — which sample index maps to which original page.
 
 Sampling is seeded (`--seed`, default 42), so the same command reproduces the same pages.

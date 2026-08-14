@@ -31,7 +31,7 @@ This is not a GPU or VRAM problem.
 **Symptom:** a hybrid pass fails with a CUDA out-of-memory error.
 
 **Fix:** lower the hybrid run length so fewer pages are in flight at once — reduce `[convert] maxrun`
-(default 25) in [config](../reference/configuration.md). The pipeline targets ~8 GB VRAM; very dense
+(default 25) in [config](../reference/configuration.md). The pipeline targets ~8 GB VRAM. Very dense
 pages can still spike. Completed passes are cached, so re-running resumes.
 
 ## Coverage gate hard-stop
@@ -42,7 +42,7 @@ pages can still spike. Completed passes are cached, so re-running resumes.
 them. pdf2wiki [refuses to emit a book with a silent hole](../explanation/how-the-merge-works.md#the-coverage-gate).
 
 **Fix:** inspect the named pages. If they are genuinely content (not blank/decorative), the PDF may
-have an unusual text layer; try re-running (transient), or [QA-sample](qa-a-conversion.md) around those
+have an unusual text layer. Try re-running (transient), or [QA-sample](qa-a-conversion.md) around those
 pages to see what MinerU produces. This gate is a feature — it surfaces a real gap rather than shipping
 one.
 
@@ -77,7 +77,7 @@ Fix your `~/.ssh/config` / keys until that prints `ok` with no password prompt, 
 host and eventually finishes.
 
 **Why:** during a long MinerU pass all output goes to a remote log file, so the SSH channel is silent
-for minutes; a NAT/idle timeout (common with WSL2 mirrored networking) can drop that silent connection.
+for minutes. A NAT/idle timeout (common with WSL2 mirrored networking) can drop that silent connection.
 pdf2wiki now sends SSH keepalives (`ServerAliveInterval`) on every remote call to hold the channel open,
 which prevents this in almost all cases.
 

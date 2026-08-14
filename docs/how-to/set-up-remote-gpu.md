@@ -36,7 +36,7 @@ pdf2wiki convert my-book.pdf --name my-book --remote gpu-box
 
 pdf2wiki checks the SSH connection once, runs the conversion on the host (logging to
 `<workdir>/logs/<slug>.log`), and reports success from the remote command's exit code. For a batch,
-add `--remote` to `pdf2wiki batch`; it fetches each book's `.md` and `images/` back to the stage dir.
+add `--remote` to `pdf2wiki batch`. It fetches each book's `.md` and `images/` back to the stage dir.
 
 ## How success is judged
 
@@ -47,7 +47,7 @@ of words like "error" and "failed". If a book fails, read its remote log
 ## Troubleshooting
 
 - **Connectivity check fails** — see [troubleshooting](troubleshoot.md#ssh-connectivity-check-fails).
-- A mid-run SSH drop does not necessarily kill a detached remote job; on reconnect, check before
+- A mid-run SSH drop does not necessarily kill a detached remote job. On reconnect, check before
   assuming the work was lost. pdf2wiki sends SSH keepalives on every remote call to hold the control
-  channel open across long silent conversion passes; if a drop still happens, re-running resumes from
+  channel open across long silent conversion passes. If a drop still happens, re-running resumes from
   the cached (`.done`) passes. See [remote convert marked failed but the box kept working](troubleshoot.md#remote-convert-marked-failed-but-the-box-kept-working).

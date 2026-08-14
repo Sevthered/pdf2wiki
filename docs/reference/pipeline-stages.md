@@ -1,7 +1,7 @@
 # Pipeline stages reference
 
 The end-to-end path a book takes, stage by stage, with the inputs and on-disk artifacts of each.
-`convert` and `phase5` are separate commands you can run by hand; `batch` chains them for many books.
+`convert` and `phase5` are separate commands you can run by hand. `batch` chains them for many books.
 For the conceptual view see [how the merge works](../explanation/how-the-merge-works.md).
 
 ## Stage 1 — convert (`pdf2wiki convert`)
@@ -27,7 +27,7 @@ Artifacts under `<out_root>/<slug>/`:
 | Artifact | What it is |
 |----------|------------|
 | `<slug>.md` | The merged Markdown. |
-| `images/` | Extracted figures; referenced as `images/<name>` from the Markdown. |
+| `images/` | Extracted figures. Referenced as `images/<name>` from the Markdown. |
 | `blocks.json` | The full merged block list (every block with type, page, bbox, provenance). |
 | `base_<a>_<b>/`, `hy_<a>_<b>/` | Per-pass MinerU output dirs, each with a `.log` and a `.done` cache sentinel. |
 
@@ -38,19 +38,19 @@ code-verify markers.
 ## Stage 2 — phase5 (`pdf2wiki phase5`)
 
 Input: the `<slug>.md` from stage 1. Runs the [six-step chain](phase5-steps.md) and writes chapter
-files to `<md dir>/chapters/` (or `--out`). Dry-run by default; `--apply` writes.
+files to `<md dir>/chapters/` (or `--out`). Dry-run by default. `--apply` writes.
 
 ## Stage 3 — batch orchestration (`pdf2wiki batch`)
 
 `batch` runs, per book, `convert → fetch → phase5 (--apply) → optional vault placement`, sequentially
-(single GPU). `fetch` is a no-op locally; in remote mode it `scp`s the `.md` and `images/` back. After
+(single GPU). `fetch` is a no-op locally. In remote mode it `scp`s the `.md` and `images/` back. After
 phase5, images are linked into `chapters/images/` so relative refs resolve, and — if `--vault` (or
 `[output] vault`) is set — the chapters are copied to `<vault>/<domain>/<slug>/`.
 
 ### Batch manifest states
 
 `batch` records one status per slug in `<stage>/manifest.json` (written atomically). On re-run, only a
-`done` book is skipped; every other state retries.
+`done` book is skipped. Every other state retries.
 
 | Status | Meaning |
 |--------|---------|

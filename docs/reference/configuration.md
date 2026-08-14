@@ -46,17 +46,17 @@ vault = "~/Obsidian/MyVault"
 | `binary` | string | `""` | Path to the `mineru` executable. Empty means discover `mineru` on `PATH`. |
 | `model_source` | string | `"huggingface"` | Sets `MINERU_MODEL_SOURCE` for the MinerU subprocess. |
 | `effort` | string | `"high"` | Hybrid/VLM effort. `high` enables image/chart/diagram analysis. |
-| `hybrid_server_url` | string | `""` | Offload the hybrid VLM pass to this OpenAI-compatible MinerU server (`hybrid-http-client -u URL`); the pipeline pass stays local. Empty = local hybrid. Set by `--hybrid-server-url`. See [offload the hybrid pass](../how-to/offload-hybrid-to-a-server.md). |
+| `hybrid_server_url` | string | `""` | Offload the hybrid VLM pass to this OpenAI-compatible MinerU server (`hybrid-http-client -u URL`). The pipeline pass stays local. Empty = local hybrid. Set by `--hybrid-server-url`. See [offload the hybrid pass](../how-to/offload-hybrid-to-a-server.md). |
 
 ## `[convert]`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `out_root` | string | `"~/pdf2wiki/out"` | Root for converted output; a book lands in `<out_root>/<slug>/`. |
+| `out_root` | string | `"~/pdf2wiki/out"` | Root for converted output. A book lands in `<out_root>/<slug>/`. |
 | `workdir` | string | `"~/.pdf2wiki/run"` | Clean working directory for MinerU subprocesses (avoids stdlib-shadow crashes — see [design principles](../explanation/design-principles.md)). |
 | `timeout` | int (s) | `7200` | Timeout per MinerU pass in local mode. |
 | `gap` | int (pages) | `3` | Merge rich pages into one hybrid run if the gap between them is ≤ this. |
-| `seg` | int (pages) | `40` | Pipeline segment size; the base pass runs in chunks of this many pages. |
+| `seg` | int (pages) | `40` | Pipeline segment size. The base pass runs in chunks of this many pages. |
 | `maxrun` | int (pages) | `25` | Cap on the length of a single hybrid run (bounds VRAM). |
 | `tiny_px2` | int (px²) | `2500` | Caption-less images smaller than this are dropped as decorative noise. |
 
@@ -84,7 +84,7 @@ Experimental — SSH-driven remote conversion. See [set up a remote GPU host](..
 ## `[mineru_cloud]`
 
 Fully-managed [mineru.net](https://mineru.net) Cloud conversion (`--mineru-cloud`) — no GPU, no local
-MinerU. **⚠ Uploads the PDF to a third-party cloud (OpenDataLab, CN-hosted); do not use for material you
+MinerU. **⚠ Uploads the PDF to a third-party cloud (OpenDataLab, CN-hosted). Do not use for material you
 cannot send offsite.** See [convert in the cloud](../how-to/convert-in-the-cloud.md).
 
 | Field | Type | Default | Description |
@@ -96,7 +96,7 @@ cannot send offsite.** See [convert in the cloud](../how-to/convert-in-the-cloud
 | `language` | string | `"en"` | OCR language hint (mineru.net defaults to `ch`). |
 | `extra_formats` | list | `[]` | Extra output formats to request, e.g. `["latex"]` for formula-heavy books. |
 | `poll_timeout` | int (s) | `1800` | How long to wait for a cloud task before failing. |
-| `max_pages` | int | `200` | Per-file page cap (mineru.net Precision limit); larger PDFs fail fast rather than truncate. |
+| `max_pages` | int | `200` | Per-file page cap (mineru.net Precision limit). Larger PDFs fail fast rather than truncate. |
 
 ## `[output]`
 

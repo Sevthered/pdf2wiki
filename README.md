@@ -16,8 +16,8 @@ an Obsidian vault or any Markdown-native knowledge base.
 Built on [MinerU](https://github.com/opendatalab/MinerU) with a **dual-pass strategy**. A pipeline pass
 (`-m txt`) takes byte-perfect code and text from the PDF's embedded text layer. A hybrid/VLM pass
 (`--effort high`) reconstructs table grids and transcribes diagrams to Mermaid. A base-driven merge then
-grafts the good parts together, and token-verifies the code so a hallucinating VLM never corrupts a
-listing. A six-step post-processing chain cleans the result and splits it into per-chapter files.
+grafts the good parts together, and token-verifies the code so that a VLM which hallucinates never
+corrupts a listing. A six-step post-processing chain cleans the result and splits it into per-chapter files.
 
 Why two backends instead of one: [why a dual-backend pipeline](docs/explanation/why-dual-backend.md).
 
@@ -83,7 +83,8 @@ Full docs live in [`docs/`](docs/), organized by intent ([Diátaxis](https://dia
 - **Reference** — [CLI](docs/reference/cli.md) · [configuration](docs/reference/configuration.md) · [pipeline stages](docs/reference/pipeline-stages.md) · [phase 5 steps](docs/reference/phase5-steps.md) · [output layout](docs/reference/output-layout.md)
 - **Explanation** — [why dual-backend](docs/explanation/why-dual-backend.md) · [how the merge works](docs/explanation/how-the-merge-works.md) · [design principles](docs/explanation/design-principles.md)
 - **Architecture** — [overview with C4 diagrams](docs/architecture/architecture.md)
-- **Decisions** — [ADR log (MADR)](docs/decisions/): why two backends, code token-verification, AGPL/MIT + subprocess, the executor port, remote hardening
+- **Decisions** — [ADR log (MADR)](docs/decisions/): why two backends, code token-verification,
+  AGPL/MIT + subprocess, the executor port, remote hardening
 - **Plugin** — [llm-wiki (query/review a vault)](docs/llm-wiki/)
 
 ## Contributing
@@ -103,12 +104,13 @@ repositories. The bundled `llm-wiki` Claude Code plugin ships in-repo under [`pl
 ## Status
 
 **Alpha.** All stages are functional. The converter was ported from a production deployment validated
-on several full technical books, and the coverage gate hard-stops rather than silently dropping
-content. Remote (SSH) and cloud (`--mineru-cloud`) modes each have a verified end-to-end run on a real
+on several full technical books, and the coverage gate hard-stops rather than drop content silently.
+Remote (SSH) and cloud (`--mineru-cloud`) modes each have a verified end-to-end run on a real
 GPU box. Those runs were a single-book conversion over SSH, and a cloud dual-pass merge. Neither mode
 has been exercised at full-book batch scale yet, so prefer local mode for large runs.
 
 ## License
 
 AGPL-3.0-or-later for the converter. This tool drives the MinerU CLI (AGPL-3.0) as an external process.
-The bundled `plugin/` (the `llm-wiki` Claude Code plugin) is **MIT**-licensed — see [`plugin/LICENSE`](plugin/LICENSE).
+The bundled `plugin/` (the `llm-wiki` Claude Code plugin) is **MIT**-licensed.
+See [`plugin/LICENSE`](plugin/LICENSE).

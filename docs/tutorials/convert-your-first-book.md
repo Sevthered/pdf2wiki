@@ -36,7 +36,7 @@ should have real grids.
 ## Step 2 — Preview the post-processing
 
 The raw Markdown is one long file. The `phase5` command cleans it up and splits it into chapters. Run
-it first **without** writing anything — this is a preview:
+it first and **write nothing** — this is a preview:
 
 ```bash
 pdf2wiki phase5 ~/pdf2wiki/out/effective-go/effective-go.md --book effective-go

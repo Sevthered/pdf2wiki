@@ -4,8 +4,8 @@
 > **corrupts code** (Qwen2-VL drifts into Chinese tokens on ambiguous code OCR, e.g. `orElseThrow` →
 > `response二等奖Throw`, `findFirst` → `找到了`). The **`pipeline`** model keeps code byte-clean but
 > **flattens indentation**. The **`merge`** model runs *both* cloud passes and splices them locally with
-> pdf2wiki's own base-driven merge — **byte-clean code AND correct indentation/tables/Mermaid**, matching
-> the local dual-pass converter, still GPU-less. Prefer `merge` for code-heavy books.
+> pdf2wiki's own base-driven merge — **byte-clean code AND correct indentation/tables/Mermaid**, which
+> matches the local dual-pass converter and is still GPU-less. Prefer `merge` for code-heavy books.
 
 `--mineru-cloud` converts a PDF with **zero local setup** — no GPU, no MinerU install, no server. It
 uploads the PDF to the fully-managed [mineru.net](https://mineru.net) Precision API and waits for the
@@ -15,7 +15,7 @@ so `phase5` consumes it unchanged.
 > **⚠ Data egress.** This sends your PDF to a third-party cloud (OpenDataLab, CN-hosted). Do **not** use
 > it for material you cannot send offsite. The command logs the upload loudly every run.
 
-## Data usage & privacy — read before uploading
+## Data usage & privacy — read before you upload
 
 Using `--mineru-cloud` uploads your **entire source PDF** to servers operated by **OpenDataLab** (a
 [Shanghai AI Laboratory](https://opendatalab.com) project, with China-hosted infrastructure). pdf2wiki is
@@ -25,7 +25,7 @@ an unaffiliated client — it does not control, and cannot speak for, what miner
 
 - mineru.net publishes a **User Service Agreement (用户服务协议)** and a **Privacy Policy (隐私政策)**,
   linked in the footer of <https://mineru.net>. Both are **only in Chinese**, and their machine-readable
-  text is not publicly indexed. **You are responsible for reading them before uploading anything.**
+  text is not publicly indexed. **You must read them before you upload anything.**
 - The API docs state only operational facts: an upload link is valid for **24 hours**, and there are
   per-file/size and daily quotas (see below). We found **no public English statement** on three points.
   **We could not confirm how long uploaded files are retained.** **We could not confirm whether they
@@ -37,13 +37,13 @@ an unaffiliated client — it does not control, and cannot speak for, what miner
 **Practical guidance:**
 
 - **Copyrighted books, licensed material, confidential or personal documents → do not use this path.**
-  Uploading may breach the material's license, or your own obligations. That holds independently of
+  An upload may breach the material's license, or your own obligations. That holds independently of
   mineru.net's terms. Use one of three alternatives instead: the
   [local converter](convert-a-book.md), a [remote GPU host](set-up-remote-gpu.md), or
   [offload only the hybrid pass](offload-hybrid-to-a-server.md) to a server you control. All three keep
   the PDF on hardware you own.
-- Reserve `--mineru-cloud` for **public or self-owned, non-sensitive PDFs** where sending a copy offsite
-  is acceptable to you.
+- Reserve `--mineru-cloud` for **public or self-owned, non-sensitive PDFs**. Use it only where you
+  accept that a copy goes offsite.
 - This is a **per-book, explicit** decision. Never wire `--mineru-cloud` into an unattended batch over a
   corpus you have not individually cleared for egress.
 
@@ -54,7 +54,7 @@ yourself, as terms may have changed since this was written.*
 ## Requirements
 
 - pdf2wiki itself (`pip install pdf2wiki`) — the cloud converter ships with the base package, no extra.
-- A mineru.net API token from <https://mineru.net/apiManage/token>. Provide it **without committing it**:
+- A mineru.net API token from <https://mineru.net/apiManage/token>. Provide it, but **do not commit it**:
   - env: `export MINERU_API_TOKEN=...`, or
   - `[mineru_cloud].token_file = "~/.mineru_net_token"` (a file you keep out of version control), or
   - `[mineru_cloud].token` in a local (gitignored) config.
@@ -81,7 +81,7 @@ pdf2wiki convert book.pdf --name my-book --mineru-cloud --cloud-model merge   # 
   (Chinese-token drift — see the warning above). Use only for figure/table-heavy PDFs where code is moot.
 
 `--mineru-cloud` is mutually exclusive with `--remote` and `--hybrid-server-url` (it runs the *whole*
-conversion in the cloud) — passing them together exits with an error.
+conversion in the cloud). If you pass them together, the command exits with an error.
 
 ### How `merge` works
 
@@ -105,19 +105,19 @@ extra_formats = ["latex"]            # optional; e.g. LaTeX for formula-heavy bo
 ## Limits & behavior
 
 - **≤ 200 pages per file** (mineru.net Precision limit). Larger books must be split first — the command
-  fails fast with a clear message rather than silently truncating. **1000 pages/day** at top priority.
+  fails fast with a clear message rather than truncate silently. **1000 pages/day** at top priority.
 - **Fail fast, loud.** Any API error (bad token, oversized file, parse failure, unreachable) aborts
-  naming the cause. There is no silent fallback to a local converter.
+  and names the cause. There is no silent fallback to a local converter.
 - The token is read from config/env/file and is **never logged or written to disk** by pdf2wiki.
 - **`merge` costs 2×** — it submits the PDF twice (`pipeline` + `vlm`), so it burns 2× the daily page
   quota and doubles egress. Budget accordingly on large books.
-- **Cloud output is not byte-identical to the local converter.** mineru.net runs its own evolving
-  MinerU version. Block boundaries and a few merge decisions therefore differ from an on-box run.
+- **Cloud output is not byte-identical to the local converter.** mineru.net runs its own MinerU
+  version, which evolves. Block boundaries and a few merge decisions therefore differ from an on-box run.
   `merge` keeps code *clean*, because pipeline tokens win. That is what matters. Do not expect a
   bit-for-bit match.
 - **Math not yet validated on this path.** The `equation` LaTeX field has not been fidelity-checked
   through the cloud. For formula-heavy books try `extra_formats = ["latex"]` and **verify the output**.
-- **No automatic chunking.** Books over the per-file page cap must be split by hand before uploading.
+- **No automatic chunking.** Split a book over the per-file page cap by hand before you upload it.
 
 ## When to prefer the local converter
 

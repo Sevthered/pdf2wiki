@@ -1,6 +1,6 @@
 # Post-process and split into chapters
 
-After [converting a book](convert-a-book.md) you have a single `<slug>.md`. `phase5` cleans it and
+After you [convert a book](convert-a-book.md), you have a single `<slug>.md`. `phase5` cleans it and
 splits it into per-chapter files. It runs the [six-step chain](../reference/phase5-steps.md).
 
 ## Preview first (dry-run)
@@ -40,7 +40,7 @@ You get `00-front-matter.md` plus one `NN-slug.md` per chapter, each with YAML f
 `images/` folder alongside the chapter files. See [phase5 steps](../reference/phase5-steps.md#chapter-frontmatter).
 
 If `phase5` reports that it found no chapter boundaries, the Markdown has no usable H1 headings — check
-the converted `.md` before splitting.
+the converted `.md` before the split.
 
 ## Next
 

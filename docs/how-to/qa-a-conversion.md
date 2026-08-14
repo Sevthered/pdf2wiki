@@ -1,6 +1,6 @@
 # QA a conversion
 
-Before trusting a full conversion, spot-check the pipeline on a random sample of pages and back-check
+Before you trust a full conversion, spot-check the pipeline on a random sample of pages and back-check
 the Markdown against the rendered PDF pages.
 
 ## 1. Sample pages
@@ -9,7 +9,7 @@ the Markdown against the rendered PDF pages.
 pdf2wiki qa sample ~/books/my-book.pdf my-book
 ```
 
-This draws 20 random pages (change with `-n`) from the middle 5–95% of the book — skipping front and
+This draws 20 random pages (change with `-n`) from the middle 5–95% of the book. It skips front and
 back matter — and writes to `~/pdf2wiki/qa/my-book/`:
 
 - `my-book_sample.pdf` — a small PDF of just those pages
@@ -39,9 +39,10 @@ This writes `~/pdf2wiki/qa/my-book/review.txt` with a `SAMPLE NN (original page 
 
 ## 4. Back-check
 
-Open `review.txt` next to the matching `pages/*.png` and compare: does the Markdown match the page?
+Open `review.txt` next to the `pages/*.png` that corresponds, and compare: does the Markdown match the
+page?
 Look especially at code fidelity, table grids, and figure captions. The
 [stats glossary](../reference/output-layout.md#stats-glossary) helps you read the converter's counters.
 
 > **Triage a directory of PDFs first?** Use `pdf2wiki scan <dir>` to print title/year guesses as JSON
-> before deciding what to convert.
+> before you decide what to convert.

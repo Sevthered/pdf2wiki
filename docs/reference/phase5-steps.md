@@ -19,9 +19,9 @@ CommonMark's fenced-code rules as far as converter output needs:
 - **opener** — up to three spaces of indent, then three or more backticks, then a free-form info
   string. A backtick fence's info string may not contain a backtick. Backtick-only, deliberately:
   MinerU emits only backtick fences. In every book converted so far, a `~~~` run is real content such
-  as console output or ASCII art. Treating it as a fence let a *pair* of tilde divider rows in prose
-  lex as one code block. That corrupted the prose between them, and cost `chapter_split` any chapter
-  boundary inside.
+  as console output or ASCII art. When the lexer treated it as a fence, a *pair* of tilde divider rows
+  in prose lexed as one code block. That corrupted the prose between them, and cost `chapter_split`
+  any chapter boundary inside.
 - **closer** — the same fence character, at least as long as the opener, with nothing but whitespace
   after it.
 - **language** — the first whitespace-separated token of the info string, lowercased. Any remainder
@@ -32,8 +32,8 @@ CommonMark's fenced-code rules as far as converter output needs:
   document as code. These steps *rewrite* what they match, so a single stray fence would strip escapes
   out of prose and cost `chapter_split` every later chapter boundary. Malformed input is left
   byte-for-byte alone instead.
-- Re-emitting a block without changing it is byte-identical, including its indent and fence run, so a
-  step can only alter what it means to alter.
+- A block re-emitted without a change is byte-identical, down to its indent and fence run. A step can
+  therefore only alter what it means to alter.
 
 ## The chain
 
@@ -65,20 +65,20 @@ tags: [book]
 Files are named `00-front-matter.md` (all content before the first boundary) then `NN-slug.md`, where
 `NN` is the two-digit order and the slug is the lowercased, hyphenated, 60-char-truncated heading.
 Image paths are **not** rewritten — chapter files share the same directory as `images/`, so relative
-references keep resolving.
+references stay correct.
 
 If the Markdown has no detectable boundary, `chapter_split` raises an error rather than emit a single
 undivided file — fix the headings and re-run.
 
 ## `lang_retag` detection order
 
-The keyword heuristic is precision-first: a block it cannot identify becomes `text` rather than
-borrowing a neighboring language's tag. Order matters, because the loose branches key off tokens
+The keyword heuristic is precision-first: a block it cannot identify becomes `text` rather than borrow
+a neighboring language's tag. Order matters, because the loose branches key off tokens
 several languages share, so the families with an unmistakable marker are resolved first:
 
 1. **`http`** — a request line or a header block.
 2. **`bash`** — the block *opens* with a `$ `/`➜ ` prompt, so it is a terminal session whatever
-   language its output quotes. Only the opening line counts: books also print a program's output as
+   language its output quotes. Only the first line counts: books also print a program's output as
    a trailing `$ …` line inside the source block.
 3. **`pseudocode`** — an assignment arrow (`←`) or a brace-less `function f(x)` header.
 4. **`html`** — the block opens with markup and uses HTML element names. JavaScript that assembles
@@ -118,7 +118,7 @@ parses. A PUA bullet marker at line start otherwise reaches `chapter_split` as a
 glyph it misses corrupts prose invisibly.
 
 `caption_unbleed` runs then, so that `lang_retag` detects language on clean code. `symbol_pua` runs a
-second time after it, because unwrapping a caption-only fence can promote a glyph into prose that the
+second time after it, because an unwrapped caption-only fence can promote a glyph into prose that the
 first pass correctly skipped.
 
 `lang_retag` runs before `dash_normalize` and `code_unescape`, which scope their edits to code fences.

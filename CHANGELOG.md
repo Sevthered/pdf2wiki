@@ -40,6 +40,18 @@ All notable changes to this project are documented here. The format is based on
   active voice, one topic per sentence) are not claimed. STE is a controlled language built to reduce
   ambiguity for non-native readers, for translators, and — per the standard itself — for language
   models, which is the audience this project's output is written for.
+- **Rule 3.5, the `-ing` restriction, applied to the same corpus.** STE permits an `-ing` form only as
+  a technical noun (its own examples are *Cleaning, Testing, Handling, Packaging, Shipping,
+  Troubleshooting*) or as a modifier inside one. Every other use — a gerund after a preposition, a
+  reduced relative participle, a progressive verb — is rewritten: *before uploading* → *before you
+  upload*, *a directory containing a file* → *a directory that holds a file*, *the box kept working* →
+  *the box continued*. That last one was a heading, so its inbound anchor moved with it. **54
+  instances were rewritten.** A further **31** were never violations at all: the checker's allow-list
+  was missing words the standard itself permits, so fixing the checker rather than the prose accounts
+  for them — measured by re-running the corrected checker against the pre-change text, which reports
+  79 rather than 110. The remaining **25** are the permitted kind — `a listing`, `working directory`,
+  `mutating commands`, `grep-based tooling` — which is why the count does not reach zero, and why it
+  should not be read as outstanding work.
 - **`security-insights.yml` now self-attests OSPS Baseline Level 2** (cumulative on Level 1), and —
   the part that matters for anyone reading the claim — **names the baseline version it was assessed
   against**, `2026-02-19`. The previous Level 1 attestation was measured against `2025-02-25`; two

@@ -7,6 +7,17 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **A read-only mirror of the repository at
+  [codeberg.org/Sevthered/pdf2wiki](https://codeberg.org/Sevthered/pdf2wiki).** GitHub stays
+  canonical, and it keeps the issues, the pull requests and the releases. A new workflow,
+  `.github/workflows/mirror.yml`, pushes `refs/heads/*` and `refs/tags/*` when `main` moves and when
+  a `v*` tag arrives. Codeberg disabled new automatic pull mirrors in 2020, so the copy has to be
+  pushed in from this side. The workflow authenticates with a Codeberg deploy key. That key can
+  write to one repository and to no other. The workflow also pins the Codeberg host key by its
+  published fingerprint. It never uses `git push --mirror`, because that command would prune
+  Forgejo's own `refs/pull/*` and break the pull-request views on the copy. `CONTRIBUTING.md` and
+  `security-insights.yml` both name the mirror. The attested controls apply to the GitHub
+  repository alone.
 - **`symbol_pua` now covers the Symbol-font glyphs a math book actually uses**: the table grew from
   3 verified codepoints to 20. `Math for Programmers` alone emits **17 distinct** Private Use Area
   codepoints, of which the table held `π` and the structurally-handled bullet, so a converted math

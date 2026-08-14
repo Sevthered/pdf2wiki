@@ -1,0 +1,109 @@
+# Mirror every branch and every tag to the Codeberg copy at codeberg.org/Sevthered/pdf2wiki.
+# GitHub is canonical. Codeberg holds a read-only copy, and Codeberg disabled new pull mirrors
+# in 2020, so the copy has to be pushed in from this side.
+#
+# Scope, stated exactly: the refspecs copy refs/heads/* and refs/tags/*, not main alone. The
+# wildcard is deliberate, because --prune then deletes from Codeberg whatever GitHub no longer
+# has. Two consequences follow. A short-lived branch, a dependabot one for example, becomes
+# visible on the public copy. And the copy only catches up when the job next runs, so a branch
+# deleted on GitHub stays on Codeberg until the next push to main or to a v* tag.
+#
+# Three more deliberate constraints:
+#   * The refspecs name refs/heads/* and refs/tags/* explicitly. A `git push --mirror` would
+#     prune Codeberg's own refs/pull/*, which Forgejo creates for every pull request there, and
+#     break its pull-request views. --prune therefore only reaches inside those two namespaces.
+#   * The trigger is `push` alone, and there is no workflow_dispatch. A pull request from a fork
+#     never fires a push event, so the deploy key is never exposed to one. Manual dispatch would
+#     break that: it runs the workflow file as it exists on the ref you select, so a modified
+#     copy of this file on any unprotected branch could read the secret. To re-sync by hand, use
+#     "Re-run jobs" on an earlier run of this workflow, or push again to main.
+#   * The push is atomic. One rejected ref therefore fails the whole push, main included. The
+#     narrow case that can wedge it is a prune that tries to delete Codeberg's default branch,
+#     which Forgejo refuses. Both forges default to main today, so the prune never reaches it.
+name: mirror
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false  # two syncs must not race for the same refs
+
+env:
+  CANONICAL_REPO: Sevthered/pdf2wiki
+  CODEBERG_REMOTE: git@codeberg.org:Sevthered/pdf2wiki.git
+
+jobs:
+  push-to-codeberg:
+    # A fork holds no deploy key, so it must not try. A rename is caught inside the job instead,
+    # because a job skipped by `if` reports success and the mirror would stop without going red.
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check this is the canonical repository
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$CANONICAL_REPO" || {
+            echo "This workflow pushes to $CODEBERG_REMOTE, which belongs to $CANONICAL_REPO."
+            echo "It is running in $GITHUB_REPOSITORY. Update both env values together."
+            exit 1
+          }
+
+      - name: Pin the Codeberg host key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # The literal key, not a scan of whatever answers on port 22. A scan can return the
+          # genuine key beside another one, and a check that only greps for the genuine
+          # fingerprint passes anyway. This file holds exactly one host key.
+          cat > ~/.ssh/known_hosts <<'HOSTKEY'
+          codeberg.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIVIC02vnjFyL+I4RHfvIGNtOgJMe769VTF1VR4EB3ZB
+          HOSTKEY
+          # Fingerprint published in the Codeberg imprint. A mismatch stops the job.
+          ssh-keygen -lf ~/.ssh/known_hosts \
+            | grep -qF 'SHA256:mIlxA9k46MmM6qdJOdMnAQpzGxF4WIVVL+fj+wZbw0g'
+          test "$(wc -l < ~/.ssh/known_hosts)" -eq 1
+
+      - name: Load the deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.CODEBERG_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          # An absent secret writes an empty file, and the failure then surfaces as
+          # "Permission denied (publickey)", which reads like a Codeberg-side refusal.
+          test -n "$DEPLOY_KEY" || { echo 'CODEBERG_DEPLOY_KEY is not set'; exit 1; }
+          # The umask subshell keeps the key from existing world-readable, even briefly.
+          (umask 077; printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/codeberg)
+          test "$(stat -c '%a' ~/.ssh/codeberg)" = '600'
+
+      - name: Fetch the mirrored refs from GitHub
+        run: |
+          set -euo pipefail
+          git init --bare --initial-branch=main mirror.git
+          git -C mirror.git remote add gh "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C mirror.git fetch --quiet gh \
+            '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+          # An incomplete fetch must not reach the push step, because --prune deletes there.
+          git -C mirror.git rev-parse --verify refs/heads/main > /dev/null
+
+      - name: Push them to Codeberg
+        env:
+          GIT_SSH_COMMAND: >-
+            ssh -i ~/.ssh/codeberg -o IdentitiesOnly=yes
+            -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
+        run: |
+          set -euo pipefail
+          # The + prefixes force. GitHub is canonical, so a rewritten branch or a re-cut tag
+          # must overwrite the copy. Without them the first non-fast-forward wedges every later
+          # run, and re-running by hand repeats the same rejected push.
+          # --atomic keeps a partly applied run from pruning a branch while main stays behind.
+          git -C mirror.git push --prune --atomic "$CODEBERG_REMOTE" \
+            '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'

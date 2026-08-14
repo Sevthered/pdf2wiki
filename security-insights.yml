@@ -10,7 +10,9 @@ header:
     baseline version 2026-02-19, and holds an OpenSSF Best Practices Silver badge
     (bestpractices.dev project 13768). Level 3 is not claimed: OSPS-QA-07.01
     requires a non-author human approval before merge, which a single-maintainer
-    project cannot honestly meet. Single-repository project.
+    project cannot honestly meet. Single-repository project: a read-only mirror
+    of the branches and tags exists at codeberg.org/Sevthered/pdf2wiki, and the
+    controls attested here apply to the GitHub repository alone.
 
 project:
   name: pdf2wiki
@@ -35,6 +37,10 @@ project:
       comment: |
         The single project repository. No separate subprojects or additional
         repositories; the llm-wiki Claude Code plugin ships in-repo under plugin/.
+        A GitHub Actions workflow pushes a read-only copy of the branches and tags
+        to codeberg.org/Sevthered/pdf2wiki. That copy is not a development
+        repository and not a distribution point. It accepts no contributions, and
+        it is deliberately absent from repository.release.distribution-points below.
   vulnerability-reporting:
     reports-accepted: true
     bug-bounty-available: false

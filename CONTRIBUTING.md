@@ -4,6 +4,14 @@ Thanks for your interest. This guide covers the development setup and the conven
 follows. If you participate, you agree to obey our [Code of Conduct](CODE_OF_CONDUCT.md). See
 [GOVERNANCE.md](GOVERNANCE.md) for how decisions are made and who maintains the project.
 
+## Where the project lives
+
+GitHub holds the canonical repository. Issues, pull requests and releases belong there. A workflow
+pushes a read-only copy of the branches and the tags to
+[codeberg.org/Sevthered/pdf2wiki](https://codeberg.org/Sevthered/pdf2wiki). That workflow runs when
+`main` moves and when a release tag arrives, so the copy lags behind a branch that you push on its
+own. The mirror accepts no contributions. Send every change to the GitHub repository.
+
 ## Good first issues
 
 New or casual contributors should start with issues labeled

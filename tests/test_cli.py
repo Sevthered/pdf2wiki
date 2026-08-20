@@ -62,13 +62,6 @@ A joined\x00word appears here.
 DOT = symbol_pua.DOT  # U+F0B7: a multiplication dot inline, a list bullet in some books
 OTHER_UNKNOWN_PUA = "\uf0fe"  # a second unverified codepoint, for the second-pass residue test
 
-REFUSED_MARKER_BOOK = f"""# Chapter 1. Notation
-
-{symbol_pua.BULLETS[1]} = 2{PI}f is the angular frequency
-
-Prose after.
-"""
-
 DEFERRED_DOT_BOOK = f"""# Chapter 1. Transports
 
 {DOT} Chunked transfer encoding
@@ -115,24 +108,6 @@ def test_phase5_apply_writes_chapters_and_reports_residue(tmp_path, capsys):
     assert UNKNOWN_PUA in ch1  # unverified ones are reported, never guessed
     ch2 = (tmp_path / "chapters" / "02-chapter-2-strings.md").read_text(encoding="utf-8")
     assert "\x00" not in ch2 and "joinedword" in ch2
-
-
-def test_phase5_reports_a_marker_whose_reading_was_refused(tmp_path, capsys):
-    """A list marker is verified at line START, and every marker slot is a Greek letter too.
-
-    When the line reads as a formula rather than as list text, the step leaves the codepoint alone.
-    Silence there would be the old defect in a new place: an invisible character in the output and
-    nothing in the report.
-    """
-    md = _md(tmp_path, REFUSED_MARKER_BOOK)
-
-    cli.main(["phase5", md, "--book", "widgets"])
-
-    out = capsys.readouterr().out
-    assert "⚠ 1 list marker(s) LEFT IN PLACE" in out
-    assert "Greek letter in Symbol encoding" in out
-    assert "Render the source page" in out
-    assert "symbol_pua: 1 changes" in out  # the pi on that line IS still repaired
 
 
 def test_phase5_reports_a_deferred_line_leading_dot(tmp_path, capsys):

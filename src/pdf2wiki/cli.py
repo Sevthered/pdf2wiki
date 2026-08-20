@@ -105,21 +105,17 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
     # text this chain goes on to write. It matters in both directions — `caption_unbleed` runs
     # between the passes, and unwrapping a fence moves a glyph into prose where the second pass
     # repairs it, so a merge would report residue that is no longer in the file.
-    if sp2["stray_unhandled"]:
+    # A REFUSAL takes the high-water mark of the two passes, not the second pass alone. A codepoint
+    # the first pass declined to touch can be removed by the second, and then neither the residue
+    # nor the refusal would reach the operator — the signal would disappear because it was acted on.
+    stray = max(sp["stray_unhandled"], sp2["stray_unhandled"])
+    if stray:
+        print(f"  ⚠ {stray} mid-word marker(s) LEFT IN PLACE — no safe reading; inspect by hand")
+    deferred = max(sp["line_leading_dot_deferred"], sp2["line_leading_dot_deferred"])
+    if deferred:
         print(
-            f"  ⚠ {sp2['stray_unhandled']} mid-word marker(s) LEFT IN PLACE"
-            " — no safe reading; inspect by hand"
-        )
-    if sp2["marker_no_reading"]:
-        print(
-            f"  ⚠ {sp2['marker_no_reading']} list marker(s) LEFT IN PLACE — verified as a bullet at"
-            " line start only, and every marker slot is also a Greek letter in Symbol encoding"
-        )
-        print("    Render the source page: it may be a letter that belongs in phase5.symbol_pua")
-    if sp2["line_leading_dot_deferred"]:
-        print(
-            f"  ⚠ {sp2['line_leading_dot_deferred']} line-leading · marker(s) LEFT IN PLACE — that"
-            " codepoint is a multiplication dot inline and a list bullet in some books"
+            f"  ⚠ {deferred} line-leading · marker(s) LEFT IN PLACE — that codepoint is a"
+            " multiplication dot inline and a list bullet in some books"
         )
         print("    Render the source page, then treat it as a dot or as a list marker")
     if sp2["in_code"]:

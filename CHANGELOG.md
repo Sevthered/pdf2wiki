@@ -41,7 +41,7 @@ All notable changes to this project are documented here. The format is based on
   nothing rather than leaving a short book on disk, a blank page is not mistaken for a dropped one, a
   failed pass is reported instead of raised into the batch loop, an offloaded hybrid failure never
   falls back to the local GPU, one book's failure does not abort the run, and a corrupt manifest is
-  refused instead of restarting every book. Statement coverage **82% → 93%**, tests **236 → 288**.
+  refused instead of restarting every book. Statement coverage **82% → 93%**, tests **236 → 296**.
 - **A "Build from source" section in the install guide** (`docs/how-to/install.md`), linked from
   CONTRIBUTING: clone, `uv build` (or `python -m build`), install the resulting wheel, and the
   dev-environment commands CI runs. Every command was executed before it was documented. This closes
@@ -116,9 +116,6 @@ All notable changes to this project are documented here. The format is based on
 - Every PUA codepoint in `symbol_pua.py` and in the tests is now written as a `\uXXXX` escape
   instead of the literal character. A literal is invisible in an editor, a diff and a review — the
   same property that makes this whole defect class hard to see. No behavior change.
-- **`symbol_pua.BULLET` is now `symbol_pua.BULLETS`**, a string of the two list markers, because the
-  corpus uses two. There is no compatibility alias. The constant is module level and documented, so
-  an out-of-tree caller that reads it breaks; callers that use `remap()` or `GLYPHS` are unaffected.
 - **A Symbol-font space that is deleted is reported as `dropped_f020`, not `remap_f020`.** One at a
   line edge is dropped rather than substituted, and counting a deletion as a remap said the step had
   written a space where the page prints one. Both still count toward `total_changes`, because both
@@ -133,19 +130,15 @@ All notable changes to this project are documented here. The format is based on
   glued to the first word and the change reported as one edit — to the one line the step promises
   not to touch. The space is now substituted first. That order also lets a Symbol space *before* the
   dot reach the deferral at all, which it could not, because `[ \t]` does not match one.
-- **A second list marker, `U+F077`, is now handled.** *Advanced Algorithms and Data Structures* p494
-  opens its bulleted lines with `Wingdings` `U+F077`, which prints a filled diamond, while the Keras
-  book uses `Wingdings2` `U+F0A1`. Only the second was known, so a converted list from the first book
-  kept an invisible codepoint where `- ` belongs and read as a run of paragraphs. Both are now
-  structural markers, each annotated with its book, page **and font**. ⚠ **The new marker is read
-  as a bullet only where the page shows one, at the start of a line.** `0x77` is *omega* in Adobe
-  Symbol encoding, and the corpus's largest source of these codepoints emits SymbolMT lowercase
-  Greek from that same block, so a mid-sentence `U+F077` is left in place and counted as
-  its own residue rather than deleted the way the verified `U+F0A1` marker is. **The same caution
-  applies at the start of a line**, which is where the reading IS verified: a marker there is read
-  as a bullet only when what follows reads as text, because a book that sets a display formula on
-  its own line would otherwise lose the letter and gain a list item. `U+F0A1` is `Upsilon1` in the
-  same encoding, so the test covers both markers. A refused marker is left in place and reported.
+- **The line-leading `U+F0B7` refusal stopped applying to a nested list.** Its pattern copied
+  `_LIST_MARKER`'s CommonMark three-space indent limit, but a refusal is not a list-recognition
+  rule: a dot opening a line indented four spaces or more was rewritten to a middle dot and counted
+  as a repair, which is exactly the flattening of a bulleted list the step says it never performs.
+  The indent is unbounded there now.
+- **`remap()`'s report always carries `dropped_f020`.** The key is documented in the return contract
+  and was only present on a document that actually held a Symbol-font space, so a caller written
+  against the contract raised `KeyError` on nearly every document. Both the normal report and the
+  CRLF refusal carry the full documented set now, which a test pins.
 - **The `phase5` report never printed `line_leading_dot_deferred`.** The step counts every
   line-opening `U+F0B7` it refuses to interpret, its own documentation says that count needs a human
   for the same reason an unknown codepoint does, and no command printed it. A document made only of
@@ -160,7 +153,10 @@ All notable changes to this project are documented here. The format is based on
   stuck in a code fence after it was fixed. And the unknown-codepoint residue was read as
   `first or second`, which no longer says which document is being described. Everything that counts
   **what the document still holds** now comes from the second pass, the one that read the text this
-  chain goes on to write, while counts of actual changes stay summed across both.
+  chain goes on to write, while counts of actual changes stay summed across both. ⚠ A **refusal**
+  keeps the high-water mark of the two passes instead: a codepoint the first pass declines to touch
+  can be removed by the second, and reporting the second alone would drop the signal precisely
+  because something acted on it.
 
 - Removed a dead `cli.py` branch that printed a "SKIPPED — CRLF" warning that could never fire
   through the `phase5` CLI (`run_chain` reads every file in universal-newline mode, so `symbol_pua`'s

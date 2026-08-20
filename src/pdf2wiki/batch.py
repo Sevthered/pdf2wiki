@@ -30,7 +30,7 @@ import tomllib
 from typing import Any
 
 from .executor import LocalExecutor, SSHExecutor
-from .phase5 import run_chain
+from .phase5 import residue_lines, run_chain
 
 
 def _breaker_trips(ex: LocalExecutor | SSHExecutor, consec: int, threshold: int) -> bool:
@@ -196,13 +196,18 @@ def run_batch(
 
         md = os.path.join(work, f"{slug}.md")
         try:
-            run_chain(
+            report = run_chain(
                 md,
                 slug,
                 out_dir=os.path.join(work, "chapters"),
                 source_name=os.path.basename(b["pdf"]),
                 apply=True,
             )
+            # A batch run is how a whole vault gets built, and it used to DISCARD this. Every
+            # unverified codepoint and every refusal was computed and thrown away, so invisible
+            # characters shipped into the vault with nothing said about them.
+            for line in residue_lines(report):
+                print(f"  {slug}: {line}")
         except Exception as e:
             print(f"  PHASE5 FAILED: {slug}: {e}")
             manifest[slug] = {"status": "phase5_failed", "domain": domain, "error_class": "phase5"}

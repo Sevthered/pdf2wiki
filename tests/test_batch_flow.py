@@ -72,6 +72,28 @@ class FakeLocal(LocalExecutor):
         return True, "converted"
 
 
+def test_batch_reports_unverified_codepoints_per_book(tmp_path, monkeypatch, capsys):
+    """A batch run is how a whole vault gets built, and it used to discard the phase-5 report.
+
+    Every unverified Private Use Area codepoint and every refusal was computed and thrown away, so
+    invisible characters shipped into the vault with nothing said about them. The `phase5` command
+    printed them; the command that converts ten books did not.
+    """
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    global BOOK_MD
+    keep = BOOK_MD
+    BOOK_MD = keep.replace("Body of the first chapter.", "Body with an \uf0ff unverified glyph.")
+    try:
+        batch.run_batch(_books_toml(tmp_path, 1), _cfg(tmp_path), str(tmp_path / "stage"))
+    finally:
+        BOOK_MD = keep
+
+    out = capsys.readouterr().out
+    assert "book-0: ⚠ UNVERIFIED PUA codepoints left as-is" in out
+    assert "f0ff" in out
+    assert "phase5.symbol_pua" in out  # tells the reader what to do about it
+
+
 def test_successful_book_is_split_staged_and_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
     cfg = _cfg(tmp_path)

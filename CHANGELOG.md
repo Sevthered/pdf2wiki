@@ -41,7 +41,7 @@ All notable changes to this project are documented here. The format is based on
   nothing rather than leaving a short book on disk, a blank page is not mistaken for a dropped one, a
   failed pass is reported instead of raised into the batch loop, an offloaded hybrid failure never
   falls back to the local GPU, one book's failure does not abort the run, and a corrupt manifest is
-  refused instead of restarting every book. Statement coverage **82% → 93%**, tests **236 → 296**.
+  refused instead of restarting every book. Statement coverage **82% → 93%**, tests **236 → 297**.
 - **A "Build from source" section in the install guide** (`docs/how-to/install.md`), linked from
   CONTRIBUTING: clone, `uv build` (or `python -m build`), install the resulting wheel, and the
   dev-environment commands CI runs. Every command was executed before it was documented. This closes
@@ -130,6 +130,11 @@ All notable changes to this project are documented here. The format is based on
   glued to the first word and the change reported as one edit — to the one line the step promises
   not to touch. The space is now substituted first. That order also lets a Symbol space *before* the
   dot reach the deferral at all, which it could not, because `[ \t]` does not match one.
+- **`pdf2wiki batch` threw the phase-5 report away.** Every unverified codepoint, every refusal and
+  every glyph left inside a fence was computed and discarded on exactly the runs that build a vault
+  — the `phase5` command printed them, and the command that converts ten books did not. The lines
+  now come from `phase5.residue_lines()`, which both commands call, and the batch prefixes each with
+  the book slug.
 - **The line-leading `U+F0B7` refusal stopped applying to a nested list.** Its pattern copied
   `_LIST_MARKER`'s CommonMark three-space indent limit, but a refusal is not a list-recognition
   rule: a dot opening a line indented four spaces or more was rewritten to a middle dot and counted

@@ -59,11 +59,16 @@ the rest of the converted vault already carries, so one search finds both.
    **That collision exists in this corpus, and MinerU absorbs it.** A sweep of all 80 corpus PDFs
    found ``U+F020`` emitted by ``BookAntiqua`` in *Developing IoT Projects with ESP32* p89, where
    the page prints an **ohm sign**, not a space -- and ``U+F0B7`` emitted by ``Symbol`` in *C data
-   structures and algorithms*, 132 times, every one of them opening a bulleted line. Neither
-   reaches this step: a conversion of those ESP32 pages yields **no PUA codepoint at all and a real
-   ohm sign**, because MinerU resolves a fully embedded font through its own encoding. What leaks
-   is the ``SymbolMT`` *subset* with no ``ToUnicode`` map. **Measure the converted markdown, not
-   the PDF: this step reads MinerU's output, and a PDF-level scan overstates what it ever sees.**
+   structures and algorithms*, 132 times, every one of them opening a bulleted line.
+
+   **The ohm case was measured and does not reach this step**: a conversion of those ESP32 pages
+   yields **no PUA codepoint at all and a real ohm sign**, because MinerU resolves a fully embedded
+   font through its own encoding. What leaks is the ``SymbolMT`` *subset* with no ``ToUnicode``
+   map. ⚠ **Nothing is claimed about the C book, which has never been converted.** Its 132 dots are
+   a PDF-level reading. If that book is converted and they survive, they arrive as line-opening
+   ``U+F0B7`` and this step defers and counts every one of them, which is the outcome :data:`DOT`
+   describes. **Measure the converted markdown, not the PDF: this step reads MinerU's output, and a
+   PDF-level scan overstates what it ever sees.**
 
    Every entry is annotated with the book, the page and now the font it was read from, precisely so
    that collision stays traceable. The durable fix is to key on the embedded font name, which needs
@@ -105,27 +110,30 @@ from . import fences
 #: invisible in an editor, a diff and a review, which is the very property that makes this defect
 #: class hard to see. **Page numbers are 1-based PDF pages, not the page label the book prints** --
 #: `math.pdf` p87 carries the printed label "55". Open the PDF at that page to re-verify an entry.
+#: The name in brackets is **the font that emitted the codepoint**, measured on that page. A PUA
+#: codepoint means nothing without it: the same slot in another font is another character, so a
+#: future collision is traceable only if every row says which font it was read from.
 GLYPHS: dict[str, str] = {
-    "\uf020": " ",  # Math for Programmers p677, index line "<pi> (pi) symbol 56" -- a Symbol space
-    "\uf028": "(",  # Math for Programmers p118, "sqrt(4^2 + 3^2)" -- a Symbol-font paren
-    "\uf029": ")",  # Math for Programmers p118, the closer of the same pair
-    "\uf053": "\N{GREEK CAPITAL LETTER SIGMA}",  # Math p314, "the summation symbol Sigma"
-    "\uf061": "\N{GREEK SMALL LETTER ALPHA}",  # Math p480, "where a (the Greek letter alpha)"
-    "\uf066": "\N{GREEK SMALL LETTER PHI}",  # Math p120, "with the Greek letter f (phi)"
-    "\uf06c": "\N{GREEK SMALL LETTER LAMDA}",  # Math p654, "the Greek letter l, written lambda"
-    "\uf070": "\N{GREEK SMALL LETTER PI}",  # Math for Programmers p504, "or 2pi radians"
-    "\uf071": "\N{GREEK SMALL LETTER THETA}",  # Math p87, "an angle q (the Greek letter theta)"
-    "\uf0a5": "\N{INFINITY}",  # Mastering Blockchain p699, footnote marker "oo TPS results for"
-    "\uf0ae": "\N{RIGHTWARDS ARROW}",  # Microservices Patterns p440, "Service -> Source Envoy"
-    "\uf0b4": "\N{MULTIPLICATION SIGN}",  # Math p211, "a 3x3 matrix or a 3x1 matrix"
-    "\uf0b7": "\N{MIDDLE DOT}",  # Math p80, "points where r.u + s.v could end up"
-    "\uf0b9": "\N{NOT EQUAL TO}",  # Math p182, "T(0) != 0, where 0 represents ..."
-    "\uf0ba": "\N{IDENTICAL TO}",  # Math p444, "I use the = sign to indicate ... equivalent"
-    "\uf0bb": "\N{ALMOST EQUAL TO}",  # Math p86, "tan(37 deg) ~= 3/4"
-    "\uf0d1": "\N{NABLA}",  # Math p446, "its gradient and written grad-U"
-    "\uf0d7": "\N{MIDDLE DOT}",  # Math p133, "its length is sqrt(a.a + b.b + ...)"
-    "\uf0e5": "\N{GREEK CAPITAL LETTER SIGMA}",  # Advanced Algorithms p209, "an alphabet Sigma"
-    "\uf0fc": "\N{CHECK MARK}",  # Mastering Blockchain p511, terminal log "ok Preparing to down"
+    "\uf020": " ",  # Math for Programmers p677, index line "<pi> (pi) symbol 56" -- a Symbol space  [SymbolMT]
+    "\uf028": "(",  # Math for Programmers p118, "sqrt(4^2 + 3^2)" -- a Symbol-font paren  [SymbolMT]
+    "\uf029": ")",  # Math for Programmers p118, the closer of the same pair  [SymbolMT]
+    "\uf053": "\N{GREEK CAPITAL LETTER SIGMA}",  # Math p314, "the summation symbol Sigma"  [SymbolMT]
+    "\uf061": "\N{GREEK SMALL LETTER ALPHA}",  # Math p480, "where a (the Greek letter alpha)"  [SymbolMT]
+    "\uf066": "\N{GREEK SMALL LETTER PHI}",  # Math p120, "with the Greek letter f (phi)"  [SymbolMT]
+    "\uf06c": "\N{GREEK SMALL LETTER LAMDA}",  # Math p654, "the Greek letter l, written lambda"  [SymbolMT]
+    "\uf070": "\N{GREEK SMALL LETTER PI}",  # Math for Programmers p504, "or 2pi radians"  [SymbolMT]
+    "\uf071": "\N{GREEK SMALL LETTER THETA}",  # Math p87, "an angle q (the Greek letter theta)"  [SymbolMT]
+    "\uf0a5": "\N{INFINITY}",  # Mastering Blockchain p699, footnote marker "oo TPS results for"  [SymbolMT]
+    "\uf0ae": "\N{RIGHTWARDS ARROW}",  # Microservices Patterns p440, "Service -> Source Envoy"  [Symbol]
+    "\uf0b4": "\N{MULTIPLICATION SIGN}",  # Math p211, "a 3x3 matrix or a 3x1 matrix"  [SymbolMT]
+    "\uf0b7": "\N{MIDDLE DOT}",  # Math p80, "points where r.u + s.v could end up"  [SymbolMT]
+    "\uf0b9": "\N{NOT EQUAL TO}",  # Math p182, "T(0) != 0, where 0 represents ..."  [SymbolMT]
+    "\uf0ba": "\N{IDENTICAL TO}",  # Math p444, "I use the = sign to indicate ... equivalent"  [SymbolMT]
+    "\uf0bb": "\N{ALMOST EQUAL TO}",  # Math p86, "tan(37 deg) ~= 3/4"  [SymbolMT]
+    "\uf0d1": "\N{NABLA}",  # Math p446, "its gradient and written grad-U"  [SymbolMT]
+    "\uf0d7": "\N{MIDDLE DOT}",  # Math p133, "its length is sqrt(a.a + b.b + ...)"  [SymbolMT]
+    "\uf0e5": "\N{GREEK CAPITAL LETTER SIGMA}",  # Advanced Algorithms p209, "an alphabet Sigma"  [Symbol]
+    "\uf0fc": "\N{CHECK MARK}",  # Mastering Blockchain p511, terminal log "ok Preparing to down"  [Wingdings-Regular]
 }
 
 #: List markers, handled structurally rather than as characters; see the module docstring. Each was
@@ -211,8 +219,10 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     """Substitute the verified glyphs in one line, with two exceptions the table cannot express.
 
     ``SPACE`` at a line edge is **dropped rather than spaced**: two of them at end of line would
-    render as a CommonMark hard break, and a line holding nothing else would become blank and split
-    a paragraph in two -- structure the printed page does not have.
+    render as a CommonMark hard break, which is structure the printed page does not have. ⚠ It does
+    NOT save a paragraph from splitting -- a line holding one Symbol space and nothing else is blank
+    to CommonMark whether the space is deleted or substituted, so that half of the original
+    reasoning was wrong. Dropping keeps the line honest rather than changing how it renders.
 
     A line-opening ``DOT`` is left in place and counted; see :data:`DOT` for why guessing there is
     the one rewrite this module must not make.
@@ -296,7 +306,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         source page, confirm what it prints, then extend :data:`GLYPHS`.
     ``dropped_f020``
         A :data:`SPACE` at a line edge, **deleted** rather than substituted, because two of them at
-        a line end are a CommonMark hard break and one alone makes a blank line. It is an edit, so
+        a line end are a CommonMark hard break. It is an edit, so
         it counts toward ``total_changes`` -- but not as ``remap_f020``, which would say the step
         put a space where the page prints one.
     ``line_leading_dot_deferred``

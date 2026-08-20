@@ -81,7 +81,7 @@ def _cmd_convert(a: argparse.Namespace, cfg: Any) -> int:
 
 
 def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
-    from .phase5 import run_chain
+    from .phase5 import residue_lines, run_chain
 
     report = run_chain(a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply)
     ic = report["illegal_codepoints"]
@@ -105,24 +105,8 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
     # text this chain goes on to write. It matters in both directions — `caption_unbleed` runs
     # between the passes, and unwrapping a fence moves a glyph into prose where the second pass
     # repairs it, so a merge would report residue that is no longer in the file.
-    # A REFUSAL takes the high-water mark of the two passes, not the second pass alone. A codepoint
-    # the first pass declined to touch can be removed by the second, and then neither the residue
-    # nor the refusal would reach the operator — the signal would disappear because it was acted on.
-    stray = max(sp["stray_unhandled"], sp2["stray_unhandled"])
-    if stray:
-        print(f"  ⚠ {stray} mid-word marker(s) LEFT IN PLACE — no safe reading; inspect by hand")
-    deferred = max(sp["line_leading_dot_deferred"], sp2["line_leading_dot_deferred"])
-    if deferred:
-        print(
-            f"  ⚠ {deferred} line-leading · marker(s) LEFT IN PLACE — that codepoint is a"
-            " multiplication dot inline and a list bullet in some books"
-        )
-        print("    Render the source page, then treat it as a dot or as a list marker")
-    if sp2["in_code"]:
-        print(f"  · verified glyphs left inside code fences: {sp2['in_code']}")
-    if sp2["unknown"]:
-        print(f"  ⚠ UNVERIFIED PUA codepoints left as-is: {sp2['unknown']}")
-        print("    Render the source page, confirm the character, then add it to phase5.symbol_pua")
+    for line in residue_lines(report):
+        print(f"  {line}")
     print(f"caption_unbleed: {report['caption_unbleed']['unwrapped']} unwrapped")
     lr = report["lang_retag"]
     print(f"lang_retag: {lr['changes']} changes {lr['stats']}")

@@ -162,8 +162,9 @@ def test_phase5_does_not_report_a_glyph_that_the_second_pass_repaired(tmp_path, 
 
     The first pass correctly skips a glyph inside a fence and reports it as `in_code`. Then
     `caption_unbleed` unwraps that caption-only fence, the glyph lands in prose, and the second pass
-    repairs it. Combining the two passes with `max` — right for `unknown`, which only grows — would
-    tell the operator a glyph is still stuck in a code fence after it was fixed.
+    repairs it. Combining the two passes — which the refusal counters do, to keep a refusal the
+    second pass acted on — would tell the operator a glyph is still stuck in a code fence after it
+    was fixed.
     """
     md = _md(tmp_path, UNBLED_GLYPH_BOOK)
 

@@ -551,6 +551,8 @@ def test_split_no_boundaries_raises(tmp_path):
 # was rendered to confirm what the book actually prints (see bug-symbol-font-pua-glyphs-dropped).
 
 PI, SIGMA, ARROW, BULLET = "\uf070", "\uf0e5", "\uf0ae", "\uf0a1"
+DOT = symbol_pua.DOT  # verified inline in one book, printed as a bullet in another
+SYMBOL_SPACE = symbol_pua.SPACE
 
 
 def test_pua_inline_symbols_remapped():
@@ -668,6 +670,42 @@ def test_pua_inline_dot_still_remapped_on_a_line_that_opens_with_one():
     assert stats["remap_f0b7"] == 2
 
 
+def test_pua_deferral_applies_at_any_indent():
+    """The refusal must not stop applying because a list is nested.
+
+    `_LIST_MARKER` carries CommonMark's three-space limit, and the deferral copied it. A dot opening
+    a line indented four spaces or more was then rewritten to a middle dot and counted as a repair —
+    a nested bulleted list flattened into paragraphs, which is the one rewrite this module says it
+    must never make.
+    """
+    for indent in ("", "  ", "    ", "\t", "        "):
+        md = f"{indent}{DOT} Chunked transfer encoding\n"
+        out, stats = symbol_pua.remap(md)
+        assert out == md, repr(indent)
+        assert stats["line_leading_dot_deferred"] == 1, repr(indent)
+        assert stats["total_changes"] == 0, repr(indent)
+
+
+def test_pua_report_always_carries_every_documented_key():
+    # `remap()` documents these as always present so a caller needs no KeyError guard, and the CRLF
+    # refusal returns its own dict, which has to keep the same shape.
+    documented = {
+        "list_markers",
+        "heading_markers",
+        "stray_markers",
+        "stray_unhandled",
+        "line_leading_dot_deferred",
+        "dropped_f020",
+        "in_code",
+        "unknown",
+        "total_changes",
+        "skipped_crlf",
+    }
+    for md in ("plain prose with no glyph at all\n", "a\r\nb\n"):
+        _, stats = symbol_pua.remap(md)
+        assert documented <= set(stats), (md, documented - set(stats))
+
+
 def test_pua_symbol_space_does_not_defeat_the_bullet_pass():
     # The structural passes test for real whitespace and "\uf020".isspace() is False, so a bullet
     # separated from its text by a Symbol space used to survive into the output as an invisible
@@ -681,11 +719,15 @@ def test_pua_symbol_space_does_not_defeat_the_bullet_pass():
 
 def test_pua_symbol_space_at_a_line_edge_is_dropped_not_spaced():
     # Two trailing spaces are a CommonMark hard break and a whitespace-only line is a blank line;
-    # neither is structure the printed page has.
-    out, _ = symbol_pua.remap("the value of x\uf020\uf020\nnext line\n")
+    # neither is structure the printed page has. A DELETION is counted apart from a substitution:
+    # `remap_f020` would claim the step put a space where the page prints one.
+    out, stats = symbol_pua.remap("the value of x\uf020\uf020\nnext line\n")
     assert out == "the value of x\nnext line\n"
-    out, _ = symbol_pua.remap("para one\n\uf020\npara two\n")
+    assert stats["dropped_f020"] == 2
+    assert "remap_f020" not in stats
+    out, stats = symbol_pua.remap("para one\n\uf020\npara two\n")
     assert out == "para one\n\npara two\n"
+    assert stats["dropped_f020"] == 1
 
 
 def test_glyph_table_values_are_never_private_use():
@@ -753,6 +795,30 @@ def test_pua_code_blocks_are_untouched_and_reported():
     # verified glyphs inside a fence are a benign residue, NOT an unknown codepoint
     assert stats["in_code"] == {"f0a1": 1, "f070": 1}
     assert stats["unknown"] == {}
+
+
+def test_pua_symbol_space_after_a_deferred_dot_is_spaced_not_deleted():
+    # The dot opens the line, so the line is deferred -- but the Symbol space that separates it from
+    # the first word is still a space, and deleting it edits the very line the deferral leaves alone.
+    md = f"{DOT}{SYMBOL_SPACE}Chunked transfer encoding\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == f"{DOT} Chunked transfer encoding\n"
+    assert stats["line_leading_dot_deferred"] == 1
+    assert stats["remap_f020"] == 1
+    assert "remap_f0b7" not in stats  # the dot itself is never interpreted here
+
+
+def test_pua_symbol_space_before_a_leading_dot_still_defers():
+    # `_LEADING_DOT` matches `[ \t]` only, and a Symbol space is neither, so this line reached the
+    # remap loop and had its dot rewritten. Substituting SPACE first is what makes it a line-opening
+    # dot at all.
+    md = f"{SYMBOL_SPACE}{DOT} Server-sent events\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == f"{DOT} Server-sent events\n"  # the edge space is dropped, the dot left alone
+    assert stats["line_leading_dot_deferred"] == 1
+    assert stats["dropped_f020"] == 1  # a deletion, not "the step wrote a space here"
+    assert "remap_f020" not in stats
+    assert "remap_f0b7" not in stats
 
 
 def test_pua_unknown_codepoint_left_alone_and_reported():

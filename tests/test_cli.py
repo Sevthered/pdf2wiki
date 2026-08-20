@@ -59,6 +59,45 @@ A joined\x00word appears here.
 """
 
 
+DOT = symbol_pua.DOT  # U+F0B7: a multiplication dot inline, a list bullet in some books
+OTHER_UNKNOWN_PUA = "\uf0fe"  # a second unverified codepoint, for the second-pass residue test
+
+REFUSED_MARKER_BOOK = f"""# Chapter 1. Notation
+
+{symbol_pua.BULLETS[1]} = 2{PI}f is the angular frequency
+
+Prose after.
+"""
+
+DEFERRED_DOT_BOOK = f"""# Chapter 1. Transports
+
+{DOT} Chunked transfer encoding
+{DOT} Server-sent events
+"""
+
+UNBLED_GLYPH_BOOK = f"""# Chapter 1. Rotation
+
+Prose before.
+
+```
+Listing 1.1 A caption holding 2{PI} radians
+```
+
+Prose after.
+"""
+
+# `caption_unbleed` unwraps a caption-only fence, which promotes whatever was inside it into prose;
+# the second `symbol_pua` pass is what sees the codepoint that the first one correctly skipped.
+SECOND_PASS_BOOK = f"""# Chapter 1. Rotation
+
+A turn of {UNKNOWN_PUA} radians.
+
+```
+Listing 1.1 A caption MinerU trapped in a fence, holding {OTHER_UNKNOWN_PUA}
+```
+"""
+
+
 def test_phase5_apply_writes_chapters_and_reports_residue(tmp_path, capsys):
     md = _md(tmp_path, BOOK)
 
@@ -76,6 +115,89 @@ def test_phase5_apply_writes_chapters_and_reports_residue(tmp_path, capsys):
     assert UNKNOWN_PUA in ch1  # unverified ones are reported, never guessed
     ch2 = (tmp_path / "chapters" / "02-chapter-2-strings.md").read_text(encoding="utf-8")
     assert "\x00" not in ch2 and "joinedword" in ch2
+
+
+def test_phase5_reports_a_marker_whose_reading_was_refused(tmp_path, capsys):
+    """A list marker is verified at line START, and every marker slot is a Greek letter too.
+
+    When the line reads as a formula rather than as list text, the step leaves the codepoint alone.
+    Silence there would be the old defect in a new place: an invisible character in the output and
+    nothing in the report.
+    """
+    md = _md(tmp_path, REFUSED_MARKER_BOOK)
+
+    cli.main(["phase5", md, "--book", "widgets"])
+
+    out = capsys.readouterr().out
+    assert "⚠ 1 list marker(s) LEFT IN PLACE" in out
+    assert "Greek letter in Symbol encoding" in out
+    assert "Render the source page" in out
+    assert "symbol_pua: 1 changes" in out  # the pi on that line IS still repaired
+
+
+def test_phase5_reports_a_deferred_line_leading_dot(tmp_path, capsys):
+    """The counter exists in the report; a counter no command prints reaches no human.
+
+    `symbol_pua` refuses to read a line-opening U+F0B7 as either a dot or a bullet, because the
+    reading is per-book. It counts the refusal, and `total_changes` deliberately excludes it -- so
+    without this line a document made ONLY of such lines reports zero changes, zero unknown and
+    zero warnings while every one of those codepoints is still in the output, invisible.
+    """
+    md = _md(tmp_path, DEFERRED_DOT_BOOK)
+
+    rc = cli.main(["phase5", md, "--book", "widgets"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    # 2, not 4: the chain runs `symbol_pua` twice, and both passes see the same two untouched
+    # lines. A refusal counted once per pass reports twice what the document holds.
+    assert "⚠ 2 line-leading" in out
+    assert "a multiplication dot inline and a list bullet in some books" in out
+    assert "Render the source page" in out  # tells the reader what to do about it
+
+
+def test_phase5_says_nothing_about_deferred_dots_when_there_are_none(tmp_path, capsys):
+    cli.main(["phase5", _md(tmp_path, BOOK), "--book", "widgets"])
+
+    assert "line-leading" not in capsys.readouterr().out
+
+
+def test_phase5_reports_the_residue_the_written_document_still_holds(tmp_path, capsys):
+    """The report comes from the SECOND `symbol_pua` pass, which read the text the chain writes.
+
+    Both passes read the whole document, so adding them says a book has two of a codepoint it has
+    once. Taking the first pass is wrong in the other direction: `caption_unbleed` runs between
+    them, and a glyph it lifts out of a fence is repaired by the second pass.
+    """
+    md = _md(tmp_path, SECOND_PASS_BOOK)
+
+    cli.main(["phase5", md, "--book", "widgets", "--out", str(tmp_path / "ch"), "--apply"])
+
+    out = capsys.readouterr().out
+    assert "⚠ UNVERIFIED PUA codepoints left as-is" in out
+    assert "'f0ff': 1" in out and "'f0fe': 1" in out  # once each, and both of them
+    # ...and the report matches what the chain actually wrote.
+    written = "".join(f.read_text(encoding="utf-8") for f in sorted((tmp_path / "ch").glob("*.md")))
+    assert written.count(UNKNOWN_PUA) == 1
+    assert written.count(OTHER_UNKNOWN_PUA) == 1
+
+
+def test_phase5_does_not_report_a_glyph_that_the_second_pass_repaired(tmp_path, capsys):
+    """`in_code` shrinks across the passes, so it comes from the last one rather than a merge.
+
+    The first pass correctly skips a glyph inside a fence and reports it as `in_code`. Then
+    `caption_unbleed` unwraps that caption-only fence, the glyph lands in prose, and the second pass
+    repairs it. Combining the two passes with `max` — right for `unknown`, which only grows — would
+    tell the operator a glyph is still stuck in a code fence after it was fixed.
+    """
+    md = _md(tmp_path, UNBLED_GLYPH_BOOK)
+
+    cli.main(["phase5", md, "--book", "widgets"])
+
+    out = capsys.readouterr().out
+    assert "caption_unbleed: 1 unwrapped" in out
+    assert "left inside code fences" not in out  # it is not in a fence any more
+    assert "symbol_pua: 1 changes" in out  # the second pass repaired it
 
 
 def test_phase5_dry_run_writes_nothing(tmp_path, capsys):

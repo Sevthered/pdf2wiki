@@ -32,6 +32,16 @@ All notable changes to this project are documented here. The format is based on
   `U+F0D7` (10 pt) print the **same** centered multiplication dot, so both map to `MIDDLE DOT`,
   while `U+F053` and `U+F0E5` both print a capital Sigma in two different books — a per-codepoint
   table derived from an encoding chart would have split all four differently.
+- **Tests for the orchestration layer, which had none.** `convert_book`, `run_batch`, the executors
+  and the CLI command bodies were covered only where a unit test happened to reach them, so the
+  layer an operator actually runs was the least proven part of the package. The new tests fake the
+  MinerU subprocess but use a **real PDF** and run **phase 5 for real**, so the coverage gate, the
+  chapter files and their frontmatter are the actual artifacts rather than stubs that agree with
+  the code. They pin the contracts that matter on a bad day: the coverage gate hard-stops and writes
+  nothing rather than leaving a short book on disk, a blank page is not mistaken for a dropped one, a
+  failed pass is reported instead of raised into the batch loop, an offloaded hybrid failure never
+  falls back to the local GPU, one book's failure does not abort the run, and a corrupt manifest is
+  refused instead of restarting every book. Statement coverage **82% → 93%**, tests **236 → 288**.
 - **A "Build from source" section in the install guide** (`docs/how-to/install.md`), linked from
   CONTRIBUTING: clone, `uv build` (or `python -m build`), install the resulting wheel, and the
   dev-environment commands CI runs. Every command was executed before it was documented. This closes
@@ -39,10 +49,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 - **The user-facing documentation is now written to ASD-STE100 Simplified Technical English.** The
-  corpus is `README.md`, `CONTRIBUTING.md`, `docs/how-to/`, `docs/tutorials/` and `docs/reference/`.
-  Measured against the mechanically-decidable rules, it went from **97 violations to 0**: 60 semicolons
-  (rule 8.1, which STE bans outright), 27 descriptive sentences over 25 words (6.3), 8 procedural
-  sentences over 20 words (5.1), one over-long parenthetical (8.5) and two British spellings (1.14).
+  corpus is `README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/how-to/`, `docs/tutorials/` and
+  `docs/reference/`. Measured against the mechanically-decidable rules, it went from **97 violations
+  to 0**: 58 semicolons (rule 8.1, which STE bans outright), 28 descriptive sentences over 25 words
+  (6.3), 5 procedural sentences over 20 words (5.1), one over-long parenthetical (8.5) and 5 British
+  spellings (1.14). The counts are what the checker reports today over that corpus at `v0.2.8`; a
+  house line-width rule it also carries is not an STE rule and is excluded from the total.
   Sentence length was measured under the standard's own counting rules 8.4–8.6 rather than by splitting
   on whitespace, so a parenthetical counts as one word in its host sentence and as a sentence of its
   own, while a number-plus-unit, an abbreviation or an alphanumeric identifier each count as one word.
@@ -104,8 +116,52 @@ All notable changes to this project are documented here. The format is based on
 - Every PUA codepoint in `symbol_pua.py` and in the tests is now written as a `\uXXXX` escape
   instead of the literal character. A literal is invisible in an editor, a diff and a review — the
   same property that makes this whole defect class hard to see. No behavior change.
+- **`symbol_pua.BULLET` is now `symbol_pua.BULLETS`**, a string of the two list markers, because the
+  corpus uses two. There is no compatibility alias. The constant is module level and documented, so
+  an out-of-tree caller that reads it breaks; callers that use `remap()` or `GLYPHS` are unaffected.
+- **A Symbol-font space that is deleted is reported as `dropped_f020`, not `remap_f020`.** One at a
+  line edge is dropped rather than substituted, and counting a deletion as a remap said the step had
+  written a space where the page prints one. Both still count toward `total_changes`, because both
+  are edits.
 
 ### Fixed
+- **`symbol_pua` deleted the Symbol-font space that follows a line-opening `U+F0B7`.** That codepoint
+  is a multiplication dot inline and a list bullet in other books, so the step deliberately leaves
+  such a line alone and counts it. It did not: the line was split at the dot *before* the Symbol
+  space was substituted, which made the space look line-leading, and a leading Symbol space is
+  dropped rather than spaced. `<dot><symbol space>Text` came out as `<dot>Text`, with the marker
+  glued to the first word and the change reported as one edit — to the one line the step promises
+  not to touch. The space is now substituted first. That order also lets a Symbol space *before* the
+  dot reach the deferral at all, which it could not, because `[ \t]` does not match one.
+- **A second list marker, `U+F077`, is now handled.** *Advanced Algorithms and Data Structures* p494
+  opens its bulleted lines with `Wingdings` `U+F077`, which prints a filled diamond, while the Keras
+  book uses `Wingdings2` `U+F0A1`. Only the second was known, so a converted list from the first book
+  kept an invisible codepoint where `- ` belongs and read as a run of paragraphs. Both are now
+  structural markers, each annotated with its book, page **and font**. ⚠ **The new marker is read
+  as a bullet only where the page shows one, at the start of a line.** `0x77` is *omega* in Adobe
+  Symbol encoding, and the corpus's largest source of these codepoints emits SymbolMT lowercase
+  Greek from that same block, so a mid-sentence `U+F077` is left in place and counted as
+  its own residue rather than deleted the way the verified `U+F0A1` marker is. **The same caution
+  applies at the start of a line**, which is where the reading IS verified: a marker there is read
+  as a bullet only when what follows reads as text, because a book that sets a display formula on
+  its own line would otherwise lose the letter and gain a list item. `U+F0A1` is `Upsilon1` in the
+  same encoding, so the test covers both markers. A refused marker is left in place and reported.
+- **The `phase5` report never printed `line_leading_dot_deferred`.** The step counts every
+  line-opening `U+F0B7` it refuses to interpret, its own documentation says that count needs a human
+  for the same reason an unknown codepoint does, and no command printed it. A document made only of
+  such lines reported zero changes, zero unknown and zero warnings while keeping every one of those
+  invisible codepoints. It is now a ⚠ line that says what the codepoint is and what to do about it.
+- **The `phase5` report described a document other than the one it writes.** Three separate
+  defects in the same lines. `stray_unhandled` was **summed** across the two `symbol_pua` passes, so
+  a document holding two mid-word markers reported four: a refusal is not an edit, and both passes
+  read the whole document and report the same untouched marker. `in_code` came from the **first**
+  pass, which is wrong in the other direction — `caption_unbleed` runs between the passes, and a
+  glyph it lifts out of a fence is repaired by the second pass, so the report said a glyph was still
+  stuck in a code fence after it was fixed. And the unknown-codepoint residue was read as
+  `first or second`, which no longer says which document is being described. Everything that counts
+  **what the document still holds** now comes from the second pass, the one that read the text this
+  chain goes on to write, while counts of actual changes stay summed across both.
+
 - Removed a dead `cli.py` branch that printed a "SKIPPED — CRLF" warning that could never fire
   through the `phase5` CLI (`run_chain` reads every file in universal-newline mode, so `symbol_pua`'s
   own CRLF guard never sees a `\r\n` to trip on). `run_chain`'s docstring now says explicitly that
@@ -474,7 +530,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.4...v0.2.5

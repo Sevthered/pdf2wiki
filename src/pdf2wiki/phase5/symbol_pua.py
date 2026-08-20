@@ -5,10 +5,10 @@
 r"""Remap Private-Use-Area glyphs that publisher PDFs emit for Symbol-font characters.
 
 Several publisher templates embed a ``SymbolMT`` subset (the Manning books in this corpus all do,
-and at least one book mixes in a Wingdings-family slot as well) and emit its glyphs as **Private
-Use Area** codepoints with **no ``ToUnicode`` map**. `pymupdf` returns the PUA codepoint verbatim and MinerU carries it straight into the
-markdown, where it is **invisible** -- it has no glyph in any normal font, so a terminal, a diff and
-a reader all see nothing:
+and two slots come from the Wingdings family instead) and emit its glyphs as **Private Use Area**
+codepoints with **no ``ToUnicode`` map**. `pymupdf` returns the PUA codepoint verbatim and MinerU
+carries it straight into the markdown, where it is **invisible** -- it has no glyph in any normal
+font, so a terminal, a diff and a reader all see nothing:
 
     ground truth   "if you rotate 360 degrees or 2\N{GREEK SMALL LETTER PI} radians"
     converted      "if you rotate 360 degrees or 2\uf070 radians"    # renders as "2 radians"
@@ -49,17 +49,33 @@ the rest of the converted vault already carries, so one search finds both.
 .. warning::
 
    **The table is keyed by codepoint alone, and the corpus already spans more than one embedded
-   font.** Most entries come from a ``SymbolMT`` subset, but ``U+F0FC`` (check mark, *Mastering
-   Blockchain* p511) is a Wingdings-family slot, and PUA codepoints are only meaningful relative to
-   the font that emitted them. A book embedding a *different* font that reuses the same slots would
-   therefore be rewritten with the wrong characters, silently and with an empty ``unknown``. Every
-   entry is annotated with the book and page it was read from precisely so that collision is
-   traceable; the durable fix is to key on the embedded font name, which needs font information
-   MinerU does not currently carry into the markdown.
+   font.** Seventeen entries come from a ``SymbolMT`` subset and two from ``Symbol``, and two slots
+   are Wingdings-family: ``U+F0FC`` (check mark, *Mastering Blockchain* p511,
+   ``Wingdings-Regular``) and ``U+F0A1`` (the list marker, *Deep Learning with Python*,
+   ``Wingdings2``). PUA codepoints are only meaningful relative to the font that emitted them, so a
+   book embedding a *different* font that reuses one of these slots would be rewritten with the
+   wrong character.
+
+   **That collision exists in this corpus, and MinerU absorbs it.** A sweep of all 80 corpus PDFs
+   found ``U+F020`` emitted by ``BookAntiqua`` in *Developing IoT Projects with ESP32* p89, where
+   the page prints an **ohm sign**, not a space -- and ``U+F0B7`` emitted by ``Symbol`` in *C data
+   structures and algorithms*, 132 times, every one of them opening a bulleted line. Neither
+   reaches this step: a conversion of those ESP32 pages yields **no PUA codepoint at all and a real
+   ohm sign**, because MinerU resolves a fully embedded font through its own encoding. What leaks
+   is the ``SymbolMT`` *subset* with no ``ToUnicode`` map. **Measure the converted markdown, not
+   the PDF: this step reads MinerU's output, and a PDF-level scan overstates what it ever sees.**
+
+   Every entry is annotated with the book, the page and now the font it was read from, precisely so
+   that collision stays traceable. The durable fix is to key on the embedded font name, which needs
+   font information MinerU does not currently carry into the markdown.
 
 ``U+F0A1`` is a list *marker*, not a character -- restoring it as a bullet glyph would leave the
-list structure lost, so a line that starts with it becomes a real markdown list item. Two shapes
-need care, both confirmed against rendered pages:
+list structure lost, so a line that starts with it becomes a real markdown list item. It prints a
+small filled square (*Deep Learning with Python* p197, ``Wingdings2``). ⚠ *Advanced Algorithms*
+p494 uses a **second** marker, ``U+F077`` in ``Wingdings``, which this step does not read: that slot
+is *omega* in Adobe Symbol encoding, so reading it as a bullet needs guards this step does not
+carry, and it is reported under ``unknown`` instead. See the branch
+``feat/phase5-second-list-marker``. Two shapes need care, both confirmed against rendered pages:
 
 - ``*<PUA> Dense layer with relu activation: ...`` -- MinerU emitted the emphasis opener *before*
   the bullet (*Deep Learning with Python* p71 prints a bulleted, italicised lead-in). The stray,
@@ -87,7 +103,8 @@ from . import fences
 #:
 #: Keys are written as ``\uXXXX`` escapes rather than as the literal characters: a literal is
 #: invisible in an editor, a diff and a review, which is the very property that makes this defect
-#: class hard to see. Page numbers are the printed PDF page of the cited book.
+#: class hard to see. **Page numbers are 1-based PDF pages, not the page label the book prints** --
+#: `math.pdf` p87 carries the printed label "55". Open the PDF at that page to re-verify an entry.
 GLYPHS: dict[str, str] = {
     "\uf020": " ",  # Math for Programmers p677, index line "<pi> (pi) symbol 56" -- a Symbol space
     "\uf028": "(",  # Math for Programmers p118, "sqrt(4^2 + 3^2)" -- a Symbol-font paren
@@ -111,8 +128,10 @@ GLYPHS: dict[str, str] = {
     "\uf0fc": "\N{CHECK MARK}",  # Mastering Blockchain p511, terminal log "ok Preparing to down"
 }
 
-#: Handled structurally rather than as a character; see the module docstring.
-BULLET = "\uf0a1"  # Deep Learning with Python p197 / p399 / p71
+#: List markers, handled structurally rather than as characters; see the module docstring. Each was
+#: read from a rendered page, and the font is part of the reading: the same slot in another font is
+#: another character. Written as a string because the regexes below use it as a character class.
+BULLET = "\uf0a1"  # Deep Learning with Python p197 / p399 / p71, Wingdings2
 
 #: A Symbol-font *space*. It is in :data:`GLYPHS`, but it is also whitespace, and the structural
 #: passes below test for real whitespace -- ``"\uf020".isspace()`` is ``False``. It is therefore
@@ -126,13 +145,22 @@ SPACE = "\uf020"
 #: so it is **left alone and counted**, never rewritten. Restoring it as a middle dot there would
 #: flatten a list into paragraphs, and reported as a successful change; that is the exact silent
 #: rewrite this module refuses to make for :data:`BULLET` on the same grounds.
+#:
+#: ⚠ One book *does* print a bullet in this slot: *C data structures and algorithms* opens 132 lines
+#: with this codepoint in the ``Symbol`` font. That book is not converted, the reading is per-book
+#: rather than per-codepoint, and settling it is a judgment this step will not make on its own -- so
+#: the count is **reported** as ``line_leading_dot_deferred`` and the line is left alone.
 DOT = "\uf0b7"
 
 _PUA_CLASS = "[\ue000-\uf8ff]"
 _PUA = re.compile(_PUA_CLASS)
 
 # A line-opening DOT, which this module deliberately does not interpret; see :data:`DOT`.
-_LEADING_DOT = re.compile(r"^[ \t]{0,3}\*?" + DOT)
+# ⚠ The indent is UNBOUNDED here, unlike `_LIST_MARKER`'s CommonMark three-space limit. This is a
+# refusal, not a list-recognition rule: a `{0,3}` bound made the deferral quietly stop applying to a
+# nested list item, so `    <DOT> Chunked transfer encoding` was rewritten to a middle dot and
+# reported as a repair -- the one rewrite :data:`DOT` says this module must never make.
+_LEADING_DOT = re.compile(r"^[ \t]*\*?" + DOT)
 
 # A bullet marker opening a line, optionally behind a stray emphasis opener MinerU misplaced.
 _LIST_MARKER = re.compile(r"^([ \t]{0,3})\*?" + BULLET + r"[ \t]+")
@@ -143,7 +171,7 @@ _HEADING_MARKER = re.compile(r"^([ \t]{0,3}#{1,6})[ \t]*" + BULLET + r"[ \t]+")
 def _strip_stray(ln: str, stats: Counter[str]) -> str:
     """Drop a bullet marker left mid-line, WITHOUT ever joining two words.
 
-    An earlier version matched ``BULLET[ \\t]*`` and so ate the marker together with the only
+    An earlier version matched ``<marker>[ \\t]*`` and so ate the marker together with the only
     whitespace separating two real words -- ``"word<PUA> next"`` became ``"wordnext"``, reported as
     a successful fix. That is precisely the silent-corruption failure class this module exists to
     remove, so the rule is now explicit and conservative:
@@ -152,7 +180,7 @@ def _strip_stray(ln: str, stats: Counter[str]) -> str:
       the words around it stay separated;
     * when it sits flush between two non-space characters there is no way to know whether it was a
       separator or a decoration -- **leave it alone** and count it as ``stray_unhandled``, the same
-      "don't guess" rule the GLYPHS table follows.
+      "don't guess" rule the GLYPHS table follows;
     """
     if BULLET not in ln:
         return ln
@@ -188,16 +216,37 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
 
     A line-opening ``DOT`` is left in place and counted; see :data:`DOT` for why guessing there is
     the one rewrite this module must not make.
+
+    ``SPACE`` is handled **before** the ``DOT`` split, and the order is load-bearing in both
+    directions. Splitting first made the space that follows a deferred dot look line-*leading*, so
+    ``strip`` deleted it and ``<DOT><SPACE>Text`` came out as ``<DOT>Text`` -- an edit to the very
+    line this function promises to leave alone. Handling ``SPACE`` first also lets a ``SPACE``
+    *before* the dot reach the deferral at all, which ``_LEADING_DOT`` cannot match, because a
+    Symbol-font space is not ``[ \\t]``.
     """
+    if SPACE in ln:
+        # The edge runs are found through REAL whitespace as well: a Symbol space sitting behind an
+        # ordinary one is still at the edge of the line, and substituting it there produces the two
+        # structures this drop exists to prevent -- "x<SPACE> " becomes two trailing spaces, which
+        # CommonMark reads as a hard break.
+        start, stop = 0, len(ln)
+        while start < stop and (ln[start].isspace() or ln[start] == SPACE):
+            start += 1
+        while stop > start and (ln[stop - 1].isspace() or ln[stop - 1] == SPACE):
+            stop -= 1
+        head, body, tail = ln[:start], ln[start:stop], ln[stop:]
+        dropped = head.count(SPACE) + tail.count(SPACE)
+        if dropped:  # at an edge it is deleted, not spaced -- counted apart from a substitution
+            stats["dropped_f020"] += dropped
+        if SPACE in body:
+            stats["remap_f020"] += body.count(SPACE)
+        ln = head.replace(SPACE, "") + body.replace(SPACE, " ") + tail.replace(SPACE, "")
+
     head = ""
     m = _LEADING_DOT.match(ln)
     if m:
-        stats["line_leading_dot_deferred"] += 1  # never guess: bullet or dot, no rendered evidence
+        stats["line_leading_dot_deferred"] += 1  # never guess: bullet or dot, per-book judgment
         head, ln = ln[: m.end()], ln[m.end() :]
-
-    if SPACE in ln:
-        stats["remap_f020"] += ln.count(SPACE)
-        ln = ln.strip(SPACE).replace(SPACE, " ")
 
     for pua, real in GLYPHS.items():
         if pua == SPACE:
@@ -245,10 +294,16 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
     ``unknown``
         A codepoint this module has never seen. **This is the one that needs a human**: render the
         source page, confirm what it prints, then extend :data:`GLYPHS`.
+    ``dropped_f020``
+        A :data:`SPACE` at a line edge, **deleted** rather than substituted, because two of them at
+        a line end are a CommonMark hard break and one alone makes a blank line. It is an edit, so
+        it counts toward ``total_changes`` -- but not as ``remap_f020``, which would say the step
+        put a space where the page prints one.
     ``line_leading_dot_deferred``
-        A :data:`DOT` opening a line, left in place because the corpus has no rendered page showing
-        whether it is a bullet or a dot there. Also needs a human, for the same reason ``unknown``
-        does; it is counted separately only because the codepoint itself IS verified inline.
+        A :data:`DOT` opening a line, left in place because whether it is a bullet or a dot there is
+        a per-book reading this step will not guess: it is verified as an inline dot in one book and
+        printed as a bullet in another. Also needs a human, for the same reason ``unknown`` does; it
+        is counted separately only because the codepoint itself IS verified inline.
     """
     stats: Counter[str] = Counter()
 
@@ -264,6 +319,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "stray_markers": 0,
             "stray_unhandled": 0,
             "line_leading_dot_deferred": 0,
+            "dropped_f020": 0,
             "in_code": {},
             "unknown": {},
             "total_changes": 0,
@@ -299,6 +355,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "stray_markers": 0,
         "stray_unhandled": 0,
         "line_leading_dot_deferred": 0,
+        "dropped_f020": 0,
         "skipped_crlf": False,
     }
     report.update(stats)

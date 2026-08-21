@@ -41,7 +41,8 @@ All notable changes to this project are documented here. The format is based on
   nothing rather than leaving a short book on disk, a blank page is not mistaken for a dropped one, a
   failed pass is reported instead of raised into the batch loop, an offloaded hybrid failure never
   falls back to the local GPU, one book's failure does not abort the run, and a corrupt manifest is
-  refused instead of restarting every book. Statement coverage **82% → 93%**, tests **236 → 297**.
+  refused instead of restarting every book. Statement coverage **82% → 93%**, and the suite
+  went from **236 to 276** tests. (The release as a whole ships **308**.)
 - **A "Build from source" section in the install guide** (`docs/how-to/install.md`), linked from
   CONTRIBUTING: clone, `uv build` (or `python -m build`), install the resulting wheel, and the
   dev-environment commands CI runs. Every command was executed before it was documented. This closes
@@ -111,15 +112,26 @@ All notable changes to this project are documented here. The format is based on
   paragraphs. The Symbol-font space `U+F020` is substituted **before** the bullet/heading passes
   (which test for real whitespace, and `"\uf020".isspace()` is `False`, so a bullet separated from
   its text by one used to survive into the output as an invisible codepoint with its list item
-  lost), and one landing at a line edge is dropped rather than spaced — two of them at end of line
-  are a CommonMark hard break, and a line holding only one becomes blank and splits a paragraph.
+  lost), and one landing at a line edge is dropped rather than spaced, because two of them at end
+  of line are a CommonMark hard break. That hard break is the only reason. A line that holds one
+  Symbol space and nothing else splits a paragraph either way: `U+F020` is not whitespace to
+  CommonMark, so such a line is a paragraph continuation before this step and blank after it,
+  whichever way the space is handled.
 - Every PUA codepoint in `symbol_pua.py` and in the tests is now written as a `\uXXXX` escape
   instead of the literal character. A literal is invisible in an editor, a diff and a review — the
   same property that makes this whole defect class hard to see. No behavior change.
+- **A new refusal counter, `line_leading_marker_deferred`.** It counts a PUA bullet marker that
+  opens a line and that the list pass declined, which `symbol_pua` now leaves in place instead of
+  deleting (see Fixed). Like `stray_unhandled` and `line_leading_dot_deferred` it is a refusal, not
+  an edit, so it stays out of `total_changes`. `remap()` always carries the key, on the normal
+  report and on the CRLF refusal alike, and `phase5.residue_lines()` prints it — so both the
+  `phase5` command and `batch` say what was left and what to do about it.
 - **A Symbol-font space that is deleted is reported as `dropped_f020`, not `remap_f020`.** One at a
   line edge is dropped rather than substituted, and counting a deletion as a remap said the step had
   written a space where the page prints one. Both still count toward `total_changes`, because both
-  are edits.
+  are edits. The key is new in this release, and `remap()` always carries it — on the normal report
+  and on the CRLF refusal alike — so a caller written against the documented return contract reads
+  it without a `KeyError` guard. A test pins the full key set.
 
 ### Fixed
 - **`symbol_pua` deleted the Symbol-font space that follows a line-opening `U+F0B7`.** That codepoint
@@ -134,16 +146,40 @@ All notable changes to this project are documented here. The format is based on
   every glyph left inside a fence was computed and discarded on exactly the runs that build a vault
   — the `phase5` command printed them, and the command that converts ten books did not. The lines
   now come from `phase5.residue_lines()`, which both commands call, and the batch prefixes each with
-  the book slug.
+  the book slug. Printing the report never decides the fate of a book that converted, which took two
+  guards. The report is printed **below** the `except` that classifies a phase-5 failure, because
+  the chapters are already written by then and an exception from printing — a `UnicodeEncodeError`
+  on the warning sign to a non-UTF-8 stdout, say — would otherwise mark a book that converted
+  correctly as `phase5_failed`, trip the circuit breaker and re-convert it on the next resume. It
+  also carries its own `except`, because outside that `try` and unguarded the same exception left
+  `run_batch` altogether: the remaining books never converted, no manifest was written, and the book
+  was re-converted anyway. The fallback line is plain ASCII and carries no exception text, since the
+  failure it reports is an encoding error on the characters the report is made of, and the fallback
+  is guarded in turn for the same reason. ⚠ This covers a write that fails for the report's own
+  characters. It does not make `batch` survive a stdout that is broken for everything: a
+  `BrokenPipeError` from `pdf2wiki batch | head` still stops the run at the per-book header print.
+- **`symbol_pua` DELETED a PUA bullet indented four spaces or more, and counted it as a repair.**
+  Present in 0.2.8 and in every book converted with it. `_LIST_MARKER` and `_HEADING_MARKER` both
+  carry CommonMark's three-space indent limit, so a nested marker matched neither and fell through
+  to the stray-marker branch, where the indent on its left is whitespace — the condition that
+  allows a deletion. A nested list flattened into continuation text of its parent item, and the
+  count landed in `stray_markers`, the counter for a *successful* cleanup, so no residue counter
+  moved and nothing reached the operator. A marker that opens a line is now left in place and
+  counted as `line_leading_marker_deferred`, never removed: **a deletion is not a
+  list-recognition rule either**, which is the mirror of the argument that removed the same bound
+  from the `U+F0B7` refusal one line above. "Opens the line" allows one `*` ahead of the marker,
+  because both marker patterns do — MinerU misplaces an emphasis opener there, and without it
+  `    *<PUA> nested` still flattened. A marker in **column 0** that the list pass declined is
+  reported as line-opening as well: it was counted as `stray_unhandled` before, whose message reads
+  "mid-word marker", which sent the reader looking for a word join that is not there. The mid-line readings are unchanged — whitespace on
+  both sides is still a safe cleanup, and a marker flush between two words is still
+  `stray_unhandled`. ⚠ The 219-file converted corpus could not have found this: `stray_markers` is
+  2 across all of it, so the defect hides inside the number used to prove a change is free.
 - **The line-leading `U+F0B7` refusal stopped applying to a nested list.** Its pattern copied
   `_LIST_MARKER`'s CommonMark three-space indent limit, but a refusal is not a list-recognition
   rule: a dot opening a line indented four spaces or more was rewritten to a middle dot and counted
   as a repair, which is exactly the flattening of a bulleted list the step says it never performs.
   The indent is unbounded there now.
-- **`remap()`'s report always carries `dropped_f020`.** The key is documented in the return contract
-  and was only present on a document that actually held a Symbol-font space, so a caller written
-  against the contract raised `KeyError` on nearly every document. Both the normal report and the
-  CRLF refusal carry the full documented set now, which a test pins.
 - **The `phase5` report never printed `line_leading_dot_deferred`.** The step counts every
   line-opening `U+F0B7` it refuses to interpret, its own documentation says that count needs a human
   for the same reason an unknown codepoint does, and no command printed it. A document made only of

@@ -35,6 +35,49 @@ from . import (
 )
 
 
+def residue_lines(report: dict[str, Any]) -> list[str]:
+    """The human-facing lines for everything `symbol_pua` refused to decide or could not verify.
+
+    This lives with the step rather than in one command, because both entry points need it and only
+    one of them had it. `pdf2wiki batch` converts a whole corpus and discarded the report, so every
+    refusal and every unverified codepoint was computed and thrown away on exactly the runs that
+    produce a vault -- "a counter no command prints reaches no human", one layer up.
+
+    A count of REFUSALS takes the high-water mark of the two `symbol_pua` passes. A codepoint the
+    first pass declines to touch can be removed by the second, and reporting the second alone would
+    drop the signal precisely because something acted on it. What the document STILL HOLDS
+    (`unknown`, `in_code`) comes from the second pass, the only one that read the text this chain
+    writes.
+    """
+    sp, sp2 = report["symbol_pua"], report["symbol_pua_post_caption"]
+    out: list[str] = []
+    stray = max(sp["stray_unhandled"], sp2["stray_unhandled"])
+    if stray:
+        out.append(f"⚠ {stray} mid-word marker(s) LEFT IN PLACE — no safe reading; inspect by hand")
+    deferred = max(sp["line_leading_dot_deferred"], sp2["line_leading_dot_deferred"])
+    if deferred:
+        out.append(
+            f"⚠ {deferred} line-leading · marker(s) LEFT IN PLACE — that codepoint is a"
+            " multiplication dot inline and a list bullet in some books"
+        )
+        out.append("  Render the source page, then treat it as a dot or as a list marker")
+    marker = max(sp["line_leading_marker_deferred"], sp2["line_leading_marker_deferred"])
+    if marker:
+        out.append(
+            f"⚠ {marker} line-opening bullet marker(s) LEFT IN PLACE — too indented, or with no"
+            " space after, to be read as a list item"
+        )
+        out.append("  Render the source page, then write the line as a list item by hand")
+    if sp2["in_code"]:
+        out.append(f"· verified glyphs left inside code fences: {sp2['in_code']}")
+    if sp2["unknown"]:
+        out.append(f"⚠ UNVERIFIED PUA codepoints left as-is: {sp2['unknown']}")
+        out.append(
+            "  Render the source page, confirm the character, then add it to phase5.symbol_pua"
+        )
+    return out
+
+
 def run_chain(
     md_path: str,
     book: str,

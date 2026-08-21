@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-08-21
+
+This release improves `symbol_pua`. Version 0.2.8 added the step. This version makes the step worth a
+run.
+
+The verified glyph table grew from 3 codepoints to 20. A converted math page now keeps θ, φ, α, λ, Σ,
+×, ·, ≠, ≡, ≈ and ∇. Before this release the page lost them, and no reader could see the loss. A
+person read every entry from a rendered page. No entry comes from an encoding chart. That difference
+changed the correct answer two times.
+
+The second half of the release is position. The meaning of a marker depends on its place in the line.
+Five separate rules read that place. One result was a deleted nested list, which the step counted as
+a repair. One function reads the position now. The indent limit counts columns, which is the unit
+CommonMark uses.
+
+The release also adds the first tests for the orchestration layer. Statement coverage moved from 82%
+to 93%. The user-facing documentation now follows ASD-STE100 Simplified Technical English. The
+repository has a read-only mirror at Codeberg.
+
 ### Added
 - **A read-only mirror of the repository at
   [codeberg.org/Sevthered/pdf2wiki](https://codeberg.org/Sevthered/pdf2wiki).** GitHub stays
@@ -32,17 +51,47 @@ All notable changes to this project are documented here. The format is based on
   `U+F0D7` (10 pt) print the **same** centered multiplication dot, so both map to `MIDDLE DOT`,
   while `U+F053` and `U+F0E5` both print a capital Sigma in two different books — a per-codepoint
   table derived from an encoding chart would have split all four differently.
+- **Tests for the orchestration layer, which had none.** `convert_book`, `run_batch`, the executors
+  and the CLI command bodies were covered only where a unit test happened to reach them, so the
+  layer an operator actually runs was the least proven part of the package. The new tests fake the
+  MinerU subprocess but use a **real PDF** and run **phase 5 for real**, so the coverage gate, the
+  chapter files and their frontmatter are the actual artifacts rather than stubs that agree with
+  the code. They pin the contracts that matter on a bad day: the coverage gate hard-stops and writes
+  nothing rather than leaving a short book on disk, a blank page is not mistaken for a dropped one, a
+  failed pass is reported instead of raised into the batch loop, an offloaded hybrid failure never
+  falls back to the local GPU, one book's failure does not abort the run, and a corrupt manifest is
+  refused instead of restarting every book. Statement coverage **82% → 93%**, and the suite
+  went from **236 to 276** tests. (The release as a whole ships **308**.)
 - **A "Build from source" section in the install guide** (`docs/how-to/install.md`), linked from
   CONTRIBUTING: clone, `uv build` (or `python -m build`), install the resulting wheel, and the
   dev-environment commands CI runs. Every command was executed before it was documented. This closes
   **OSPS-DO-07.01**, a control the OSPS Baseline added in its `2026-02-19` release.
 
 ### Changed
+- **The five position-dependent readings in `symbol_pua` are one function.** A marker was read in
+  five ways — after a heading's hashes, opening a line inside the indent limit, opening a line
+  outside it, separating two words, and flush between two of them — and those readings lived in
+  three anchored regular expressions and two branches of a character walk. Every change to the rule
+  therefore meant five separate decisions, and nine fresh-context review rounds found the same shape
+  of defect again and again: a caution added where the author was looking, and not where the same
+  constant is read next door. Position is decided once now, by `classify`, and what each position
+  means is a table. No behavior changed except the tab defect above, and that is proven rather than
+  asserted: all **10,232** shapes in the positional truth table were run through the old code and
+  the new, **452** differ, and **every one of the 452** carries a tab to the left of the marker.
+  Across the 219 converted files the two agree on every output and every count. ⚠ The truth table
+  grew while this was written, because the first version of it carried **one marker per line** and
+  therefore could not see what a marker's action leaves behind for the next one. It could not: the
+  heading action emits `# `, which is itself a valid heading prefix, so `#<M>   <M> ` counted two
+  promoted headings on one heading. A line opens **once** now, whichever way the marker that opened
+  it was read, which is what the anchored patterns gave for free by running a single time. The table
+  carries two-marker shapes from now on.
 - **The user-facing documentation is now written to ASD-STE100 Simplified Technical English.** The
-  corpus is `README.md`, `CONTRIBUTING.md`, `docs/how-to/`, `docs/tutorials/` and `docs/reference/`.
-  Measured against the mechanically-decidable rules, it went from **97 violations to 0**: 60 semicolons
-  (rule 8.1, which STE bans outright), 27 descriptive sentences over 25 words (6.3), 8 procedural
-  sentences over 20 words (5.1), one over-long parenthetical (8.5) and two British spellings (1.14).
+  corpus is `README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/how-to/`, `docs/tutorials/` and
+  `docs/reference/`. Measured against the mechanically-decidable rules, it went from **97 violations
+  to 0**: 58 semicolons (rule 8.1, which STE bans outright), 28 descriptive sentences over 25 words
+  (6.3), 5 procedural sentences over 20 words (5.1), one over-long parenthetical (8.5) and 5 British
+  spellings (1.14). The counts are what the checker reports today over that corpus at `v0.2.8`; a
+  house line-width rule it also carries is not an STE rule and is excluded from the total.
   Sentence length was measured under the standard's own counting rules 8.4–8.6 rather than by splitting
   on whitespace, so a parenthetical counts as one word in its host sentence and as a sentence of its
   own, while a number-plus-unit, an abbreviation or an alphanumeric identifier each count as one word.
@@ -99,13 +148,106 @@ All notable changes to this project are documented here. The format is based on
   paragraphs. The Symbol-font space `U+F020` is substituted **before** the bullet/heading passes
   (which test for real whitespace, and `"\uf020".isspace()` is `False`, so a bullet separated from
   its text by one used to survive into the output as an invisible codepoint with its list item
-  lost), and one landing at a line edge is dropped rather than spaced — two of them at end of line
-  are a CommonMark hard break, and a line holding only one becomes blank and splits a paragraph.
+  lost), and one landing at a line edge is dropped rather than spaced, because two of them at end
+  of line are a CommonMark hard break. That hard break is the only reason. A line that holds one
+  Symbol space and nothing else splits a paragraph either way: `U+F020` is not whitespace to
+  CommonMark, so such a line is a paragraph continuation before this step and blank after it,
+  whichever way the space is handled.
 - Every PUA codepoint in `symbol_pua.py` and in the tests is now written as a `\uXXXX` escape
   instead of the literal character. A literal is invisible in an editor, a diff and a review — the
   same property that makes this whole defect class hard to see. No behavior change.
+- **A new refusal counter, `line_leading_marker_deferred`.** It counts a PUA bullet marker that
+  opens a line and that the list pass declined, which `symbol_pua` now leaves in place instead of
+  deleting (see Fixed). Like `stray_unhandled` and `line_leading_dot_deferred` it is a refusal, not
+  an edit, so it stays out of `total_changes`. `remap()` always carries the key, on the normal
+  report and on the CRLF refusal alike, and `phase5.residue_lines()` prints it — so both the
+  `phase5` command and `batch` say what was left and what to do about it.
+- **A Symbol-font space that is deleted is reported as `dropped_f020`, not `remap_f020`.** One at a
+  line edge is dropped rather than substituted, and counting a deletion as a remap said the step had
+  written a space where the page prints one. Both still count toward `total_changes`, because both
+  are edits. The key is new in this release, and `remap()` always carries it — on the normal report
+  and on the CRLF refusal alike — so a caller written against the documented return contract reads
+  it without a `KeyError` guard. A test pins the full key set.
 
 ### Fixed
+- **`symbol_pua` deleted the Symbol-font space that follows a line-opening `U+F0B7`.** That codepoint
+  is a multiplication dot inline and a list bullet in other books, so the step deliberately leaves
+  such a line alone and counts it. It did not: the line was split at the dot *before* the Symbol
+  space was substituted, which made the space look line-leading, and a leading Symbol space is
+  dropped rather than spaced. `<dot><symbol space>Text` came out as `<dot>Text`, with the marker
+  glued to the first word and the change reported as one edit — to the one line the step promises
+  not to touch. The space is now substituted first. That order also lets a Symbol space *before* the
+  dot reach the deferral at all, which it could not, because `[ \t]` does not match one.
+- **`pdf2wiki batch` threw the phase-5 report away.** Every unverified codepoint, every refusal and
+  every glyph left inside a fence was computed and discarded on exactly the runs that build a vault
+  — the `phase5` command printed them, and the command that converts ten books did not. The lines
+  now come from `phase5.residue_lines()`, which both commands call, and the batch prefixes each with
+  the book slug. Printing the report never decides the fate of a book that converted, which took two
+  guards. The report is printed **below** the `except` that classifies a phase-5 failure, because
+  the chapters are already written by then and an exception from printing — a `UnicodeEncodeError`
+  on the warning sign to a non-UTF-8 stdout, say — would otherwise mark a book that converted
+  correctly as `phase5_failed`, trip the circuit breaker and re-convert it on the next resume. It
+  also carries its own `except`, because outside that `try` and unguarded the same exception left
+  `run_batch` altogether: the remaining books never converted, no manifest was written, and the book
+  was re-converted anyway. The fallback line is plain ASCII and carries no exception text, since the
+  failure it reports is an encoding error on the characters the report is made of, and the fallback
+  is guarded in turn for the same reason. ⚠ This covers a write that fails for the report's own
+  characters. It does not make `batch` survive a stdout that is broken for everything: a
+  `BrokenPipeError` from `pdf2wiki batch | head` still stops the run at the per-book header print.
+- **`symbol_pua` DELETED a PUA bullet indented four spaces or more, and counted it as a repair.**
+  Present in 0.2.8 and in every book converted with it. The list and heading readings both
+  carry CommonMark's three-column indent limit, so a nested marker matched neither and fell through
+  to the stray-marker branch, where the indent on its left is whitespace — the condition that
+  allows a deletion. A nested list flattened into continuation text of its parent item, and the
+  count landed in `stray_markers`, the counter for a *successful* cleanup, so no residue counter
+  moved and nothing reached the operator. A marker that opens a line is now left in place and
+  counted as `line_leading_marker_deferred`, never removed: **a deletion is not a
+  list-recognition rule either**, which is the mirror of the argument that removed the same bound
+  from the `U+F0B7` refusal one line above. "Opens the line" allows one `*` ahead of the marker,
+  because both marker patterns do — MinerU misplaces an emphasis opener there, and without it
+  `    *<PUA> nested` still flattened. A marker in **column 0** that the list pass declined is
+  reported as line-opening as well: it was counted as `stray_unhandled` before, whose message reads
+  "mid-word marker", which sent the reader looking for a word join that is not there. The mid-line readings are unchanged — whitespace on
+  both sides is still a safe cleanup, and a marker flush between two words is still
+  `stray_unhandled`. ⚠ The 219-file converted corpus could not have found this: `stray_markers` is
+  2 across all of it, so the defect hides inside the number used to prove a change is free.
+- **`symbol_pua` read a tab-indented marker as a list item, because it counted the indent in
+  characters and CommonMark counts it in columns.** Present in 0.2.8. A tab is one character and
+  **four columns**, so the three-character indent limit accepted a marker standing at column 4 or
+  beyond, and `\t<PUA> nested` became `\t- nested` — which outside a list context is an **indented
+  code block**, the very structure the line-opening refusal exists to avoid. `     nested`, at the
+  same column, was refused. One column, two answers. The indent is measured in columns now, against
+  CommonMark's four-column tab stop, so any tab in the indent defers the marker and reports it as
+  `line_leading_marker_deferred`. The heading path carries the same limit, so a marker after hashes
+  that a tab pushed past column 3 is no longer reported as `heading_markers`: that line is not a
+  heading, and the marker is read by position alone. ⚠ The `U+F0B7` refusal is deliberately
+  **unbounded** and is unaffected — a tab-indented dot already deferred. Measured across the 219
+  converted files: **zero** change to any output or any count, which is the corpus limit this
+  module's tests were rebuilt around rather than a claim that the defect was not real.
+- **The line-leading `U+F0B7` refusal stopped applying to a nested list.** Its pattern copied
+  the list reading's CommonMark indent limit, but a refusal is not a list-recognition
+  rule: a dot opening a line indented four spaces or more was rewritten to a middle dot and counted
+  as a repair, which is exactly the flattening of a bulleted list the step says it never performs.
+  The indent is unbounded there now.
+- **The `phase5` report never printed `line_leading_dot_deferred`.** The step counts every
+  line-opening `U+F0B7` it refuses to interpret, its own documentation says that count needs a human
+  for the same reason an unknown codepoint does, and no command printed it. A document made only of
+  such lines reported zero changes, zero unknown and zero warnings while keeping every one of those
+  invisible codepoints. It is now a ⚠ line that says what the codepoint is and what to do about it.
+- **The `phase5` report described a document other than the one it writes.** Three separate
+  defects in the same lines. `stray_unhandled` was **summed** across the two `symbol_pua` passes, so
+  a document holding two mid-word markers reported four: a refusal is not an edit, and both passes
+  read the whole document and report the same untouched marker. `in_code` came from the **first**
+  pass, which is wrong in the other direction — `caption_unbleed` runs between the passes, and a
+  glyph it lifts out of a fence is repaired by the second pass, so the report said a glyph was still
+  stuck in a code fence after it was fixed. And the unknown-codepoint residue was read as
+  `first or second`, which no longer says which document is being described. Everything that counts
+  **what the document still holds** now comes from the second pass, the one that read the text this
+  chain goes on to write, while counts of actual changes stay summed across both. ⚠ A **refusal**
+  keeps the high-water mark of the two passes instead: a codepoint the first pass declines to touch
+  can be removed by the second, and reporting the second alone would drop the signal precisely
+  because something acted on it.
+
 - Removed a dead `cli.py` branch that printed a "SKIPPED — CRLF" warning that could never fire
   through the `phase5` CLI (`run_chain` reads every file in universal-newline mode, so `symbol_pua`'s
   own CRLF guard never sees a `\r\n` to trip on). `run_chain`'s docstring now says explicitly that
@@ -474,7 +616,9 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...v0.2.9
+[0.2.8]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.4...v0.2.5

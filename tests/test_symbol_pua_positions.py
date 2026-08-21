@@ -6,10 +6,15 @@
 
 WHY THIS FILE EXISTS. `symbol_pua` reads one concept -- a marker -- in five position-dependent
 ways: after a heading's hashes, opening a line inside CommonMark's indent limit, opening a line
-outside it, separating two words, and flush between two of them. Those five readings live in three
-regexes and two branches of `_strip_stray`, so every change means five decisions. Nine fresh-context
-review rounds found the same shape of defect again and again: a caution applied where the author was
-looking and not where the same constant is read next door.
+outside it, separating two words, and flush between two of them. Those five readings USED TO live in
+three anchored regexes and two branches of a character walk, so every change meant five decisions.
+Nine fresh-context review rounds found the same shape of defect again and again: a caution applied
+where the author was looking and not where the same constant is read next door.
+
+This file was written BEFORE `classify` collapsed those five readings into one, so that the
+collapse had an oracle to reproduce rather than an argument. It stays afterwards for the same
+reason it was needed: the next change to a positional rule is still five decisions' worth of
+behavior, whatever it looks like in the source.
 
 The 219-file converted corpus cannot catch that class. `stray_markers` is **2** across all of it, so
 a defect presenting as `stray_markers` hides inside the number used to prove a change is free, and
@@ -82,6 +87,17 @@ def _shapes() -> list[str]:
             out.append(f"{left}{marker}{right}")
         # two adjacent markers: the known shape that needs two passes to settle
         out.append(f"word{marker}{marker} next")
+
+    # TWO markers on one line. A line opens ONCE, and what the first marker's action emits is what
+    # the second one reads. The heading action leaves `# ` behind, which is itself a valid heading
+    # prefix, so `#<M>   <M> ` counted TWO promoted headings on one heading and normalised the
+    # trailing whitespace a second time. Nothing above reaches that: every shape there carries a
+    # single marker.
+    for marker in (BULLET, DOT):
+        for left in ("", " ", "   ", "\t", "#", "###", "*", "a", "a "):
+            for mid in ("", " ", "   ", "\t"):
+                for right in ("", " ", "  ", "b"):
+                    out.append(f"{left}{marker}{mid}{marker}{right}")
     return sorted(set(out))
 
 
@@ -168,14 +184,17 @@ def test_the_table_is_not_all_one_answer():
 def test_remap_is_idempotent_on_every_shape():
     """The chain runs `symbol_pua` TWICE, so a shape that keeps changing corrupts on the second pass.
 
-    Exactly ONE shape in the table is unstable, and it is the one already filed: two adjacent
-    markers. Pass one refuses the first (it is flush between a word and another marker, which has no
-    safe reading) and deletes the second, and pass two then deletes the survivor. That is
-    pre-existing on `main`, has no corpus instance, and is filed rather than fixed.
+    Every unstable shape in the table is the one already filed: TWO ADJACENT markers. Pass one
+    refuses the first of the pair (it is flush against another marker, which has no safe reading)
+    and deletes the second, and pass two then reads the survivor as a line-opening or a stray marker
+    and acts on it. That is pre-existing, it has no corpus instance, and it is filed rather than
+    fixed.
 
-    ⚠ It is pinned BY NAME rather than tolerated, so a second unstable shape -- introduced by any
-    later change to the positional rules -- fails here instead of joining an allow-list that grows
-    quietly.
+    ⚠ It is pinned by SHAPE and by COUNT rather than tolerated, so a second unstable family -- or one
+    more instance of this one -- fails here instead of joining an allow-list that grows quietly.
+    Measured against the pre-refactor module over this same table: **17** shapes were unstable there
+    and **15** are here, the two removed being tab-indented ones the column fix now defers. The
+    refactor introduced none.
     """
     unstable = [
         line
@@ -183,9 +202,13 @@ def test_remap_is_idempotent_on_every_shape():
         if symbol_pua.remap(symbol_pua.remap(line + "\n")[0])[0] != symbol_pua.remap(line + "\n")[0]
     ]
 
-    # ...and only the BULLET one: `DOT` is a verified glyph, so both of a pair are substituted in
-    # the first pass and nothing is left for the second to act on.
-    assert unstable == [f"word{BULLET}{BULLET} next"], (
-        "the set of shapes that change again on the second pass -- which the chain WILL run -- is "
-        f"no longer exactly the two filed ones: {unstable}"
+    # ...and only BULLET pairs: `DOT` is a verified glyph, so both of a pair are substituted in the
+    # first pass and nothing is left for the second to act on.
+    assert all(BULLET + BULLET in line for line in unstable), (
+        "an unstable shape that is NOT two adjacent markers is a new defect, not the filed one: "
+        f"{[line for line in unstable if BULLET + BULLET not in line]}"
+    )
+    assert len(unstable) == 15, (
+        "the number of shapes that change again on the second pass -- which the chain WILL run -- "
+        f"moved from the measured 15: {unstable}"
     )

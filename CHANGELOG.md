@@ -49,6 +49,23 @@ All notable changes to this project are documented here. The format is based on
   **OSPS-DO-07.01**, a control the OSPS Baseline added in its `2026-02-19` release.
 
 ### Changed
+- **The five position-dependent readings in `symbol_pua` are one function.** A marker was read in
+  five ways — after a heading's hashes, opening a line inside the indent limit, opening a line
+  outside it, separating two words, and flush between two of them — and those readings lived in
+  three anchored regular expressions and two branches of a character walk. Every change to the rule
+  therefore meant five separate decisions, and nine fresh-context review rounds found the same shape
+  of defect again and again: a caution added where the author was looking, and not where the same
+  constant is read next door. Position is decided once now, by `classify`, and what each position
+  means is a table. No behavior changed except the tab defect above, and that is proven rather than
+  asserted: all **10,232** shapes in the positional truth table were run through the old code and
+  the new, **452** differ, and **every one of the 452** carries a tab to the left of the marker.
+  Across the 219 converted files the two agree on every output and every count. ⚠ The truth table
+  grew while this was written, because the first version of it carried **one marker per line** and
+  therefore could not see what a marker's action leaves behind for the next one. It could not: the
+  heading action emits `# `, which is itself a valid heading prefix, so `#<M>   <M> ` counted two
+  promoted headings on one heading. A line opens **once** now, whichever way the marker that opened
+  it was read, which is what the anchored patterns gave for free by running a single time. The table
+  carries two-marker shapes from now on.
 - **The user-facing documentation is now written to ASD-STE100 Simplified Technical English.** The
   corpus is `README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/how-to/`, `docs/tutorials/` and
   `docs/reference/`. Measured against the mechanically-decidable rules, it went from **97 violations
@@ -159,8 +176,8 @@ All notable changes to this project are documented here. The format is based on
   characters. It does not make `batch` survive a stdout that is broken for everything: a
   `BrokenPipeError` from `pdf2wiki batch | head` still stops the run at the per-book header print.
 - **`symbol_pua` DELETED a PUA bullet indented four spaces or more, and counted it as a repair.**
-  Present in 0.2.8 and in every book converted with it. `_LIST_MARKER` and `_HEADING_MARKER` both
-  carry CommonMark's three-space indent limit, so a nested marker matched neither and fell through
+  Present in 0.2.8 and in every book converted with it. The list and heading readings both
+  carry CommonMark's three-column indent limit, so a nested marker matched neither and fell through
   to the stray-marker branch, where the indent on its left is whitespace — the condition that
   allows a deletion. A nested list flattened into continuation text of its parent item, and the
   count landed in `stray_markers`, the counter for a *successful* cleanup, so no residue counter
@@ -175,8 +192,21 @@ All notable changes to this project are documented here. The format is based on
   both sides is still a safe cleanup, and a marker flush between two words is still
   `stray_unhandled`. ⚠ The 219-file converted corpus could not have found this: `stray_markers` is
   2 across all of it, so the defect hides inside the number used to prove a change is free.
+- **`symbol_pua` read a tab-indented marker as a list item, because it counted the indent in
+  characters and CommonMark counts it in columns.** Present in 0.2.8. A tab is one character and
+  **four columns**, so the three-character indent limit accepted a marker standing at column 4 or
+  beyond, and `\t<PUA> nested` became `\t- nested` — which outside a list context is an **indented
+  code block**, the very structure the line-opening refusal exists to avoid. `     nested`, at the
+  same column, was refused. One column, two answers. The indent is measured in columns now, against
+  CommonMark's four-column tab stop, so any tab in the indent defers the marker and reports it as
+  `line_leading_marker_deferred`. The heading path carries the same limit, so a marker after hashes
+  that a tab pushed past column 3 is no longer reported as `heading_markers`: that line is not a
+  heading, and the marker is read by position alone. ⚠ The `U+F0B7` refusal is deliberately
+  **unbounded** and is unaffected — a tab-indented dot already deferred. Measured across the 219
+  converted files: **zero** change to any output or any count, which is the corpus limit this
+  module's tests were rebuilt around rather than a claim that the defect was not real.
 - **The line-leading `U+F0B7` refusal stopped applying to a nested list.** Its pattern copied
-  `_LIST_MARKER`'s CommonMark three-space indent limit, but a refusal is not a list-recognition
+  the list reading's CommonMark indent limit, but a refusal is not a list-recognition
   rule: a dot opening a line indented four spaces or more was rewritten to a middle dot and counted
   as a repair, which is exactly the flattening of a bulleted list the step says it never performs.
   The indent is unbounded there now.

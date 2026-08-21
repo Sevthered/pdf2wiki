@@ -673,7 +673,7 @@ def test_pua_inline_dot_still_remapped_on_a_line_that_opens_with_one():
 def test_pua_deferral_applies_at_any_indent():
     """The refusal must not stop applying because a list is nested.
 
-    `_LIST_MARKER` carries CommonMark's three-space limit, and the deferral copied it. A dot opening
+    The list reading carries CommonMark's indent limit, and the deferral copied it. A dot opening
     a line indented four spaces or more was then rewritten to a middle dot and counted as a repair —
     a nested bulleted list flattened into paragraphs, which is the one rewrite this module says it
     must never make.
@@ -810,7 +810,7 @@ def test_pua_symbol_space_after_a_deferred_dot_is_spaced_not_deleted():
 
 
 def test_pua_symbol_space_before_a_leading_dot_still_defers():
-    # `_LEADING_DOT` matches `[ \t]` only, and a Symbol space is neither, so this line reached the
+    # The line-opening reading matches a `[ \t]` indent only, and a Symbol space is neither, so this
     # remap loop and had its dot rewritten. Substituting SPACE first is what makes it a line-opening
     # dot at all.
     md = f"{SYMBOL_SPACE}{DOT} Server-sent events\n"
@@ -1003,8 +1003,8 @@ def test_illegal_handles_codepoint_at_string_edges():
 def test_a_nested_pua_bullet_is_left_in_place_instead_of_deleted():
     """Shipped in 0.2.8: a PUA bullet indented four spaces or more was DELETED.
 
-    `_LIST_MARKER` and `_HEADING_MARKER` both carry CommonMark's `{0,3}` indent limit, so a nested
-    marker matched neither and fell through to `_strip_stray`, where the indent on its left IS
+    The list and heading readings both carry CommonMark's indent limit, so a nested marker matched
+    neither and fell through to the stray-marker branch, where the indent on its left IS
     whitespace. The nested list flattened into continuation text of the parent item, and it was
     counted as `stray_markers` -- the counter for a SUCCESSFUL cleanup -- so no residue counter
     moved and nothing reached the operator. A deletion is not a list-recognition rule.
@@ -1029,6 +1029,55 @@ def test_the_marker_refusal_applies_at_every_indent_the_list_pass_declines():
         out, rep = symbol_pua.remap(" " * n + f"{BULLET} item\n")
         assert out == " " * n + f"{BULLET} item\n", n
         assert rep["line_leading_marker_deferred"] == 1 and rep["stray_markers"] == 0, n
+
+
+def test_a_tab_indented_marker_is_measured_in_columns_and_refused():
+    """Shipped in 0.2.8: the indent limit counted CHARACTERS, and CommonMark counts COLUMNS.
+
+    A tab is one character and four columns, so `[ \\t]{0,3}` accepted a marker standing at column
+    4 or beyond. `\\t<M> nested` became `\\t- nested`, which outside a list context is an indented
+    CODE BLOCK -- the very structure the refusal exists to avoid -- while `     nested`, at the same
+    column, was refused. One column, two answers.
+    """
+    for indent in ("\t", " \t", "\t ", "   \t"):
+        out, rep = symbol_pua.remap(f"{indent}{BULLET} nested\n")
+        assert out == f"{indent}{BULLET} nested\n", repr(indent)  # not one character changed
+        assert rep["line_leading_marker_deferred"] == 1, repr(indent)
+        assert rep["list_markers"] == 0 and rep["stray_markers"] == 0, repr(indent)
+        assert rep["total_changes"] == 0, repr(indent)  # a refusal is not an edit
+
+
+def test_the_column_count_agrees_with_commonmarks_four_column_tab_stop():
+    """A tab advances to the next multiple of four, so its width depends on where it starts."""
+    assert symbol_pua._columns("") == 0
+    assert symbol_pua._columns("   ") == 3
+    assert symbol_pua._columns("\t") == 4
+    assert symbol_pua._columns(" \t") == 4  # one space then a tab still lands on the stop
+    assert symbol_pua._columns("   \t") == 4
+    assert symbol_pua._columns("\t ") == 5
+    assert symbol_pua._columns("\t\t") == 8
+
+
+def test_a_tab_indented_dot_still_defers_because_its_indent_is_unbounded():
+    """The `U+F0B7` refusal never carried the limit, so the column fix must not give it one."""
+    out, rep = symbol_pua.remap(f"\t{DOT} nested\n")
+    assert out == f"\t{DOT} nested\n"
+    assert rep["line_leading_dot_deferred"] == 1
+    assert rep["total_changes"] == 0
+
+
+def test_classify_reads_each_position_once():
+    """The five readings are one function now, so pin what each position is called."""
+    assert symbol_pua.classify("", " item") is symbol_pua.Pos.LIST
+    assert symbol_pua.classify("  ", " item") is symbol_pua.Pos.LIST
+    assert symbol_pua.classify("  *", " item") is symbol_pua.Pos.LIST  # opener MinerU misplaced
+    assert symbol_pua.classify("## ", " item") is symbol_pua.Pos.HEADING
+    assert symbol_pua.classify("    ", " item") is symbol_pua.Pos.LINE_OPEN  # over the limit
+    assert symbol_pua.classify("\t", " item") is symbol_pua.Pos.LINE_OPEN  # four columns
+    assert symbol_pua.classify("", "item") is symbol_pua.Pos.LINE_OPEN  # no gap after it
+    assert symbol_pua.classify("* ", "item") is symbol_pua.Pos.SEPARATOR  # a REAL bullet, then it
+    assert symbol_pua.classify("word ", " next") is symbol_pua.Pos.SEPARATOR
+    assert symbol_pua.classify("word", "next") is symbol_pua.Pos.FLUSH
 
 
 def test_a_line_opening_marker_glued_to_its_text_is_refused_not_deleted():
@@ -1065,7 +1114,7 @@ def test_the_marker_refusal_counter_is_always_present_on_both_reports():
 def test_an_emphasis_opener_does_not_defeat_the_line_opening_refusal():
     """MinerU misplaces a `*` ahead of the marker, and both marker patterns allow one.
 
-    `_strip_stray` did not, so `    *<BULLET> nested` fell straight past the refusal to the
+    The stray-marker branch did not, so `    *<BULLET> nested` fell straight past the refusal to the
     deletion branch and the nested list flattened -- the same defect one character to the left of
     where it was fixed. The `U+F0B7` sibling never had the gap, which is what showed it was an
     oversight and not a decision.
@@ -1110,7 +1159,7 @@ def test_a_marker_in_column_zero_is_reported_as_line_opening_not_mid_word():
 def test_a_real_markdown_bullet_before_the_marker_is_still_cleaned():
     """The emphasis opener that keeps a line "open" must be ADJACENT to the marker.
 
-    `_LIST_MARKER` and `_LEADING_DOT` both require that. Allowing whitespace between them made
+    The list and dot readings both require that. Allowing whitespace between them made
     `* <BULLET> item` -- a real Markdown bullet followed by a stray marker -- read as line-opening,
     so the marker stayed in the output as an invisible codepoint where it used to be removed. That
     is the failure class this module exists to remove, introduced by the guard against another one.

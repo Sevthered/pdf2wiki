@@ -100,6 +100,7 @@ Idempotent: after a pass no mapped PUA codepoint remains outside code, so a seco
 
 import re
 from collections import Counter
+from enum import Enum
 
 from . import fences
 
@@ -163,96 +164,188 @@ DOT = "\uf0b7"
 _PUA_CLASS = "[\ue000-\uf8ff]"
 _PUA = re.compile(_PUA_CLASS)
 
-# A line-opening DOT, which this module deliberately does not interpret; see :data:`DOT`.
-# ⚠ The indent is UNBOUNDED here, unlike `_LIST_MARKER`'s CommonMark three-space limit. This is a
-# refusal, not a list-recognition rule: a `{0,3}` bound made the deferral quietly stop applying to a
-# nested list item, so `    <DOT> Chunked transfer encoding` was rewritten to a middle dot and
-# reported as a repair -- the one rewrite :data:`DOT` says this module must never make.
-_LEADING_DOT = re.compile(r"^[ \t]*\*?" + DOT)
+#: CommonMark reads four columns of indent as an indented code block, so a marker that deep cannot
+#: open a list item. Three columns is the last indent a list item accepts.
+_INDENT_LIMIT = 3
 
-# A bullet marker opening a line, optionally behind a stray emphasis opener MinerU misplaced.
-_LIST_MARKER = re.compile(r"^([ \t]{0,3})\*?" + BULLET + r"[ \t]+")
-# The same marker after a heading's hashes, where MinerU promoted a list item to a heading.
-_HEADING_MARKER = re.compile(r"^([ \t]{0,3}#{1,6})[ \t]*" + BULLET + r"[ \t]+")
+#: CommonMark advances a tab to the next multiple of four columns.
+_TAB_STOP = 4
+
+#: A left context that is nothing but indent, with at most one emphasis opener ADJACENT to the
+#: marker. MinerU misplaces such an opener ahead of a bullet, and ``*<PUA> Dense layer with relu
+#: activation`` is a shape from a rendered page (*Deep Learning with Python* p71). The opener must
+#: TOUCH the marker: ``* <PUA> item`` is a real Markdown bullet followed by a stray marker, which is
+#: a different line and reads as :data:`Pos.SEPARATOR`.
+_OPEN_LEFT = re.compile(r"^([ \t]*)\*?$")
+
+#: A left context of a heading's hashes, where MinerU promoted a list item to a heading.
+_HEAD_LEFT = re.compile(r"^([ \t]*)(#{1,6})[ \t]*$")
 
 
-def _strip_stray(ln: str, stats: Counter[str]) -> str:
-    """Drop a bullet marker left mid-line, WITHOUT ever joining two words.
+class Pos(Enum):
+    """Where a marker sits on its line.
 
-    An earlier version matched ``<marker>[ \\t]*`` and so ate the marker together with the only
-    whitespace separating two real words -- ``"word<PUA> next"`` became ``"wordnext"``, reported as
-    a successful fix. That is precisely the silent-corruption failure class this module exists to
-    remove, so the rule is now explicit and conservative:
+    This module reads one concept -- a marker -- in five position-dependent ways, and the position
+    decides the answer in every rule. Those five readings used to live in three anchored regexes and
+    two branches of a character walk, so every change to one of them meant five separate decisions.
+    Nine fresh-context review rounds found the same shape of defect again and again: a caution added
+    where the author was looking, and not where the same constant is read next door.
 
-    * remove the marker only when real whitespace already survives on one side of it, so the words
-      around it stay separated. A line edge is not whitespace here: a marker that opens the line is
-      handled by the rule below, and one at the end of the line is removed only because of the
-      space on its left;
-    * when it sits flush between two non-space characters there is no way to know whether it was a
-      separator or a decoration -- **leave it alone** and count it as ``stray_unhandled``, the same
-      "don't guess" rule the GLYPHS table follows;
-    * when it OPENS the line -- nothing but indent to its left -- leave it alone as well and count
-      it as ``line_leading_marker_deferred``. It reaches this function only because
-      :data:`_LIST_MARKER` declined it, so it cannot be read as a list item here. ⚠ **A deletion is
-      not a list-recognition rule either.** An indent of four spaces or more matches neither
-      ``_LIST_MARKER`` nor ``_HEADING_MARKER``, both of which carry CommonMark's ``{0,3}`` limit, so
-      a nested bullet used to fall through to the deletion branch -- the indent on its left IS
-      whitespace -- and a nested list was flattened into continuation text and reported as two
-      successful repairs. This is the mirror of the bound removed from :data:`_LEADING_DOT`.
+    The reading is :func:`classify` alone now, and what each reading MEANS is the :data:`_ACTIONS`
+    table, so a position is decided in one place.
+
+    ``HEADING``
+        After a heading's hashes, inside the indent limit, with a gap ahead of it.
+    ``LIST``
+        Opening the line inside the indent limit, with a gap ahead of it.
+    ``LINE_OPEN``
+        Nothing but indent to its left, yet not readable as a list item -- too deeply indented, or
+        with no gap after it. Left in place: a deletion is not a list-recognition rule either.
+    ``SEPARATOR``
+        Real whitespace survives on one side, so removing the marker cannot join two words.
+    ``FLUSH``
+        Flush between two non-space characters, where a separator and a decoration look the same.
+    """
+
+    HEADING = "heading"
+    LIST = "list"
+    LINE_OPEN = "line_open"
+    SEPARATOR = "separator"
+    FLUSH = "flush"
+
+
+#: What each position means: the counter it raises, and whether the marker SURVIVES the pass. The
+#: two line-opening classes also rewrite the prefix they sit in, which is the one action a table
+#: cannot carry, so :func:`_fix_line` handles that part.
+#:
+#: The three positions that keep a marker are the module's refusals. They are counted apart from the
+#: repairs, and :func:`remap` keeps them out of ``total_changes``, so a refusal to guess never reads
+#: as a successful repair.
+_ACTIONS: dict[Pos, tuple[str, bool]] = {
+    Pos.HEADING: ("heading_markers", False),
+    Pos.LIST: ("list_markers", False),
+    Pos.LINE_OPEN: ("line_leading_marker_deferred", True),
+    Pos.SEPARATOR: ("stray_markers", False),
+    Pos.FLUSH: ("stray_unhandled", True),
+}
+
+
+def _columns(indent: str) -> int:
+    r"""Return the width of ``indent`` in COLUMNS, the unit CommonMark measures an indent in.
+
+    A tab is ONE character and FOUR columns. The patterns this function replaces counted characters,
+    so ``\t<PUA> nested`` was rewritten as a list item although the marker stands at column 4, where
+    CommonMark reads an indented code block rather than a list. ``\t- nested`` and ``     nested``
+    sit at the same column, and only one of them was rewritten.
+    """
+    col = 0
+    for ch in indent:
+        col += _TAB_STOP - (col % _TAB_STOP) if ch == "\t" else 1
+    return col
+
+
+def classify(left: str, right: str, *, opened: bool = False) -> Pos:
+    """Return where a marker sits, from the text emitted before it and the text still ahead of it.
+
+    ⚠ ``left`` is what the pass has ALREADY EMITTED, not the input to the left of the marker. A
+    marker whose neighbour a previous deletion removed stands next to whatever that deletion
+    uncovered, and reading the input instead would call ``a <M><M>b`` flush and keep a codepoint the
+    step deletes today.
+
+    ⚠ ``opened`` says an earlier marker on this line was already read, **however it was read**. A
+    line opens once. The walk this function replaced had the same rule -- its ``line_open`` flag went
+    false at the first marker whatever branch took it -- and the anchored patterns it replaced got it
+    for free by running a single time. Without the flag a second marker opens the line again: the
+    heading action leaves ``# `` behind, which is itself a valid heading prefix, so ``#<M>   <M> ``
+    counted TWO promoted headings on one heading and normalised the trailing whitespace twice.
+
+    The order of the tests is load-bearing. The line-opening tests run FIRST, because in column 0
+    ``left`` is ``""`` and ``"".isspace()`` is ``False``, so the flush test wins there and reports a
+    line-opening marker as a mid-word one -- which sends the operator to look for a word join that
+    is not on the line. A line edge is not whitespace to the separator rule.
+    """
+    if opened:
+        return Pos.SEPARATOR if left[-1:].isspace() or right[:1].isspace() else Pos.FLUSH
+
+    gap = right[:1] in (" ", "\t")
+    head = _HEAD_LEFT.match(left)
+    if head is not None:
+        if _columns(head.group(1)) <= _INDENT_LIMIT and gap:
+            return Pos.HEADING
+        # Hashes too deep to be a heading, or no gap after the marker. The line is not a heading, so
+        # the marker is read by position alone, below.
+    else:
+        open_left = _OPEN_LEFT.match(left)
+        if open_left is not None:
+            if _columns(open_left.group(1)) <= _INDENT_LIMIT and gap:
+                return Pos.LIST
+            return Pos.LINE_OPEN
+
+    if left[-1:].isspace() or right[:1].isspace():
+        return Pos.SEPARATOR
+    return Pos.FLUSH
+
+
+def _opening_prefix(left: str, pos: Pos) -> str:
+    """Return the prefix that REPLACES ``left`` when the marker there opens a heading or a list.
+
+    A heading keeps its level and loses the marker: demoting ``##`` to ``-`` would restructure a
+    document whose chapters are already split and whose headings may be link targets. A list item
+    keeps its indent, loses the misplaced emphasis opener, and gains a real ``-``. Both normalise
+    the gap that follows to a single space.
+    """
+    if pos is Pos.HEADING:
+        return left.rstrip(" \t") + " "  # keep the indent and the hashes, normalise the gap
+    return left.rstrip("*") + "- "  # keep the indent, drop the emphasis opener MinerU misplaced
+
+
+def _fix_line(ln: str, stats: Counter[str]) -> str:
+    r"""Act on every bullet marker in one line, once per position, through the :data:`_ACTIONS` table.
+
+    Removing a marker must NEVER join two words. An earlier version matched ``<marker>[ \t]*`` and
+    ate the marker together with the only whitespace between two real words -- ``"word<PUA> next"``
+    became ``"wordnext"``, and it was reported as a successful fix. That is the silent-corruption
+    class this module exists to remove, so a marker is deleted only where :func:`classify` reads a
+    separator, which needs real whitespace to survive on one side of it.
+
+    Where whitespace already survives on the LEFT, one space is dropped on the right as well, so
+    removing an isolated marker cannot leave a double space behind.
     """
     if BULLET not in ln:
         return ln
     out: list[str] = []
     i = 0
-    line_open = True  # only indent, and at most one emphasis opener, emitted so far
-    seen_star = False
+    opened = False  # a line opens once, however the marker that opened it was read
     while i < len(ln):
         ch = ln[i]
         if ch != BULLET:
             out.append(ch)
-            if not ch.isspace():
-                # ⚠ ONE `*` keeps the line open, because `_LIST_MARKER` and `_LEADING_DOT` both
-                # allow one ahead of the marker -- MinerU misplaces an emphasis opener there, and
-                # `*<PUA> Dense layer with relu activation` is a shape from a real page. Without
-                # this, `    *<PUA> nested` reached the deletion branch below and the nested list
-                # flattened: exactly the defect the refusal above exists to prevent, one character
-                # to the left of where it was fixed.
-                #
-                # ⚠ It must be ADJACENT to the marker, which is what those two patterns require.
-                # Allowing whitespace between them made `* <PUA> item` -- a REAL Markdown bullet
-                # followed by a stray marker -- read as line-opening, so the marker was left in the
-                # output as an invisible codepoint where it used to be cleaned away.
-                if ch == "*" and line_open and not seen_star and ln[i + 1 : i + 2] == BULLET:
-                    seen_star = True
-                else:
-                    line_open = False
             i += 1
             continue
-        if line_open:
-            # A marker that OPENS the line. `_LIST_MARKER` already declined it, so it cannot be
-            # read as a list item here, and deleting it would silently flatten a nested list.
-            # ⚠ This test comes FIRST. Behind the mid-word test it never saw a marker in column 0,
-            # where `before` is `""` and `"".isspace()` is `False`, so a line-opening marker was
-            # reported as a mid-word one and sent the operator looking for a word join that is not
-            # there.
-            stats["line_leading_marker_deferred"] += 1
-            out.append(ch)
-            line_open = False
-            i += 1
-            continue
-        before = out[-1] if out else ""
-        after = ln[i + 1] if i + 1 < len(ln) else ""
-        if not (before.isspace() or after.isspace()):
-            stats["stray_unhandled"] += 1  # never guess: no safe reading
-            out.append(ch)
-            i += 1
-            continue
-        stats["stray_markers"] += 1
+
+        # Rebuilt per marker, so a line with k markers costs O(k*n). That is deliberate: the
+        # opening rules read the WHOLE prefix, and narrowing this to the last character
+        # would be exact only while `opened` is set -- a second reading of the same
+        # invariant, which is what this refactor exists to remove. Measured: 132
+        # marker-opened lines, the largest shape the corpus suggests, take 0.56 ms, and
+        # 300 markers on ONE line take 1.15 ms. The cost is real and out of reach.
+        left = "".join(out)
+        right = ln[i + 1 : i + 2]  # every reader takes `right[:1]`, so one character is exact
+        pos = classify(left, right, opened=opened)
+        opened = True
+        counter, survives = _ACTIONS[pos]
+        stats[counter] += 1
         i += 1
-        # If whitespace already survives on the left, drop one space on the right so removing an
-        # isolated marker cannot leave a double space behind.
-        if after == " " and before.isspace():
-            i += 1
+
+        if survives:
+            out.append(ch)
+        elif pos is Pos.SEPARATOR:
+            if right[:1] == " " and left[-1:].isspace():
+                i += 1
+        else:  # HEADING or LIST: the marker opens the line, so it rewrites the prefix it sits in
+            out[:] = list(_opening_prefix(left, pos))
+            while i < len(ln) and ln[i] in " \t":
+                i += 1
     return "".join(out)
 
 
@@ -273,14 +366,18 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     edit to that line, not of the choice between the two edits.
 
     A line-opening ``DOT`` is left in place and counted; see :data:`DOT` for why guessing there is
-    the one rewrite this module must not make.
+    the one rewrite this module must not make. ⚠ Its indent is UNBOUNDED, unlike a bullet's: both
+    :data:`Pos.LIST` and :data:`Pos.LINE_OPEN` defer it, and only the two together cover every
+    indent. This is a refusal, not a list-recognition rule, so the CommonMark limit does not apply
+    to it -- an earlier bound made the deferral quietly stop applying to a nested list item, and
+    ``    <DOT> Chunked transfer encoding`` was rewritten to a middle dot and reported as a repair.
 
     ``SPACE`` is handled **before** the ``DOT`` split, and the order is load-bearing in both
     directions. Splitting first made the space that follows a deferred dot look line-*leading*, so
     ``strip`` deleted it and ``<DOT><SPACE>Text`` came out as ``<DOT>Text`` -- an edit to the very
     line this function promises to leave alone. Handling ``SPACE`` first also lets a ``SPACE``
-    *before* the dot reach the deferral at all, which ``_LEADING_DOT`` cannot match, because a
-    Symbol-font space is not ``[ \\t]``.
+    *before* the dot reach the deferral at all, which a ``[ \\t]`` indent cannot match, because a
+    Symbol-font space is neither a space nor a tab.
     """
     if SPACE in ln:
         # The edge runs are found through REAL whitespace as well: a Symbol space sitting behind an
@@ -301,10 +398,10 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
         ln = head.replace(SPACE, "") + body.replace(SPACE, " ") + tail.replace(SPACE, "")
 
     head = ""
-    m = _LEADING_DOT.match(ln)
-    if m:
+    at = ln.find(DOT)
+    if at != -1 and classify(ln[:at], ln[at + 1 :]) in (Pos.LIST, Pos.LINE_OPEN):
         stats["line_leading_dot_deferred"] += 1  # never guess: bullet or dot, per-book judgment
-        head, ln = ln[: m.end()], ln[m.end() :]
+        head, ln = ln[: at + 1], ln[at + 1 :]
 
     for pua, real in GLYPHS.items():
         if pua == SPACE:
@@ -319,23 +416,11 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
 def _fix_prose(text: str, stats: Counter[str]) -> str:
     """Apply every rewrite to a run of text that is known to be outside a code block.
 
-    ``_remap_line`` runs **first**: the structural passes below all test for real whitespace, and a
+    ``_remap_line`` runs **first**: the positional rules all test for real whitespace, and a
     Symbol-font space is not whitespace, so a bullet separated from its text by one would otherwise
     be left in the output as an invisible codepoint and its list item lost.
     """
-    out = []
-    for ln in text.split("\n"):
-        remapped = _remap_line(ln, stats)
-        new = _HEADING_MARKER.sub(r"\1 ", remapped)
-        if new != remapped:
-            stats["heading_markers"] += 1
-        else:
-            new = _LIST_MARKER.sub(r"\1- ", remapped)
-            if new != remapped:
-                stats["list_markers"] += 1
-        new = _strip_stray(new, stats)
-        out.append(new)
-    return "\n".join(out)
+    return "\n".join(_fix_line(_remap_line(ln, stats), stats) for ln in text.split("\n"))
 
 
 def remap(md: str) -> tuple[str, dict[str, object]]:

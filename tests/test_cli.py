@@ -68,6 +68,13 @@ DEFERRED_DOT_BOOK = f"""# Chapter 1. Transports
 {DOT} Server-sent events
 """
 
+NESTED_MARKER_BOOK = f"""# Chapter 1. Transports
+
+- Transport options
+    {symbol_pua.BULLET} Chunked transfer encoding
+    {symbol_pua.BULLET} Server-sent events
+"""
+
 UNBLED_GLYPH_BOOK = f"""# Chapter 1. Rotation
 
 Prose before.
@@ -129,6 +136,30 @@ def test_phase5_reports_a_deferred_line_leading_dot(tmp_path, capsys):
     assert "⚠ 2 line-leading" in out
     assert "a multiplication dot inline and a list bullet in some books" in out
     assert "Render the source page" in out  # tells the reader what to do about it
+
+
+def test_phase5_reports_a_nested_bullet_marker_it_refuses_to_read(tmp_path, capsys):
+    """0.2.8 DELETED these and called it a repair, and no command could have said so.
+
+    A marker indented four spaces or more matches neither the list pass nor the heading pass, both
+    of which carry CommonMark's three-space limit, so it fell to the stray-marker branch and was
+    removed -- the indent on its left is whitespace. The nested list flattened, and the count landed
+    in `stray_markers`, the counter for a successful cleanup. It is a refusal now, and it is
+    printed.
+    """
+    md = _md(tmp_path, NESTED_MARKER_BOOK)
+
+    rc = cli.main(["phase5", md, "--book", "widgets", "--out", str(tmp_path / "ch"), "--apply"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    # 2, not 4: both `symbol_pua` passes see the same two untouched lines.
+    assert "⚠ 2 line-opening bullet marker(s) LEFT IN PLACE" in out
+    assert "Render the source page" in out  # tells the reader what to do about it
+    # ...and the chapter the chain wrote still holds both markers, rather than a flattened list.
+    written = (tmp_path / "ch" / "01-chapter-1-transports.md").read_text(encoding="utf-8")
+    assert written.count(symbol_pua.BULLET) == 2
+    assert "    Chunked transfer encoding" not in written  # the 0.2.8 output
 
 
 def test_phase5_says_nothing_about_deferred_dots_when_there_are_none(tmp_path, capsys):

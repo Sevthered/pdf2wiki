@@ -61,6 +61,13 @@ def residue_lines(report: dict[str, Any]) -> list[str]:
             " multiplication dot inline and a list bullet in some books"
         )
         out.append("  Render the source page, then treat it as a dot or as a list marker")
+    marker = max(sp["line_leading_marker_deferred"], sp2["line_leading_marker_deferred"])
+    if marker:
+        out.append(
+            f"⚠ {marker} line-opening bullet marker(s) LEFT IN PLACE — too indented, or with no"
+            " space after, to be read as a list item"
+        )
+        out.append("  Render the source page, then write the line as a list item by hand")
     if sp2["in_code"]:
         out.append(f"· verified glyphs left inside code fences: {sp2['in_code']}")
     if sp2["unknown"]:

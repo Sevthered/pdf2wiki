@@ -184,26 +184,67 @@ def _strip_stray(ln: str, stats: Counter[str]) -> str:
     a successful fix. That is precisely the silent-corruption failure class this module exists to
     remove, so the rule is now explicit and conservative:
 
-    * remove the marker only when it already touches whitespace (or a line edge) on some side, so
-      the words around it stay separated;
+    * remove the marker only when real whitespace already survives on one side of it, so the words
+      around it stay separated. A line edge is not whitespace here: a marker that opens the line is
+      handled by the rule below, and one at the end of the line is removed only because of the
+      space on its left;
     * when it sits flush between two non-space characters there is no way to know whether it was a
       separator or a decoration -- **leave it alone** and count it as ``stray_unhandled``, the same
       "don't guess" rule the GLYPHS table follows;
+    * when it OPENS the line -- nothing but indent to its left -- leave it alone as well and count
+      it as ``line_leading_marker_deferred``. It reaches this function only because
+      :data:`_LIST_MARKER` declined it, so it cannot be read as a list item here. ⚠ **A deletion is
+      not a list-recognition rule either.** An indent of four spaces or more matches neither
+      ``_LIST_MARKER`` nor ``_HEADING_MARKER``, both of which carry CommonMark's ``{0,3}`` limit, so
+      a nested bullet used to fall through to the deletion branch -- the indent on its left IS
+      whitespace -- and a nested list was flattened into continuation text and reported as two
+      successful repairs. This is the mirror of the bound removed from :data:`_LEADING_DOT`.
     """
     if BULLET not in ln:
         return ln
     out: list[str] = []
     i = 0
+    line_open = True  # only indent, and at most one emphasis opener, emitted so far
+    seen_star = False
     while i < len(ln):
-        if ln[i] != BULLET:
-            out.append(ln[i])
+        ch = ln[i]
+        if ch != BULLET:
+            out.append(ch)
+            if not ch.isspace():
+                # ⚠ ONE `*` keeps the line open, because `_LIST_MARKER` and `_LEADING_DOT` both
+                # allow one ahead of the marker -- MinerU misplaces an emphasis opener there, and
+                # `*<PUA> Dense layer with relu activation` is a shape from a real page. Without
+                # this, `    *<PUA> nested` reached the deletion branch below and the nested list
+                # flattened: exactly the defect the refusal above exists to prevent, one character
+                # to the left of where it was fixed.
+                #
+                # ⚠ It must be ADJACENT to the marker, which is what those two patterns require.
+                # Allowing whitespace between them made `* <PUA> item` -- a REAL Markdown bullet
+                # followed by a stray marker -- read as line-opening, so the marker was left in the
+                # output as an invisible codepoint where it used to be cleaned away.
+                if ch == "*" and line_open and not seen_star and ln[i + 1 : i + 2] == BULLET:
+                    seen_star = True
+                else:
+                    line_open = False
+            i += 1
+            continue
+        if line_open:
+            # A marker that OPENS the line. `_LIST_MARKER` already declined it, so it cannot be
+            # read as a list item here, and deleting it would silently flatten a nested list.
+            # ⚠ This test comes FIRST. Behind the mid-word test it never saw a marker in column 0,
+            # where `before` is `""` and `"".isspace()` is `False`, so a line-opening marker was
+            # reported as a mid-word one and sent the operator looking for a word join that is not
+            # there.
+            stats["line_leading_marker_deferred"] += 1
+            out.append(ch)
+            line_open = False
             i += 1
             continue
         before = out[-1] if out else ""
         after = ln[i + 1] if i + 1 < len(ln) else ""
         if not (before.isspace() or after.isspace()):
             stats["stray_unhandled"] += 1  # never guess: no safe reading
-            out.append(ln[i])
+            out.append(ch)
             i += 1
             continue
         stats["stray_markers"] += 1
@@ -219,10 +260,17 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     """Substitute the verified glyphs in one line, with two exceptions the table cannot express.
 
     ``SPACE`` at a line edge is **dropped rather than spaced**: two of them at end of line would
-    render as a CommonMark hard break, which is structure the printed page does not have. ⚠ It does
-    NOT save a paragraph from splitting -- a line holding one Symbol space and nothing else is blank
-    to CommonMark whether the space is deleted or substituted, so that half of the original
-    reasoning was wrong. Dropping keeps the line honest rather than changing how it renders.
+    render as a CommonMark hard break, which is structure the printed page does not have. That hard
+    break is the whole reason. ⚠ Dropping does not *guarantee* the line escapes one, and the claim
+    that it does was measured false: real trailing whitespace already on the line survives, so
+    ``"x  <SPACE>"`` still ends in two spaces afterwards. The step only declines to ADD to it. That
+    shortfall is older than this rule and is filed, not fixed here. ⚠ Dropping does not prevent a paragraph split, and it does not leave
+    the rendering unchanged either. ``U+F020`` is not whitespace to CommonMark, so a line that holds
+    one and nothing else is a paragraph **continuation** line before this step and a **blank** line
+    after it, whichever way the space is handled. Measured with a CommonMark parser:
+    ``para one`` / ``<SPACE>`` / ``para two`` renders as one paragraph before the step and two after
+    it, both when the space is deleted and when it is substituted. The split is a consequence of an
+    edit to that line, not of the choice between the two edits.
 
     A line-opening ``DOT`` is left in place and counted; see :data:`DOT` for why guessing there is
     the one rewrite this module must not make.
@@ -309,6 +357,10 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         a line end are a CommonMark hard break. It is an edit, so
         it counts toward ``total_changes`` -- but not as ``remap_f020``, which would say the step
         put a space where the page prints one.
+    ``line_leading_marker_deferred``
+        A :data:`BULLET` opening a line, left in place because it could not be read as a list item
+        and deleting it would flatten a nested list. Needs a human, like ``unknown``: read the
+        rendered page and decide whether the line is a list item.
     ``line_leading_dot_deferred``
         A :data:`DOT` opening a line, left in place because whether it is a bullet or a dot there is
         a per-book reading this step will not guess: it is verified as an inline dot in one book and
@@ -329,6 +381,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "stray_markers": 0,
             "stray_unhandled": 0,
             "line_leading_dot_deferred": 0,
+            "line_leading_marker_deferred": 0,
             "dropped_f020": 0,
             "in_code": {},
             "unknown": {},
@@ -365,14 +418,15 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "stray_markers": 0,
         "stray_unhandled": 0,
         "line_leading_dot_deferred": 0,
+        "line_leading_marker_deferred": 0,
         "dropped_f020": 0,
         "skipped_crlf": False,
     }
     report.update(stats)
     report["in_code"] = dict(in_code)
     report["unknown"] = dict(unknown)
-    # `stray_unhandled` and `line_leading_dot_deferred` count glyphs deliberately LEFT IN PLACE —
-    # not changes. Counting them would make a refusal to guess read as a successful repair.
-    deliberate = {"stray_unhandled", "line_leading_dot_deferred"}
+    # These three count glyphs deliberately LEFT IN PLACE — not changes. Counting them would make
+    # a refusal to guess read as a successful repair.
+    deliberate = {"stray_unhandled", "line_leading_dot_deferred", "line_leading_marker_deferred"}
     report["total_changes"] = sum(v for k, v in stats.items() if k not in deliberate)
     return out, report

@@ -695,6 +695,7 @@ def test_pua_report_always_carries_every_documented_key():
         "stray_markers",
         "stray_unhandled",
         "line_leading_dot_deferred",
+        "line_leading_marker_deferred",
         "dropped_f020",
         "in_code",
         "unknown",
@@ -997,3 +998,136 @@ def test_illegal_handles_codepoint_at_string_edges():
     assert out == "edge"
     assert stats["removed"] == 2
     assert stats["word_joins"] == 0
+
+
+def test_a_nested_pua_bullet_is_left_in_place_instead_of_deleted():
+    """Shipped in 0.2.8: a PUA bullet indented four spaces or more was DELETED.
+
+    `_LIST_MARKER` and `_HEADING_MARKER` both carry CommonMark's `{0,3}` indent limit, so a nested
+    marker matched neither and fell through to `_strip_stray`, where the indent on its left IS
+    whitespace. The nested list flattened into continuation text of the parent item, and it was
+    counted as `stray_markers` -- the counter for a SUCCESSFUL cleanup -- so no residue counter
+    moved and nothing reached the operator. A deletion is not a list-recognition rule.
+    """
+    src = f"- top level\n    {BULLET} nested one\n    {BULLET} nested two\n"
+    assert src.count(BULLET) == 2
+    out, rep = symbol_pua.remap(src)
+
+    assert out == src  # not one character changed
+    assert rep["line_leading_marker_deferred"] == 2
+    assert rep["stray_markers"] == 0
+    assert rep["total_changes"] == 0  # a refusal is not an edit
+
+
+def test_the_marker_refusal_applies_at_every_indent_the_list_pass_declines():
+    """Indents 0-3 become real list items. Four and beyond are refused, never deleted."""
+    for n in (0, 1, 2, 3):
+        out, rep = symbol_pua.remap(" " * n + f"{BULLET} item\n")
+        assert out == " " * n + "- item\n", n
+        assert rep["list_markers"] == 1 and rep["line_leading_marker_deferred"] == 0, n
+    for n in (4, 5, 8):
+        out, rep = symbol_pua.remap(" " * n + f"{BULLET} item\n")
+        assert out == " " * n + f"{BULLET} item\n", n
+        assert rep["line_leading_marker_deferred"] == 1 and rep["stray_markers"] == 0, n
+
+
+def test_a_line_opening_marker_glued_to_its_text_is_refused_not_deleted():
+    """`  <M>text` has no space after it, so the list pass declines it, and the indent on its left
+    used to send it to the deletion branch. Whether it is a bullet with a missing space is a
+    reading of the page, not a fact about the line.
+    """
+    out, rep = symbol_pua.remap(f"  {BULLET}text\n")
+    assert out == f"  {BULLET}text\n"
+    assert rep["line_leading_marker_deferred"] == 1
+    assert rep["stray_markers"] == 0
+
+
+def test_the_line_opening_refusal_leaves_the_mid_line_readings_alone():
+    """The two behaviors this fix must NOT change, pinned so a later widening trips here."""
+    out, rep = symbol_pua.remap(f"word {BULLET} next\n")  # whitespace both sides: a safe cleanup
+    assert out == "word next\n"
+    assert rep["stray_markers"] == 1 and rep["line_leading_marker_deferred"] == 0
+
+    out, rep = symbol_pua.remap(f"word{BULLET}next\n")  # flush between two words: never guess
+    assert out == f"word{BULLET}next\n"
+    assert rep["stray_unhandled"] == 1 and rep["line_leading_marker_deferred"] == 0
+
+
+def test_the_marker_refusal_counter_is_always_present_on_both_reports():
+    """A caller written against the documented return contract reads it without a KeyError guard."""
+    _, plain = symbol_pua.remap("nothing to do here\n")
+    assert plain["line_leading_marker_deferred"] == 0
+    _, crlf = symbol_pua.remap("a line\r\nanother\r\n")
+    assert crlf["skipped_crlf"] is True
+    assert crlf["line_leading_marker_deferred"] == 0
+
+
+def test_an_emphasis_opener_does_not_defeat_the_line_opening_refusal():
+    """MinerU misplaces a `*` ahead of the marker, and both marker patterns allow one.
+
+    `_strip_stray` did not, so `    *<BULLET> nested` fell straight past the refusal to the
+    deletion branch and the nested list flattened -- the same defect one character to the left of
+    where it was fixed. The `U+F0B7` sibling never had the gap, which is what showed it was an
+    oversight and not a decision.
+    """
+    src = f"- top\n    *{BULLET} nested one\n    *{BULLET} nested two\n"
+    out, rep = symbol_pua.remap(src)
+
+    assert out == src
+    assert rep["line_leading_marker_deferred"] == 2
+    assert rep["stray_markers"] == 0 and rep["total_changes"] == 0
+    # ...and the U+F0B7 sibling agrees, on the identical shape
+    dot_src = f"- top\n    *{DOT} nested\n"
+    out, rep = symbol_pua.remap(dot_src)
+    assert out == dot_src and rep["line_leading_dot_deferred"] == 1
+
+
+def test_a_marker_in_column_zero_is_reported_as_line_opening_not_mid_word():
+    """`before` is `""` there, and `"".isspace()` is `False`.
+
+    Behind the mid-word test, a marker that opens the line in column 0 was counted as
+    `stray_unhandled`, whose report line reads "mid-word marker(s) ... inspect by hand". The
+    character was left in place either way, so this is a reporting defect -- but it sends the
+    operator looking for a word join that does not exist.
+    """
+    for src in (f"{BULLET}text\n", f"{BULLET}\n"):
+        out, rep = symbol_pua.remap(src)
+        assert out == src, src
+        assert rep["line_leading_marker_deferred"] == 1, src
+        assert rep["stray_unhandled"] == 0, src
+
+    # the genuine mid-word reading is untouched: two real words, and no way to know
+    out, rep = symbol_pua.remap(f"word{BULLET}next\n")
+    assert out == f"word{BULLET}next\n"
+    assert rep["stray_unhandled"] == 1 and rep["line_leading_marker_deferred"] == 0
+
+    # and a SECOND emphasis opener closes the line again, so this is not a blanket exemption
+    out, rep = symbol_pua.remap(f"**b**{BULLET}x\n")
+    assert out == f"**b**{BULLET}x\n"
+    assert rep["stray_unhandled"] == 1 and rep["line_leading_marker_deferred"] == 0
+
+
+def test_a_real_markdown_bullet_before_the_marker_is_still_cleaned():
+    """The emphasis opener that keeps a line "open" must be ADJACENT to the marker.
+
+    `_LIST_MARKER` and `_LEADING_DOT` both require that. Allowing whitespace between them made
+    `* <BULLET> item` -- a real Markdown bullet followed by a stray marker -- read as line-opening,
+    so the marker stayed in the output as an invisible codepoint where it used to be removed. That
+    is the failure class this module exists to remove, introduced by the guard against another one.
+    """
+    out, rep = symbol_pua.remap(f"* {BULLET} item\n")
+    assert out == "* item\n"
+    assert rep["stray_markers"] == 1 and rep["line_leading_marker_deferred"] == 0
+
+    # the same line written with the other bullet character behaves identically
+    out, _ = symbol_pua.remap(f"- {BULLET} item\n")
+    assert out == "- item\n"
+
+    # and the adjacent form is still a list item, not a deferral
+    out, rep = symbol_pua.remap(f"*{BULLET} item\n")
+    assert out == "- item\n" and rep["list_markers"] == 1
+
+    # ...while the nested case the adjacency rule exists for is still refused
+    src = f"- top\n    *{BULLET} nested\n"
+    out, rep = symbol_pua.remap(src)
+    assert out == src and rep["line_leading_marker_deferred"] == 1

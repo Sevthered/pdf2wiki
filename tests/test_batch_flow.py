@@ -94,6 +94,85 @@ def test_batch_reports_unverified_codepoints_per_book(tmp_path, monkeypatch, cap
     assert "phase5.symbol_pua" in out  # tells the reader what to do about it
 
 
+def test_a_failure_while_reporting_residue_neither_fails_the_book_nor_aborts_the_run(
+    tmp_path, monkeypatch, capsys
+):
+    """Printing the phase-5 report must never decide the fate of a book that converted.
+
+    Two placements were measured wrong before this one. INSIDE the `try` that classifies a phase-5
+    failure, an exception from printing -- a `UnicodeEncodeError` on the warning sign to a non-UTF-8
+    stdout, say -- marked a book that converted correctly as `phase5_failed`, counted it toward the
+    circuit breaker and re-converted it on resume. OUTSIDE that `try` but unguarded, the same
+    exception left `run_batch` altogether: the remaining books never converted, no manifest was
+    written, and the book was re-converted anyway -- breaking the "one book's failure never aborts
+    the run" invariant in `docs/explanation/design-principles.md`.
+
+    So: the book is recorded `done`, the run continues to the next book, and the operator is told
+    in ASCII that the report could not be printed.
+    """
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+
+    def boom(_report):
+        raise UnicodeEncodeError("ascii", "\u26a0", 0, 1, "ordinal not in range(128)")
+
+    monkeypatch.setattr(batch, "residue_lines", boom)
+    stage = tmp_path / "stage"
+
+    manifest = batch.run_batch(_books_toml(tmp_path, 2), _cfg(tmp_path), str(stage))
+
+    # the book that converted is DONE, not failed and not missing
+    assert manifest["book-0"]["status"] == "done"
+    on_disk = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
+    assert on_disk["book-0"]["status"] == "done"  # so the next run skips it
+    # and the run was not aborted: the second book still converted
+    assert on_disk["book-1"]["status"] == "done"
+
+    out = capsys.readouterr().out
+    unprintable = [ln for ln in out.splitlines() if "PHASE5 REPORT UNPRINTABLE" in ln]
+    assert len(unprintable) == 2  # both books converted, and both said so
+    fallback = unprintable[0]
+    assert "book-0: PHASE5 REPORT UNPRINTABLE (UnicodeEncodeError)" in fallback
+    assert "pdf2wiki phase5" in fallback  # tells the operator how to read it
+    assert fallback.isascii()  # the fallback cannot repeat the failure it reports
+
+
+class _BrokenStdout:
+    """A stdout that fails the way a closed pipe does, on the report and on its fallback alike."""
+
+    def write(self, s):
+        if "⚠" in s or "UNPRINTABLE" in s:
+            raise BrokenPipeError(32, "Broken pipe")
+        return len(s)
+
+    def flush(self):
+        pass
+
+
+def test_a_broken_stdout_does_not_abort_the_run_from_the_recovery_path(tmp_path, monkeypatch):
+    """The fallback print is a print too, and it fails for the same reason the report did.
+
+    Here stdout rejects the report's own characters. The report raises, the `except` catches it,
+    and the unguarded fallback then raised the identical exception from the recovery path, outside
+    every `try`: measured before the guard, `run_batch` raised, no manifest was written, and the
+    remaining books never converted -- the same outcome the guard above it exists to prevent. There
+    is nowhere left to say anything, so it says nothing and the books survive.
+
+    ⚠ This is NOT a claim that `batch` survives a stdout broken for everything. A `BrokenPipeError`
+    from `pdf2wiki batch | head` stops the run at the per-book header print, long before this code.
+    """
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    monkeypatch.setattr(batch, "residue_lines", lambda _report: ["⚠ 1 unverified codepoint"])
+    monkeypatch.setattr(sys, "stdout", _BrokenStdout())
+    stage = tmp_path / "stage"
+
+    manifest = batch.run_batch(_books_toml(tmp_path, 2), _cfg(tmp_path), str(stage))
+
+    monkeypatch.undo()
+    assert manifest["book-0"]["status"] == "done"
+    on_disk = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
+    assert on_disk["book-0"]["status"] == "done" and on_disk["book-1"]["status"] == "done"
+
+
 def test_successful_book_is_split_staged_and_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
     cfg = _cfg(tmp_path)

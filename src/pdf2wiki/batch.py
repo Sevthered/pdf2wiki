@@ -21,6 +21,7 @@ A STOP file next to the status manifest halts cleanly between books (it is consu
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -203,11 +204,6 @@ def run_batch(
                 source_name=os.path.basename(b["pdf"]),
                 apply=True,
             )
-            # A batch run is how a whole vault gets built, and it used to DISCARD this. Every
-            # unverified codepoint and every refusal was computed and thrown away, so invisible
-            # characters shipped into the vault with nothing said about them.
-            for line in residue_lines(report):
-                print(f"  {slug}: {line}")
         except Exception as e:
             print(f"  PHASE5 FAILED: {slug}: {e}")
             manifest[slug] = {"status": "phase5_failed", "domain": domain, "error_class": "phase5"}
@@ -216,6 +212,38 @@ def run_batch(
             if _breaker_trips(ex, consec, threshold):
                 break
             continue
+        # A batch run is how a whole vault gets built, and it used to DISCARD this. Every
+        # unverified codepoint and every refusal was computed and thrown away, so invisible
+        # characters shipped into the vault with nothing said about them.
+        #
+        # Two things guard this print, and each one is a defect that was measured here.
+        # It sits BELOW the `except` above, because `run_chain` has already rewritten the markdown
+        # and written the chapters by now: inside that `try`, an exception from printing would
+        # classify a book that converted correctly as `phase5_failed` and re-convert it on resume.
+        # It also carries its OWN `except`, because outside that `try` an unguarded exception left
+        # `run_batch` altogether -- the remaining books never converted, no manifest was written,
+        # and this book was re-converted anyway. Reporting must never decide the fate of a book
+        # that converted. `batch` isolates failures per book, and a print is not a book.
+        try:
+            for line in residue_lines(report):
+                print(f"  {slug}: {line}")
+        except Exception as e:  # reporting must never fail a book that converted
+            # ASCII only, and no exception text: the failure this catches is an encoding error on
+            # the warning sign, so re-emitting the offending characters would raise again.
+            fallback = (
+                f"  {slug}: PHASE5 REPORT UNPRINTABLE ({type(e).__name__}) -- "
+                "run `pdf2wiki phase5` on this book to read it"
+            )
+            # The fallback is a print too, so it can fail for the same reason. Measured: when the
+            # write fails for the REPORT'S OWN characters, the unguarded fallback raised from the
+            # recovery path, no manifest was written and the remaining books never converted.
+            #
+            # ⚠ This does NOT make the batch survive a stdout that is broken for everything. A
+            # `BrokenPipeError` from `pdf2wiki batch | head` still leaves `run_batch` at the
+            # per-book header print, long before this line. Claiming otherwise was measured false.
+            # That exposure belongs at the CLI boundary and is filed, not handled here.
+            with contextlib.suppress(Exception):
+                print(fallback.encode("ascii", "backslashreplace").decode("ascii"))
         # chapters need the shared images/ dir next to them for relative refs to resolve
         img_src = os.path.join(work, "images")
         img_dst = os.path.join(work, "chapters", "images")

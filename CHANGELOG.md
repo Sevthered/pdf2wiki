@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-08-21
+
+This release improves `symbol_pua`. Version 0.2.8 added the step. This version makes the step worth a
+run.
+
+The verified glyph table grew from 3 codepoints to 20. A converted math page now keeps θ, φ, α, λ, Σ,
+×, ·, ≠, ≡, ≈ and ∇. Before this release the page lost them, and no reader could see the loss. A
+person read every entry from a rendered page. No entry comes from an encoding chart. That difference
+changed the correct answer two times.
+
+The second half of the release is position. The meaning of a marker depends on its place in the line.
+Five separate rules read that place. One result was a deleted nested list, which the step counted as
+a repair. One function reads the position now. The indent limit counts columns, which is the unit
+CommonMark uses.
+
+The release also adds the first tests for the orchestration layer. Statement coverage moved from 82%
+to 93%. The user-facing documentation now follows ASD-STE100 Simplified Technical English. The
+repository has a read-only mirror at Codeberg.
+
 ### Added
 - **A read-only mirror of the repository at
   [codeberg.org/Sevthered/pdf2wiki](https://codeberg.org/Sevthered/pdf2wiki).** GitHub stays
@@ -597,7 +616,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.5...v0.2.6

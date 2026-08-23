@@ -10,11 +10,74 @@ output directories — they never modify existing files in place).
 """
 
 import argparse
+import contextlib
 import json
+import os
 import sys
-from typing import Any
+from typing import Any, TextIO, cast
 
 from .config import load_config
+
+
+class _StdoutSurvivesItsReader:
+    """A stdout that keeps the command alive after its reader has gone.
+
+    `pdf2wiki batch | head` closes the pipe after a few lines, and every later `print` raises
+    `BrokenPipeError`. Measured before this guard: `run_batch` stopped at the per-book header, no
+    manifest was written, and every book that had converted was converted again on the next run.
+    A closed pipe is not a book's failure, so it must not end the batch.
+
+    One guard at the boundary, not a `try` at each print: there are several prints and a new one
+    is one edit away. On the first broken write this object (1) marks stdout lost, (2) points the
+    real file descriptor at the null device, so the interpreter's own flush at exit and any child
+    process that inherits fd 1 cannot raise the same error again, and (3) says so once on stderr.
+    Every later write is swallowed and the command runs to its end with its real exit code.
+
+    ⚠ Not a subclass of ``io.TextIOBase``: that base defines ``encoding``, ``fileno``, ``isatty``,
+    ``writable`` and ``closed`` itself, so ``__getattr__`` never reached the real stream and
+    ``sys.stdout`` lied about itself (``encoding`` None, ``fileno()`` raising). A plain class
+    delegates everything it does not override.
+    """
+
+    def __init__(self, inner: TextIO) -> None:
+        self.inner = inner
+        self.lost = False
+
+    def write(self, s: str) -> int:
+        if not self.lost:
+            try:
+                return self.inner.write(s)
+            except BrokenPipeError:
+                self._lose()
+        return len(s)
+
+    def flush(self) -> None:
+        if self.lost:
+            return
+        try:
+            self.inner.flush()
+        except BrokenPipeError:
+            self._lose()
+
+    def _lose(self) -> None:
+        self.lost = True
+        with contextlib.suppress(OSError, ValueError, AttributeError):
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(devnull, self.inner.fileno())
+            finally:
+                os.close(devnull)
+        # stderr may be the same closed pipe (`2>&1 | head`): then there is nowhere left to say it
+        with contextlib.suppress(OSError, ValueError):
+            print(
+                "pdf2wiki: stdout was closed by its reader -- the run continues, "
+                "further output is discarded",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
 
 
 def _cmd_convert(a: argparse.Namespace, cfg: Any) -> int:
@@ -294,7 +357,12 @@ def main(argv: list[str] | None = None) -> int:
 
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
-    exit_code: int = a.fn(a, cfg)  # each _cmd_* returns an int exit code
+    original = sys.stdout
+    sys.stdout = cast(TextIO, _StdoutSurvivesItsReader(original))
+    try:
+        exit_code: int = a.fn(a, cfg)  # each _cmd_* returns an int exit code
+    finally:
+        sys.stdout = original
     return exit_code
 
 

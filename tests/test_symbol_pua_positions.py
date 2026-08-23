@@ -63,7 +63,19 @@ _STARS = [
 _HEADS = ["", "#", "###"]  # the heading path reads the same marker after the hashes
 _GAPS = ["", " ", "  ", "\t", SPACE]  # no gap means the list pattern declines the line
 _BODIES = ["item", "= 2x", "x = 2", ""]  # an operator FIRST is a formula; a letter first is text
-_TAILS = ["", " ", "  ", SPACE, SPACE + SPACE]
+# Mixed tails: real whitespace BEHIND or AROUND the Symbol space. Every earlier tail was one kind,
+# so the table could not see that dropping the Symbol space uncovers the real spaces as a hard break.
+_TAILS = [
+    "",
+    " ",
+    "  ",
+    SPACE,
+    SPACE + SPACE,
+    " " + SPACE,
+    "  " + SPACE,  # the drop would uncover a hard break
+    " " + SPACE + " ",
+    SPACE + "  ",  # the hard break was already there, in front of CommonMark: it must stay
+]
 
 
 def _shapes() -> list[str]:
@@ -178,6 +190,7 @@ def test_the_table_is_not_all_one_answer():
         "marker_no_reading",
         "dropped_f020",
         "remap_f020",
+        "tail_collapsed_f020",
         "total_changes",
     ):
         assert counter in seen, f"no shape reaches {counter}"
@@ -218,3 +231,33 @@ def test_remap_is_idempotent_on_every_shape():
         "the number of shapes that change again on the second pass -- which the chain WILL run -- "
         f"moved from the measured 15: {unstable}"
     )
+
+
+_MARKER_COUNTERS = (
+    "list_markers",
+    "heading_markers",
+    "stray_markers",
+    "stray_unhandled",
+    "line_leading_marker_deferred",
+    "marker_no_reading",
+    "line_leading_dot_deferred",
+)
+
+
+def test_a_tail_symbol_space_never_decides_how_a_marker_is_read():
+    """Strip the Symbol spaces off the end of every shape: the marker counters must not move.
+
+    The tail cut-back for the hard break (`tail_collapsed_f020`) once ate the gap after a bare
+    marker, and 108 shapes flipped from a read marker to a deferred one. The snapshot showed the
+    category shift and nobody read it. This pins the invariant instead: a Symbol space at the line
+    end is about the line end, never about the marker.
+    """
+    for line in _shapes():
+        bare = line.rstrip(SPACE)
+        if bare == line:
+            continue
+        _, with_space = symbol_pua.remap(line + "\n")
+        _, without = symbol_pua.remap(bare + "\n")
+        got = {k: with_space[k] for k in _MARKER_COUNTERS}
+        want = {k: without[k] for k in _MARKER_COUNTERS}
+        assert got == want, repr(line)

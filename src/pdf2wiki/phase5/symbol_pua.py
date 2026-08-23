@@ -417,10 +417,19 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
 
     ``SPACE`` at a line edge is **dropped rather than spaced**: two of them at end of line would
     render as a CommonMark hard break, which is structure the printed page does not have. That hard
-    break is the whole reason. ⚠ Dropping does not *guarantee* the line escapes one, and the claim
-    that it does was measured false: real trailing whitespace already on the line survives, so
-    ``"x  <SPACE>"`` still ends in two spaces afterwards. The step only declines to ADD to it. That
-    shortfall is older than this rule and is filed, not fixed here. ⚠ Dropping does not prevent a paragraph split, and it does not leave
+    break is the whole reason. ⚠ Dropping alone did not guarantee the line escapes one, and the
+    claim that it did was measured false: real trailing whitespace already on the line survived, so
+    ``"x  <SPACE>"`` still ended in two spaces. Now, when the spaces the drop uncovers would be a
+    hard break, the tail is cut back to the whitespace that followed the last Symbol space, which is
+    all CommonMark saw before the step -- or to ONE space when nothing followed it, because one
+    space is no break and a bare marker needs its gap to be read. A break that was already there
+    (``"x<SPACE>  "``) stays, and a tail that was never a break is not touched. Counted as
+    ``tail_collapsed_f020``. ⚠ The step is line-local and cannot know whether the line ends a
+    paragraph, where CommonMark renders no break anyway; it cuts back there too, which changes
+    nothing visible. ⚠ The head is NOT collapsed: ``<SPACE>`` before
+    four real spaces uncovers an indented code block the same way, but leading whitespace also
+    decides list nesting, and no corpus file holds ``U+F020`` at all (221 files, 2026-08-23), so
+    that reading is left to a page that shows it. ⚠ Dropping does not prevent a paragraph split, and it does not leave
     the rendering unchanged either. ``U+F020`` is not whitespace to CommonMark, so a line that holds
     one and nothing else is a paragraph **continuation** line before this step and a **blank** line
     after it, whichever way the space is handled. Measured with a CommonMark parser:
@@ -453,12 +462,24 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
         while stop > start and (ln[stop - 1].isspace() or ln[stop - 1] == SPACE):
             stop -= 1
         head, body, tail = ln[:start], ln[start:stop], ln[stop:]
-        dropped = head.count(SPACE) + tail.count(SPACE)
+        tail_spaces = tail.count(SPACE)
+        dropped = head.count(SPACE) + tail_spaces
         if dropped:  # at an edge it is deleted, not spaced -- counted apart from a substitution
             stats["dropped_f020"] += dropped
         if SPACE in body:
             stats["remap_f020"] += body.count(SPACE)
-        ln = head.replace(SPACE, "") + body.replace(SPACE, " ") + tail.replace(SPACE, "")
+        real_tail = tail
+        if tail_spaces:
+            # Why the tail is cut back, and why only here: see the docstring above.
+            real_tail = tail.replace(SPACE, "")
+            seen = tail[tail.rfind(SPACE) + 1 :]
+            if real_tail.endswith("  ") and not seen.endswith("  "):
+                stats["tail_collapsed_f020"] += 1
+                # At least one space stays: it is no break, and when the body is a bare marker
+                # it is the gap `classify` needs. Review measured 108 shapes flip from a read
+                # marker to a deferred one when the cut-back left nothing.
+                real_tail = seen or " "
+        ln = head.replace(SPACE, "") + body.replace(SPACE, " ") + real_tail
 
     head = ""
     at = ln.find(DOT)
@@ -505,6 +526,10 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         a line end are a CommonMark hard break. It is an edit, so
         it counts toward ``total_changes`` -- but not as ``remap_f020``, which would say the step
         put a space where the page prints one.
+    ``tail_collapsed_f020``
+        Real trailing spaces that a dropped :data:`SPACE` would have uncovered as a hard break,
+        cut back to the whitespace that followed the last Symbol space, so the line renders as it
+        did before the step. An edit, counted toward ``total_changes``; one per line.
     ``line_leading_marker_deferred``
         A marker in :data:`BULLETS` opening a line, left in place because it could not be read as a
         list item -- too indented, no gap after it, or an operator where the item's text would
@@ -539,6 +564,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "line_leading_marker_deferred": 0,
             "marker_no_reading": 0,
             "dropped_f020": 0,
+            "tail_collapsed_f020": 0,
             "in_code": {},
             "unknown": {},
             "total_changes": 0,
@@ -577,6 +603,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "line_leading_marker_deferred": 0,
         "marker_no_reading": 0,
         "dropped_f020": 0,
+        "tail_collapsed_f020": 0,
         "skipped_crlf": False,
     }
     report.update(stats)

@@ -1410,3 +1410,34 @@ def test_a_real_markdown_bullet_before_the_marker_is_still_cleaned():
     src = f"- top\n    *{BULLET} nested\n"
     out, rep = symbol_pua.remap(src)
     assert out == src and rep["line_leading_marker_deferred"] == 1
+
+
+def test_dropping_an_edge_symbol_space_does_not_uncover_a_hard_break():
+    """The drop exists to keep a hard break off the line. It used to create one.
+
+    Before the step the line ends in U+F020, which CommonMark does not read as whitespace, so there
+    is no hard break. Deleting it uncovered the real spaces behind it: measured on 0.2.8,
+    ``"x  <SPACE>"`` -> ``"x  "`` and ``"x <SPACE> "`` -> ``"x   "``, both a ``<br>``. One space
+    left is no break, and it is the rendering the line had.
+
+    What CommonMark saw before the step is the whitespace AFTER the last Symbol space, so that is
+    what stays: a hard break that was already in front of it (``"x<SPACE>  "``) is not removed.
+    The first review of this fix found that the collapse removed it.
+    """
+    SP = symbol_pua.SPACE
+    for line, want, collapsed in (
+        ("x  " + SP, "x ", 1),  # the break was hidden: one space stays, which is no break
+        ("x " + SP + " ", "x ", 1),
+        ("x " + SP, "x ", 0),  # one real space is no break: nothing to avert, nothing touched
+        ("x" + SP, "x", 0),  # nothing real behind it
+        ("x\t" + SP, "x\t", 0),  # a tab is not a hard break either
+        ("x" + SP + "  ", "x  ", 0),  # the break was ALREADY there, CommonMark saw it: it stays
+        ("x " + SP + "  ", "x   ", 0),  # ... and so was this one: not touched, still one break
+    ):
+        out, stats = symbol_pua.remap(line + "\nnext\n")
+        assert out == want + "\nnext\n", repr(line)
+        assert stats["tail_collapsed_f020"] == collapsed, repr(line)
+        assert stats["dropped_f020"] == line.count(SP), repr(line)
+    assert (
+        symbol_pua.remap("plain\n")[1]["tail_collapsed_f020"] == 0
+    )  # always present, as its sibling

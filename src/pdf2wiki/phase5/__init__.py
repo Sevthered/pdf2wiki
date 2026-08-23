@@ -64,10 +64,19 @@ def residue_lines(report: dict[str, Any]) -> list[str]:
     marker = max(sp["line_leading_marker_deferred"], sp2["line_leading_marker_deferred"])
     if marker:
         out.append(
-            f"⚠ {marker} line-opening bullet marker(s) LEFT IN PLACE — too indented, or with no"
-            " space after, to be read as a list item"
+            f"⚠ {marker} line-opening bullet marker(s) LEFT IN PLACE — too indented, with no space"
+            " after, followed by an operator, or a marker with no verified heading reading"
         )
         out.append("  Render the source page, then write the line as a list item by hand")
+    unread = max(sp["marker_no_reading"], sp2["marker_no_reading"])
+    if unread:
+        out.append(
+            f"⚠ {unread} list-marker codepoint(s) found AWAY FROM A LINE START and LEFT IN PLACE —"
+            " verified as a bullet at a line start only, and a Greek letter in the Symbol font"
+        )
+        out.append(
+            "  Render the source page: a stray marker, or a letter phase5.symbol_pua should carry"
+        )
     if sp2["in_code"]:
         out.append(f"· verified glyphs left inside code fences: {sp2['in_code']}")
     if sp2["unknown"]:

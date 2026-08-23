@@ -74,13 +74,19 @@ the rest of the converted vault already carries, so one search finds both.
    that collision stays traceable. The durable fix is to key on the embedded font name, which needs
    font information MinerU does not currently carry into the markdown.
 
-``U+F0A1`` is a list *marker*, not a character -- restoring it as a bullet glyph would leave the
-list structure lost, so a line that starts with it becomes a real markdown list item. It prints a
-small filled square (*Deep Learning with Python* p197, ``Wingdings2``). ⚠ *Advanced Algorithms*
-p494 uses a **second** marker, ``U+F077`` in ``Wingdings``, which this step does not read: that slot
-is *omega* in Adobe Symbol encoding, so reading it as a bullet needs guards this step does not
-carry, and it is reported under ``unknown`` instead. See the branch
-``feat/phase5-second-list-marker``. Two shapes need care, both confirmed against rendered pages:
+``U+F0A1`` and ``U+F077`` are list *markers*, not characters -- restoring either as a bullet glyph
+would leave the list structure lost, so a line that starts with one becomes a real markdown list
+item. ``U+F0A1`` prints a small filled square (*Deep Learning with Python* p197, ``Wingdings2``;
+*Advanced Algorithms* opens 786 lines with it, every one ``Wingdings2``), and ``U+F077`` a small
+filled diamond (*Advanced Algorithms* p494, ``Wingdings``, "◆ Each reducer will compute the center
+of mass of its cluster"). ⚠ Both slots are also Greek letters in Adobe Symbol encoding (``0x77`` is
+*omega*, ``0xA1`` is *Upsilon1*), and the corpus's largest PUA source emits Symbol-font text from
+exactly that block, so two guards apply. A marker is read as a bullet only where what follows reads
+as TEXT -- a marker followed by an operator is a display formula whose first letter is Greek, and
+it is left in place and counted. And only ``U+F0A1`` may be DELETED mid-line: that reading has a
+rendered page behind it (*Deep Learning with Python*, where MinerU leaves the marker inside a
+sentence), ``U+F077`` has none, so mid-line it is kept and counted as ``marker_no_reading``.
+Two further shapes need care, both confirmed against rendered pages:
 
 - ``*<PUA> Dense layer with relu activation: ...`` -- MinerU emitted the emphasis opener *before*
   the bullet (*Deep Learning with Python* p71 prints a bulleted, italicised lead-in). The stray,
@@ -140,7 +146,18 @@ GLYPHS: dict[str, str] = {
 #: List markers, handled structurally rather than as characters; see the module docstring. Each was
 #: read from a rendered page, and the font is part of the reading: the same slot in another font is
 #: another character. Written as a string because the regexes below use it as a character class.
-BULLET = "\uf0a1"  # Deep Learning with Python p197 / p399 / p71, Wingdings2
+BULLET = "\uf0a1"  # Deep Learning with Python p197 / p399 / p71, Wingdings2; Advanced Algorithms
+DIAMOND = "\uf077"  # Advanced Algorithms p494, Wingdings
+
+#: Every marker the structural passes read. A string, because :func:`_fix_line` tests membership
+#: one character at a time.
+BULLETS = BULLET + DIAMOND
+
+#: The markers :func:`_fix_line` may DELETE when one survives mid-line. Being a list marker at the
+#: start of a line says nothing about the same codepoint in the middle of one, and each marker slot
+#: is a Greek letter in Adobe Symbol encoding. Only :data:`BULLET` has a rendered page behind the
+#: mid-line reading; every other marker is left in place there and counted as ``marker_no_reading``.
+STRIPPABLE = BULLET
 
 #: A Symbol-font *space*. It is in :data:`GLYPHS`, but it is also whitespace, and the structural
 #: passes below test for real whitespace -- ``"\uf020".isspace()`` is ``False``. It is therefore
@@ -181,6 +198,24 @@ _OPEN_LEFT = re.compile(r"^([ \t]*)\*?$")
 #: A left context of a heading's hashes, where MinerU promoted a list item to a heading.
 _HEAD_LEFT = re.compile(r"^([ \t]*)(#{1,6})[ \t]*$")
 
+#: Characters that cannot begin the text of a list item, and CAN begin the right-hand side of a
+#: display formula. A marker opening a line is read as a bullet only when what follows reads as
+#: text: every marker slot is also a Greek letter in Adobe Symbol encoding, and a book that sets
+#: ``ω = ...`` on its own line would otherwise have the letter deleted and the formula turned into a
+#: list item -- reported as a repair. Refusing here costs a real bullet nothing: the line is left
+#: alone and counted instead.
+#:
+#: **Priced against the corpus, not chosen from a keyboard.** ``<`` and ``>`` were in this set and
+#: had to come out: they cost **6 real list items** in *Microservices Patterns*, whose bullets open
+#: with an HTML tag MinerU emits (``<PUA> <sub>REST</sub> <sub>client</sub> ...``). And a bullet
+#: BEFORE a formula is a real list item in this corpus -- *Advanced Algorithms* p445 prints a square
+#: bullet ahead of ``d*(n+k)*log(k) < n*k*d ⇔ ...`` -- so the set holds only characters that cannot
+#: open a sentence, never anything that merely looks mathematical. ⚠ ``·`` is NOT in the set: it is
+#: what :data:`DOT` becomes, and :func:`_remap_line` runs first, so a bullet followed by a verified
+#: inline dot would have been refused as a list item. With this set the marker counts across all
+#: 219 converted files are unchanged.
+_NOT_LIST_TEXT = frozenset("=≈≠≡±×÷→←↔⇒⇔∇≤≥∈∉∞")
+
 
 class Pos(Enum):
     """Where a marker sits on its line.
@@ -205,6 +240,10 @@ class Pos(Enum):
         Real whitespace survives on one side, so removing the marker cannot join two words.
     ``FLUSH``
         Flush between two non-space characters, where a separator and a decoration look the same.
+    ``UNREAD``
+        Not at a line-opening position, and not a marker in :data:`STRIPPABLE`: verified as a
+        bullet at a line start only, so there is no reading for it here, and it may be a Greek
+        letter the table should carry rather than a marker at all.
     """
 
     HEADING = "heading"
@@ -212,6 +251,7 @@ class Pos(Enum):
     LINE_OPEN = "line_open"
     SEPARATOR = "separator"
     FLUSH = "flush"
+    UNREAD = "unread"
 
 
 #: What each position means: the counter it raises, and whether the marker SURVIVES the pass. The
@@ -227,6 +267,7 @@ _ACTIONS: dict[Pos, tuple[str, bool]] = {
     Pos.LINE_OPEN: ("line_leading_marker_deferred", True),
     Pos.SEPARATOR: ("stray_markers", False),
     Pos.FLUSH: ("stray_unhandled", True),
+    Pos.UNREAD: ("marker_no_reading", True),
 }
 
 
@@ -244,8 +285,20 @@ def _columns(indent: str) -> int:
     return col
 
 
-def classify(left: str, right: str, *, opened: bool = False) -> Pos:
+def classify(left: str, right: str, *, opened: bool = False, strippable: bool = True) -> Pos:
     """Return where a marker sits, from the text emitted before it and the text still ahead of it.
+
+    ``strippable`` says the marker may be deleted mid-line (:data:`STRIPPABLE`), and it is the
+    marker with a rendered HEADING page behind it. Any other marker is verified as a list item at a
+    line start only, so it is read in three ways, all of which keep it: :data:`Pos.LIST` where the
+    verified reading applies, :data:`Pos.LINE_OPEN` after hashes or where the list test fails, and
+    :data:`Pos.UNREAD` anywhere else. The per-reading evidence rule of :data:`GLYPHS` applies to
+    the structural readings too: a list page does not verify a heading reading.
+
+    ⚠ That is also what keeps the chain's SECOND pass from deleting such a marker. The heading
+    action leaves ``# <M> `` behind when a second, kept marker follows the gap, and a heading path
+    that read the kept marker on the next run would delete what the first run reported as left in
+    place.
 
     ⚠ ``left`` is what the pass has ALREADY EMITTED, not the input to the left of the marker. A
     marker whose neighbour a previous deletion removed stands next to whatever that deletion
@@ -263,24 +316,34 @@ def classify(left: str, right: str, *, opened: bool = False) -> Pos:
     ``left`` is ``""`` and ``"".isspace()`` is ``False``, so the flush test wins there and reports a
     line-opening marker as a mid-word one -- which sends the operator to look for a word join that
     is not on the line. A line edge is not whitespace to the separator rule.
+
+    ⚠ ``right`` must reach past the gap: the text test reads the first character AFTER the
+    whitespace, and ``[ \t]+`` would backtrack to one space and then inspect a space, which is not
+    an operator -- the guard passes and the formula becomes a list item. One space hid it.
     """
     if opened:
-        return Pos.SEPARATOR if left[-1:].isspace() or right[:1].isspace() else Pos.FLUSH
+        pos = Pos.SEPARATOR if left[-1:].isspace() or right[:1].isspace() else Pos.FLUSH
+        return pos if strippable else Pos.UNREAD
 
     gap = right[:1] in (" ", "\t")
+    text = right.lstrip(" \t")[:1] not in _NOT_LIST_TEXT  # "" passes: an empty item is still one
     head = _HEAD_LEFT.match(left)
     if head is not None:
         if _columns(head.group(1)) <= _INDENT_LIMIT and gap:
-            return Pos.HEADING
+            return Pos.HEADING if text and strippable else Pos.LINE_OPEN
+        if not strippable:
+            return Pos.LINE_OPEN  # opens the line after hashes, and no reading deletes it there
         # Hashes too deep to be a heading, or no gap after the marker. The line is not a heading, so
         # the marker is read by position alone, below.
     else:
         open_left = _OPEN_LEFT.match(left)
         if open_left is not None:
-            if _columns(open_left.group(1)) <= _INDENT_LIMIT and gap:
+            if _columns(open_left.group(1)) <= _INDENT_LIMIT and gap and text:
                 return Pos.LIST
             return Pos.LINE_OPEN
 
+    if not strippable:
+        return Pos.UNREAD
     if left[-1:].isspace() or right[:1].isspace():
         return Pos.SEPARATOR
     return Pos.FLUSH
@@ -311,14 +374,14 @@ def _fix_line(ln: str, stats: Counter[str]) -> str:
     Where whitespace already survives on the LEFT, one space is dropped on the right as well, so
     removing an isolated marker cannot leave a double space behind.
     """
-    if BULLET not in ln:
+    if not any(b in ln for b in BULLETS):
         return ln
     out: list[str] = []
     i = 0
     opened = False  # a line opens once, however the marker that opened it was read
     while i < len(ln):
         ch = ln[i]
-        if ch != BULLET:
+        if ch not in BULLETS:
             out.append(ch)
             i += 1
             continue
@@ -330,8 +393,8 @@ def _fix_line(ln: str, stats: Counter[str]) -> str:
         # marker-opened lines, the largest shape the corpus suggests, take 0.56 ms, and
         # 300 markers on ONE line take 1.15 ms. The cost is real and out of reach.
         left = "".join(out)
-        right = ln[i + 1 : i + 2]  # every reader takes `right[:1]`, so one character is exact
-        pos = classify(left, right, opened=opened)
+        right = ln[i + 1 :]  # the text test reads past the gap, so the whole rest of the line
+        pos = classify(left, right, opened=opened, strippable=ch in STRIPPABLE)
         opened = True
         counter, survives = _ACTIONS[pos]
         stats[counter] += 1
@@ -443,9 +506,16 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         it counts toward ``total_changes`` -- but not as ``remap_f020``, which would say the step
         put a space where the page prints one.
     ``line_leading_marker_deferred``
-        A :data:`BULLET` opening a line, left in place because it could not be read as a list item
-        and deleting it would flatten a nested list. Needs a human, like ``unknown``: read the
-        rendered page and decide whether the line is a list item.
+        A marker in :data:`BULLETS` opening a line, left in place because it could not be read as a
+        list item -- too indented, no gap after it, or an operator where the item's text would
+        start -- and deleting it would flatten a nested list or a formula. Needs a human, like
+        ``unknown``: read the rendered page and decide whether the line is a list item.
+    ``marker_no_reading``
+        A marker that is not in :data:`STRIPPABLE`, found away from a line-opening position. It is
+        verified as a bullet at a line start only, and its slot is a Greek letter in Adobe Symbol
+        encoding, so it is kept.
+        Needs a human: render the page, and either the line is text with a stray marker in it, or
+        the codepoint is a letter :data:`GLYPHS` should carry.
     ``line_leading_dot_deferred``
         A :data:`DOT` opening a line, left in place because whether it is a bullet or a dot there is
         a per-book reading this step will not guess: it is verified as an inline dot in one book and
@@ -467,6 +537,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "stray_unhandled": 0,
             "line_leading_dot_deferred": 0,
             "line_leading_marker_deferred": 0,
+            "marker_no_reading": 0,
             "dropped_f020": 0,
             "in_code": {},
             "unknown": {},
@@ -485,7 +556,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
     pieces.append(_fix_prose(md[cur:], stats))
     out = "".join(pieces)
 
-    known = set(GLYPHS) | {BULLET}
+    known = set(GLYPHS) | set(BULLETS)
     in_code: Counter[str] = Counter()
     unknown: Counter[str] = Counter()
     for m in _PUA.finditer(md):
@@ -504,14 +575,20 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "stray_unhandled": 0,
         "line_leading_dot_deferred": 0,
         "line_leading_marker_deferred": 0,
+        "marker_no_reading": 0,
         "dropped_f020": 0,
         "skipped_crlf": False,
     }
     report.update(stats)
     report["in_code"] = dict(in_code)
     report["unknown"] = dict(unknown)
-    # These three count glyphs deliberately LEFT IN PLACE — not changes. Counting them would make
+    # These four count glyphs deliberately LEFT IN PLACE — not changes. Counting them would make
     # a refusal to guess read as a successful repair.
-    deliberate = {"stray_unhandled", "line_leading_dot_deferred", "line_leading_marker_deferred"}
+    deliberate = {
+        "stray_unhandled",
+        "line_leading_dot_deferred",
+        "line_leading_marker_deferred",
+        "marker_no_reading",
+    }
     report["total_changes"] = sum(v for k, v in stats.items() if k not in deliberate)
     return out, report

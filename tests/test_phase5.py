@@ -551,6 +551,7 @@ def test_split_no_boundaries_raises(tmp_path):
 # was rendered to confirm what the book actually prints (see bug-symbol-font-pua-glyphs-dropped).
 
 PI, SIGMA, ARROW, BULLET = "\uf070", "\uf0e5", "\uf0ae", "\uf0a1"
+DIAMOND = "\uf077"  # Wingdings diamond, Advanced Algorithms p494; omega in Adobe Symbol encoding
 DOT = symbol_pua.DOT  # verified inline in one book, printed as a bullet in another
 SYMBOL_SPACE = symbol_pua.SPACE
 
@@ -910,6 +911,195 @@ NONCHAR_FFFF = chr(0xFFFF)
 NONCHAR_FFFE = chr(0xFFFE)
 NONCHAR_ARABIC = chr(0xFDD0)  # first of the U+FDD0-U+FDEF block
 NONCHAR_PLANE1 = chr(0x1FFFF)  # plane-end pair, SMP
+
+
+def test_pua_diamond_is_a_second_list_marker():
+    # Advanced Algorithms p494 sets a bulleted list in Wingdings, not in the Wingdings2 the Keras
+    # book uses, so the marker is a different codepoint printing a filled diamond.
+    assert symbol_pua.DIAMOND == DIAMOND and DIAMOND in symbol_pua.BULLETS
+    md = f"{DIAMOND} Shard the dataset and send the shards to mappers\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == "- Shard the dataset and send the shards to mappers\n"
+    assert stats["list_markers"] == 1
+    assert stats["unknown"] == {}  # it is known now, and structurally
+
+
+def test_pua_diamond_in_heading_is_kept_because_no_page_verifies_that_reading():
+    # The evidence rule is per READING. Advanced Algorithms p494 shows the diamond as a list
+    # bullet; no rendered page shows it promoted to a heading, so the heading path leaves it in
+    # place and counts it, where the square -- Deep Learning with Python p399 -- loses its glyph.
+    md = f"### {DIAMOND} Each mapper assigns points to one of the centroids\n"
+    out, stats = symbol_pua.remap(md)
+    assert out == md
+    assert stats["heading_markers"] == 0 and stats["line_leading_marker_deferred"] == 1
+    assert stats["total_changes"] == 0
+
+    # And that is what makes the chain's SECOND pass safe: `# <D> <D> text` keeps both diamonds
+    # on pass one, and pass two, which sees `# <D> ` as a heading prefix, keeps them again.
+    md = f"# {DIAMOND} {DIAMOND} text\n"
+    once, rep1 = symbol_pua.remap(md)
+    twice, rep2 = symbol_pua.remap(once)
+    assert once == md and twice == md
+    assert rep1["line_leading_marker_deferred"] == 1 and rep1["marker_no_reading"] == 1
+    assert rep1["total_changes"] == 0 and rep2["total_changes"] == 0
+
+
+def test_pua_diamond_after_hashes_or_an_opener_is_a_line_opening_refusal_not_a_mid_line_one():
+    # `###<D>text` opens the line after hashes, and `**<D> bold` after an opener the list pattern
+    # does not accept. Neither is mid-line; the residue has to say so, with the same counter the
+    # square raises for the hash case.
+    for src in (f"### {DIAMOND}text\n", f"#{DIAMOND}x\n"):
+        out, stats = symbol_pua.remap(src)
+        assert out == src, src
+        assert stats["line_leading_marker_deferred"] == 1 and stats["marker_no_reading"] == 0, src
+
+
+def test_pua_line_opening_marker_is_not_a_bullet_when_an_operator_follows():
+    """Every marker slot is also a Greek letter in Adobe Symbol encoding.
+
+    `0x77` is *omega* and `0xA1` is *Upsilon1*. A book that sets a display formula on its own line
+    would otherwise have the letter deleted and the formula turned into a list item, reported as a
+    repair -- the failure class this module exists to remove, and the same ambiguity `DOT` defers.
+    A bullet introduces text, so a marker followed by an OPERATOR is not read as one. It is left in
+    place and counted with the other line-opening refusals.
+    """
+    pi = "\N{GREEK SMALL LETTER PI}"
+    for marker in (DIAMOND, BULLET):
+        md = f"{marker} = 2{PI}f is the angular frequency\n"
+        out, stats = symbol_pua.remap(md)
+        assert out == f"{marker} = 2{pi}f is the angular frequency\n", marker
+        assert stats["list_markers"] == 0, marker
+        assert stats["line_leading_marker_deferred"] == 1, marker  # left in place AND counted
+        assert stats["remap_f070"] == 1, marker  # the verified glyph on the line is still repaired
+        assert stats["total_changes"] == 1, marker  # the refusal is not a repair
+
+
+def test_pua_bullet_before_a_formula_is_still_a_list_item():
+    # The guard refuses an OPERATOR, never a formula. Advanced Algorithms p445 prints a Wingdings2
+    # square ahead of `d*(n+k)*log(k) < n*k*d ⇔ ...`, a real list item whose text is a formula, and
+    # `<`/`>` cost six real bullets in Microservices Patterns when they were in the set.
+    for body in ("n*2<sup>d</sup> < n*k*d ⇔ d << k", "<sub>REST</sub> client", "x = 2"):
+        out, stats = symbol_pua.remap(f"{BULLET} {body}\n")
+        assert out == f"- {body}\n", body
+        assert stats["list_markers"] == 1, body
+
+
+def test_pua_marker_guard_is_not_defeated_by_extra_whitespace():
+    """A one-character look past the marker sees a space, and a space is not an operator.
+
+    The guard must read the first character AFTER the gap, whatever the gap's width. An earlier
+    regex form of it backtracked to one space and then inspected the second, so two spaces reopened
+    it while a one-space test stayed green.
+    """
+    for gap in ("  ", " \t", "\t ", "   "):
+        md = f"{DIAMOND}{gap}= 2x\n"
+        out, stats = symbol_pua.remap(md)
+        assert out == md, repr(gap)
+        assert stats["list_markers"] == 0, repr(gap)
+        assert stats["line_leading_marker_deferred"] == 1, repr(gap)
+
+    # A marker with nothing but whitespace after it is an empty list item, which is still one.
+    out, stats = symbol_pua.remap(f"{DIAMOND}  \n")
+    assert out == "- \n" and stats["list_markers"] == 1
+
+
+def test_pua_heading_marker_carries_the_same_guard():
+    # The heading path deletes the glyph and keeps the heading level, so it destroys a formula the
+    # same way the list path would. A marker slot is a Greek letter in a heading too.
+    for marker in (DIAMOND, BULLET):
+        md = f"### {marker} = 2x\n"
+        out, stats = symbol_pua.remap(md)
+        assert out == md, marker
+        assert stats["heading_markers"] == 0, marker
+        assert stats["line_leading_marker_deferred"] == 1, marker
+
+    # ...and a real bulleted heading still loses the VERIFIED marker.
+    out, stats = symbol_pua.remap(f"## {BULLET} With temperature=0.2\n")
+    assert out == "## With temperature=0.2\n"
+    assert stats["heading_markers"] == 1
+
+
+def test_pua_operator_guard_covers_the_relations_the_table_already_knows():
+    # A formula whose Greek first letter is followed by an arrow, a gradient or a relation is the
+    # same shape as `= 2x`. `→` is what U+F0AE becomes, and the remap runs first.
+    for body in ("→ 2x", f"{ARROW} 2x", "∇f", "≤ 1", "∈ A", "∞"):
+        out, stats = symbol_pua.remap(f"{DIAMOND} {body}\n")
+        assert stats["list_markers"] == 0 and stats["line_leading_marker_deferred"] == 1, body
+        assert out.startswith(DIAMOND), body
+
+
+def test_pua_bullet_before_an_inline_dot_is_still_a_list_item():
+    # `·` is what DOT becomes, and `_remap_line` runs before the positional pass. With `·` in the
+    # operator set a verified inline dot after a real bullet refused the list item.
+    out, stats = symbol_pua.remap(f"{BULLET} {DOT} x\n")
+    assert out == "- · x\n"
+    assert stats["list_markers"] == 1 and stats["line_leading_marker_deferred"] == 0
+
+
+def test_pua_diamond_line_opening_refusals_match_the_square():
+    # Too indented, or glued to its text: the same readings as the verified marker, never a deletion.
+    for src in (f"    {DIAMOND} nested\n", f"  {DIAMOND}text\n", f"{DIAMOND}text\n"):
+        out, stats = symbol_pua.remap(src)
+        assert out == src, repr(src)
+        assert stats["line_leading_marker_deferred"] == 1, repr(src)
+        assert stats["total_changes"] == 0, repr(src)
+
+
+def test_pua_diamond_mid_line_is_never_deleted():
+    """Being a bullet at line START says nothing about the same codepoint mid-sentence.
+
+    U+F077 is *omega* in Adobe Symbol encoding, and the corpus's largest PUA source emits SymbolMT
+    lowercase Greek out of that very block (alpha, phi, lambda, pi, theta). Deleting one mid-line
+    the way the verified U+F0A1 marker is deleted would turn a codepoint that needs a rendered page
+    into a silent deletion, reported as a repair. It is left in place and counted instead -- on
+    both sides of the separator-or-flush distinction, which only a strippable marker needs.
+    """
+    for md in (
+        f"the angular velocity {DIAMOND} is measured in rad/s\n",
+        f"velocity{DIAMOND}is measured\n",
+        f"- item {DIAMOND} text\n",
+    ):
+        out, stats = symbol_pua.remap(md)
+        assert out == md, md  # untouched -- never guess
+        assert stats["marker_no_reading"] == 1, md  # its own residue class: render the page
+        assert stats["stray_markers"] == 0 and stats["stray_unhandled"] == 0, md
+        assert stats["total_changes"] == 0, md  # a refusal is not a repair
+
+    # ...while the verified marker still IS dropped mid-line, whitespace preserved.
+    out, stats = symbol_pua.remap(f"before {BULLET} after\n")
+    assert out == "before after\n"
+    assert stats["stray_markers"] == 1
+
+
+def test_pua_second_diamond_after_an_opening_one_is_kept():
+    # A line opens once. The second marker is read mid-line, and mid-line a diamond has no reading.
+    out, stats = symbol_pua.remap(f"{DIAMOND} {DIAMOND} text\n")
+    assert out == f"- {DIAMOND} text\n"
+    assert stats["list_markers"] == 1 and stats["marker_no_reading"] == 1
+
+
+def test_pua_diamond_inside_a_fence_is_reported_not_rewritten():
+    md = f"prose 2{PI}\n\n```text\n{DIAMOND} not a list item\n```\n"
+    out, stats = symbol_pua.remap(md)
+    assert "prose 2\N{GREEK SMALL LETTER PI}" in out  # the prose glyph IS remapped
+    assert f"{DIAMOND} not a list item" in out  # the fence is copied byte-for-byte
+    assert stats["in_code"] == {"f077": 1}
+    assert stats["unknown"] == {}
+
+
+def test_pua_marker_no_reading_reaches_the_operator(tmp_path):
+    # A counter no command prints reaches no human. The chain runs `symbol_pua` twice; the residue
+    # line takes the high-water mark of the two, like every other refusal.
+    from pdf2wiki import phase5
+
+    md = tmp_path / "book.md"
+    md.write_text(
+        f"# Title\n\nvelocity {DIAMOND} in rad/s, and {DIAMOND} again\n", encoding="utf-8"
+    )
+    report = phase5.run_chain(str(md), "book")
+    lines = phase5.residue_lines(report)
+    assert any(ln.startswith("⚠ 2 list-marker codepoint(s) found AWAY FROM") for ln in lines), lines
+    assert any("Render the source page" in ln for ln in lines)
 
 
 def test_illegal_nul_removed_inside_a_code_fence():

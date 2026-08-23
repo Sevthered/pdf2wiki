@@ -6,6 +6,40 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`symbol_pua` reads a second list marker, `U+F077`.** *Advanced Algorithms and Data Structures*
+  p494 prints a filled diamond from the `Wingdings` font at the start of each list item. The step
+  knew only the `Wingdings2` square, `U+F0A1`. A line that opens with the diamond is a list item
+  now. The release note of 0.2.9 reported the codepoint under `unknown`. A rendered page verified
+  the reading, as the table requires. The evidence is per reading. No page shows the diamond
+  promoted to a heading, so after a heading's hashes the step keeps it and counts it as
+  `line_leading_marker_deferred`. The square keeps its verified heading reading.
+- **A marker that opens a line before an operator is not a list item.** Each marker slot is a Greek
+  letter in the Adobe Symbol encoding (`0x77` is omega, `0xA1` is Upsilon1). The step keeps a marker
+  that an operator follows, and counts it as `line_leading_marker_deferred`. The operators are `=`,
+  `≈`, `≠`, `≡`, `±`, `×`, `÷`, the arrows, `∇`, `≤`, `≥`, `∈`, `∉` and `∞`. The set holds operators
+  only, and not `·`, which is what the step makes of a verified inline dot. A bullet before a formula
+  is a real list item in this corpus: *Advanced Algorithms* p445 prints a square before
+  `d*(n+k)*log(k) < n*k*d ⇔ ...`, and `<` and `>` cost six real items in *Microservices
+  Patterns*.
+  The marker counts of all 219 converted files are unchanged.
+- **A new residue, `marker_no_reading`.** Only `U+F0A1` has a verified reading in the middle of a
+  line, where the step deletes it as a separator. `U+F077` has none, so the step keeps it there and
+  reports it. The `phase5` and `batch` commands print the count, with the instruction to render the
+  page.
+
+### Changed
+- The position truth table holds 20,748 shapes (from 10,232). It covers both markers, and a body
+  that starts with a letter before an operator (`x = 2`), which is text. 360 rows of the old table
+  moved, every one with `= 2x` after the marker, and none other. Across all diamond shapes the
+  positional reading equals the square's, the diamond is never deleted, and it survives exactly where
+  the square was deleted.
+- The idempotence test still counts 15 unstable shapes, all `U+F0A1` pairs. A first version of
+  the second marker promoted it to a heading, and 12 new shapes changed on the second pass: pass
+  one kept the second diamond, and pass two read `# <D> ` as a heading again. The heading reading
+  was withheld, and those 12 shapes went away with it.
+- The residue line for `line_leading_marker_deferred` names every cause the counter has now.
+
 ## [0.2.9] - 2026-08-21
 
 This release improves `symbol_pua`. Version 0.2.8 added the step. This version makes the step worth a

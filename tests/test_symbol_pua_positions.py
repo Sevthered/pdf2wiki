@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from pdf2wiki.phase5 import symbol_pua
 
 BULLET = symbol_pua.BULLET  # U+F0A1, a Wingdings2 square used as a list marker
+DIAMOND = symbol_pua.DIAMOND  # U+F077, a Wingdings diamond: a list marker, and omega in Symbol
 DOT = symbol_pua.DOT  # U+F0B7, a multiplication dot inline and a bullet in other books
 SPACE = symbol_pua.SPACE  # U+F020, a Symbol-font space, which is not whitespace to CommonMark
 
@@ -61,7 +62,7 @@ _STARS = [
 ]
 _HEADS = ["", "#", "###"]  # the heading path reads the same marker after the hashes
 _GAPS = ["", " ", "  ", "\t", SPACE]  # no gap means the list pattern declines the line
-_BODIES = ["item", "= 2x", ""]  # an operator after the marker is the ambiguous formula case
+_BODIES = ["item", "= 2x", "x = 2", ""]  # an operator FIRST is a formula; a letter first is text
 _TAILS = ["", " ", "  ", SPACE, SPACE + SPACE]
 
 
@@ -74,7 +75,7 @@ def _shapes() -> list[str]:
     `test_the_table_is_not_all_one_answer` asserts that directly.
     """
     out: list[str] = []
-    for marker in (BULLET, DOT):
+    for marker in (BULLET, DIAMOND, DOT):
         for indent in _INDENTS:
             for head in _HEADS:
                 for star in _STARS:
@@ -93,7 +94,7 @@ def _shapes() -> list[str]:
     # prefix, so `#<M>   <M> ` counted TWO promoted headings on one heading and normalised the
     # trailing whitespace a second time. Nothing above reaches that: every shape there carries a
     # single marker.
-    for marker in (BULLET, DOT):
+    for marker in (BULLET, DIAMOND, DOT):
         for left in ("", " ", "   ", "\t", "#", "###", "*", "a", "a "):
             for mid in ("", " ", "   ", "\t"):
                 for right in ("", " ", "  ", "b"):
@@ -151,7 +152,7 @@ def test_marker_position_truth_table(snapshot):
     thought to write down.
     """
     shapes = _shapes()
-    assert all(BULLET in s or DOT in s for s in shapes)
+    assert all(BULLET in s or DIAMOND in s or DOT in s for s in shapes)
 
     assert _summary(shapes) == snapshot(name="marker_positions")
 
@@ -174,6 +175,7 @@ def test_the_table_is_not_all_one_answer():
         "stray_unhandled",
         "line_leading_marker_deferred",
         "line_leading_dot_deferred",
+        "marker_no_reading",
         "dropped_f020",
         "remap_f020",
         "total_changes",
@@ -202,8 +204,12 @@ def test_remap_is_idempotent_on_every_shape():
         if symbol_pua.remap(symbol_pua.remap(line + "\n")[0])[0] != symbol_pua.remap(line + "\n")[0]
     ]
 
-    # ...and only BULLET pairs: `DOT` is a verified glyph, so both of a pair are substituted in the
-    # first pass and nothing is left for the second to act on.
+    # ...and only `BULLET + BULLET` pairs: `DOT` is a verified glyph, so both of a pair are
+    # substituted in the first pass and nothing is left for the second to act on, and a `DIAMOND`
+    # is never deleted, so nothing it leaves behind changes on a second read. A first version of the
+    # second marker promoted it to a heading; then `#<D> <D> ` kept the second diamond on pass one
+    # and pass two read `# <D> ` as a heading again -- 12 shapes, the filed defect in a new family.
+    # Withholding the heading reading, which no rendered page verifies anyway, removed them all.
     assert all(BULLET + BULLET in line for line in unstable), (
         "an unstable shape that is NOT two adjacent markers is a new defect, not the filed one: "
         f"{[line for line in unstable if BULLET + BULLET not in line]}"

@@ -25,6 +25,13 @@ All notable changes to this project are documented here. The format is based on
   changes how a marker is read. The only text changes are trailing whitespace on the lines where
   a break was averted. A new test pins that a Symbol space at the line end never decides how a
   marker is read. No corpus file holds `U+F020` (221 files on the box, the 2,392-file vault).
+- **`pdf2wiki batch | head` no longer ends the batch.** When the reader of stdout closed the pipe,
+  the next `print` raised `BrokenPipeError` at the per-book header. `run_batch` stopped and wrote no
+  manifest, so the next run converted every finished book again. A closed pipe
+  is not a book's failure. `main` now installs one guard on stdout for every command: on the first
+  broken write it points the real file descriptor at the null device, says so once on stderr, and
+  discards later output. The run continues to its end with its real exit code, and the interpreter's
+  flush at exit cannot raise the same error. Proven on a real shell pipe in a subprocess.
 - **`pdf2wiki phase5 --apply` no longer writes the source `.md`.** It wrote the repaired text back
   over the input so that `chapter_split` could read it from disk, and it did that before the split
   ran. A split that found no chapter boundary still left the input changed. The `batch` command

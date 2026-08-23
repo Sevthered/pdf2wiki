@@ -239,9 +239,9 @@ def run_batch(
             # recovery path, no manifest was written and the remaining books never converted.
             #
             # ⚠ This does NOT make the batch survive a stdout that is broken for everything. A
-            # `BrokenPipeError` from `pdf2wiki batch | head` still leaves `run_batch` at the
-            # per-book header print, long before this line. Claiming otherwise was measured false.
-            # That exposure belongs at the CLI boundary and is filed, not handled here.
+            # `BrokenPipeError` from `pdf2wiki batch | head` would still leave `run_batch` at the
+            # per-book header print, long before this line. That case is handled once at the CLI
+            # boundary (`cli._StdoutSurvivesItsReader`), never per print.
             with contextlib.suppress(Exception):
                 print(fallback.encode("ascii", "backslashreplace").decode("ascii"))
         # chapters need the shared images/ dir next to them for relative refs to resolve

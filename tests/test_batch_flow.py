@@ -157,8 +157,9 @@ def test_a_broken_stdout_does_not_abort_the_run_from_the_recovery_path(tmp_path,
     remaining books never converted -- the same outcome the guard above it exists to prevent. There
     is nowhere left to say anything, so it says nothing and the books survive.
 
-    ⚠ This is NOT a claim that `batch` survives a stdout broken for everything. A `BrokenPipeError`
-    from `pdf2wiki batch | head` stops the run at the per-book header print, long before this code.
+    ⚠ This is NOT a claim that `run_batch` survives a stdout broken for everything. That case is
+    handled at the CLI boundary, and `test_batch_runs_to_the_end_when_its_reader_closes_the_pipe`
+    proves it through `cli.main`.
     """
     monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
     monkeypatch.setattr(batch, "residue_lines", lambda _report: ["⚠ 1 unverified codepoint"])
@@ -407,3 +408,120 @@ def test_remote_run_phase5s_the_fetched_stage_dir_not_a_local_out_root(tmp_path,
     assert (vault / "d" / "book-0" / "01-chapter-1-beginnings.md").exists()
     # and the local out_root was never even created, let alone read
     assert not os.path.exists(os.path.join(str(tmp_path / "out"), "book-0"))
+
+
+class _ClosedPipe:
+    """A stdout whose reader is gone: every write fails, not only the report's characters."""
+
+    def __init__(self):
+        self.writes = 0
+
+    def write(self, s):
+        self.writes += 1
+        raise BrokenPipeError(32, "Broken pipe")
+
+    def flush(self):
+        pass
+
+
+def test_batch_runs_to_the_end_when_its_reader_closes_the_pipe(tmp_path, monkeypatch, capsys):
+    """`pdf2wiki batch | head` must not end the batch at the first print after the pipe closes.
+
+    Measured before the guard in `cli.main`: `run_batch` raised `BrokenPipeError` at the per-book
+    header, no manifest was written, and every book that converted was converted again on the next
+    run. The guard sits at the CLI boundary, so this test goes through `cli.main`, not `run_batch`.
+    """
+    from pdf2wiki import cli
+
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLocal)
+    cfg_toml = tmp_path / "cfg.toml"
+    cfg_toml.write_text(f'[convert]\nout_root = "{tmp_path / "out"}"\n')
+    stage = tmp_path / "stage"
+    pipe = _ClosedPipe()
+    monkeypatch.setattr(sys, "stdout", pipe)
+    rc = cli.main(
+        ["--config", str(cfg_toml), "batch", _books_toml(tmp_path, 2), "--stage", str(stage)]
+    )
+    monkeypatch.undo()
+
+    assert rc == 0
+    assert pipe.writes == 1  # the first failure is the last attempt on the dead pipe
+    assert "stdout was closed by its reader" in capsys.readouterr().err
+    on_disk = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
+    assert on_disk["book-0"]["status"] == "done" and on_disk["book-1"]["status"] == "done"
+
+
+def test_the_guard_redirects_the_real_descriptor_so_the_exit_flush_cannot_raise(tmp_path):
+    """On a REAL pipe with its reader closed, the guard must fix the file descriptor too.
+
+    `write()` catching the error is not enough: the interpreter flushes the original stdout at exit,
+    and a child process inherits fd 1. Both would hit the dead pipe again. After the first failure
+    the descriptor points at the null device and a raw `os.write` on it succeeds.
+    """
+    import signal
+
+    from pdf2wiki.cli import _StdoutSurvivesItsReader
+
+    previous = signal.signal(signal.SIGPIPE, signal.SIG_IGN)  # a dead pipe must raise, not kill
+    r, w = os.pipe()
+    os.close(r)
+    try:
+        inner = os.fdopen(
+            w, "w", encoding="utf-8", buffering=1
+        )  # line-buffered: "\n" writes through
+        guard = _StdoutSurvivesItsReader(inner)
+        assert guard.write("first line\n") == len("first line\n")
+        assert guard.lost
+        assert guard.write("after\n") == len("after\n")  # swallowed, not raised
+        assert (
+            os.write(w, b"raw\n") == 4
+        )  # fd 1-equivalent now reaches /dev/null, not the dead pipe
+        inner.flush()
+        inner.close()
+    finally:
+        signal.signal(signal.SIGPIPE, previous)
+
+
+def test_batch_piped_into_head_exits_zero_and_writes_the_manifest(tmp_path):
+    """The real thing: a shell pipe whose reader quits after one line.
+
+    Run in a subprocess so the interpreter's own exit flush is exercised too -- that flush hits
+    the dead pipe after `main` has returned, and prints `Exception ignored ... BrokenPipeError`
+    unless the descriptor was redirected. The exit code and the manifest are read from disk.
+    """
+    import subprocess
+
+    cfg_toml = tmp_path / "cfg.toml"
+    cfg_toml.write_text(f'[convert]\nout_root = "{tmp_path / "out"}"\n')
+    stage = tmp_path / "stage"
+    status = tmp_path / "rc"
+    driver = tmp_path / "driver.py"
+    driver.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..', 'src')!r})\n"
+        f"sys.path.insert(0, {os.path.dirname(__file__)!r})\n"
+        "import pdf2wiki.batch as batch\n"
+        "from test_batch_flow import FakeLocal\n"
+        "from pdf2wiki import cli\n"
+        "batch.LocalExecutor = FakeLocal\n"
+        f"rc = cli.main(['--config', {str(cfg_toml)!r}, 'batch', {_books_toml(tmp_path, 3)!r},"
+        f" '--stage', {str(stage)!r}])\n"
+        f"open({str(status)!r}, 'w').write(str(rc))\n"
+        "sys.exit(rc)\n"
+    )
+    shell = f"{sys.executable} {driver} | head -n 1; exit ${{PIPESTATUS[0]}}"
+    proc = subprocess.run(  # noqa: S603 -- a pipe needs a shell; every path is this test's own
+        ["bash", "-c", shell],  # noqa: S607 -- bash from PATH, the test has no other
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=120,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert status.read_text() == "0"
+    # proof the dead pipe was hit, not that `head` happened to read everything first
+    assert "stdout was closed by its reader" in proc.stderr, proc.stderr
+    assert "Exception ignored" not in proc.stderr and "Traceback" not in proc.stderr, proc.stderr
+    on_disk = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
+    assert [on_disk[f"book-{i}"]["status"] for i in range(3)] == ["done"] * 3

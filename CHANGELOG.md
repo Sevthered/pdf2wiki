@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-08-23
+
 ### Added
 - **Deterministic tests for the unclosed-label branch of `mermaid_repair`.** Only a property test
   reached that branch, and only when hypothesis generated an unclosed label. Six identical coverage
@@ -13,39 +15,6 @@ All notable changes to this project are documented here. The format is based on
   tests close an unclosed `[`, `{` and `(` label, a `'` opener, and prove the repair is idempotent.
   A clean Mermaid block now has a test too. `mermaid_repair` is at 100% without hypothesis, and the
   project total is the same number on every run.
-
-### Fixed
-- **Dropping a line-edge Symbol space no longer uncovers a hard break.** `U+F020` is not whitespace
-  to CommonMark, so a line that ends in it has no hard break. `symbol_pua` deleted it and left the
-  real spaces behind it in place: `"x  <SPACE>"` became `"x  "`, a `<br>` the page does not have.
-  The tail is now cut back to the whitespace that followed the last Symbol space. That is all
-  CommonMark saw before the step. When nothing followed it, one space stays. A break that was
-  already there stays. A bare marker keeps the gap it needs. Counted as `tail_collapsed_f020`
-  when a break was averted. The truth table gained four mixed tails. Against `main`, no shape
-  changes how a marker is read. The only text changes are trailing whitespace on the lines where
-  a break was averted. A new test pins that a Symbol space at the line end never decides how a
-  marker is read. No corpus file holds `U+F020` (221 files on the box, the 2,392-file vault).
-- **`pdf2wiki batch | head` no longer ends the batch.** When the reader of stdout closed the pipe,
-  the next `print` raised `BrokenPipeError` at the per-book header. `run_batch` stopped and wrote no
-  manifest, so the next run converted every finished book again. A closed pipe
-  is not a book's failure. `main` now installs one guard on stdout for every command: on the first
-  broken write it points the real file descriptor at the null device, says so once on stderr, and
-  discards later output. The run continues to its end with its real exit code, and the interpreter's
-  flush at exit cannot raise the same error. Proven on a real shell pipe in a subprocess. A second
-  round on the GPU box found the short-run hole. With one book, every print after the header sat
-  in the block buffer. Nothing reached the dead pipe before `main` returned, and the interpreter's
-  own flush raised (exit 120). `main` now flushes through the guard before it steps aside.
-- **`pdf2wiki phase5 --apply` no longer writes the source `.md`.** It wrote the repaired text back
-  over the input so that `chapter_split` could read it from disk, and it did that before the split
-  ran. A split that found no chapter boundary still left the input changed. The `batch` command
-  went through the same code. The CLI reference said that no command changes an existing file in
-  place, and the how-to said the opposite. The chain now hands the repaired text to the split
-  step directly. The source file keeps its bytes and its modification time in both modes. The dry
-  run also plans the split on the repaired text now. Before, it read the unrepaired file from
-  disk, so its planned files could differ from what `--apply` then wrote. Found when a
-  verification run on the GPU box rewrote two production converter outputs.
-
-### Added
 - **`symbol_pua` reads a second list marker, `U+F077`.** *Advanced Algorithms and Data Structures*
   p494 prints a filled diamond from the `Wingdings` font at the start of each list item. The step
   knew only the `Wingdings2` square, `U+F0A1`. A line that opens with the diamond is a list item
@@ -78,6 +47,37 @@ All notable changes to this project are documented here. The format is based on
   one kept the second diamond, and pass two read `# <D> ` as a heading again. The heading reading
   was withheld, and those 12 shapes went away with it.
 - The residue line for `line_leading_marker_deferred` names every cause the counter has now.
+
+### Fixed
+- **Dropping a line-edge Symbol space no longer uncovers a hard break.** `U+F020` is not whitespace
+  to CommonMark, so a line that ends in it has no hard break. `symbol_pua` deleted it and left the
+  real spaces behind it in place: `"x  <SPACE>"` became `"x  "`, a `<br>` the page does not have.
+  The tail is now cut back to the whitespace that followed the last Symbol space. That is all
+  CommonMark saw before the step. When nothing followed it, one space stays. A break that was
+  already there stays. A bare marker keeps the gap it needs. Counted as `tail_collapsed_f020`
+  when a break was averted. The truth table gained four mixed tails. Against `main`, no shape
+  changes how a marker is read. The only text changes are trailing whitespace on the lines where
+  a break was averted. A new test pins that a Symbol space at the line end never decides how a
+  marker is read. No corpus file holds `U+F020` (221 files on the box, the 2,392-file vault).
+- **`pdf2wiki batch | head` no longer ends the batch.** When the reader of stdout closed the pipe,
+  the next `print` raised `BrokenPipeError` at the per-book header. `run_batch` stopped and wrote no
+  manifest, so the next run converted every finished book again. A closed pipe
+  is not a book's failure. `main` now installs one guard on stdout for every command: on the first
+  broken write it points the real file descriptor at the null device, says so once on stderr, and
+  discards later output. The run continues to its end with its real exit code, and the interpreter's
+  flush at exit cannot raise the same error. Proven on a real shell pipe in a subprocess. A second
+  round on the GPU box found the short-run hole. With one book, every print after the header sat
+  in the block buffer. Nothing reached the dead pipe before `main` returned, and the interpreter's
+  own flush raised (exit 120). `main` now flushes through the guard before it steps aside.
+- **`pdf2wiki phase5 --apply` no longer writes the source `.md`.** It wrote the repaired text back
+  over the input so that `chapter_split` could read it from disk, and it did that before the split
+  ran. A split that found no chapter boundary still left the input changed. The `batch` command
+  went through the same code. The CLI reference said that no command changes an existing file in
+  place, and the how-to said the opposite. The chain now hands the repaired text to the split
+  step directly. The source file keeps its bytes and its modification time in both modes. The dry
+  run also plans the split on the repaired text now. Before, it read the unrepaired file from
+  disk, so its planned files could differ from what `--apply` then wrote. Found when a
+  verification run on the GPU box rewrote two production converter outputs.
 
 ## [0.2.9] - 2026-08-21
 
@@ -689,7 +689,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.6...v0.2.7

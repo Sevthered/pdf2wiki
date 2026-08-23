@@ -8,6 +8,8 @@ import os
 import sys
 import textwrap
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pdf2wiki.phase5 import (
@@ -429,6 +431,44 @@ def test_non_mermaid_untouched_by_repair():
     md = '```python\ns = "a\\nb"\n```\n'
     out, stats = mermaid_repair.repair(md)
     assert out == md and stats["blocks_changed"] == 0
+
+
+# The unclosed-label branch of `_fix_segment` (`OPEN_ONLY`) was reached only when a hypothesis draw
+# in test_phase5_properties happened to generate one. Six identical coverage runs gave two different
+# totals because of it. These cases reach it on purpose, one per bracket shape, so the closer is
+# proven to MATCH the opener and not assumed.
+@pytest.mark.parametrize(
+    ("opener", "closer"),
+    [("[", "]"), ("{", "}"), ("(", ")")],
+)
+def test_mermaid_unclosed_label_is_closed_with_matching_bracket(opener, closer):
+    md = f'```mermaid\ngraph TD\nA{opener}"never closed --> B\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert f'A{opener}"never closed"{closer} --> B' in out
+    assert stats["blocks_changed"] == 1
+    assert stats["score_before"] > 0 and stats["score_after"] == 0
+
+
+def test_mermaid_unclosed_label_with_single_quote_opener():
+    # `OPEN_ONLY` also accepts a mismatched `'` opener; the output normalises it to `"`.
+    md = "```mermaid\ngraph TD\nA['half quoted --> B\n```\n"
+    out, _ = mermaid_repair.repair(md)
+    assert 'A["half quoted"] --> B' in out
+
+
+def test_mermaid_unclosed_label_repair_is_idempotent():
+    md = '```mermaid\ngraph TD\nA["open --> B{"also open\n```\n'
+    once, s1 = mermaid_repair.repair(md)
+    twice, s2 = mermaid_repair.repair(once)
+    assert once == twice
+    assert s1["blocks_changed"] == 1 and s2["blocks_changed"] == 0
+
+
+def test_clean_mermaid_block_reports_no_change():
+    md = '```mermaid\ngraph TD\nA["ok"] --> B\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md
+    assert stats == {"blocks_changed": 0, "score_before": 0, "score_after": 0}
 
 
 # ---------- code_unescape ----------

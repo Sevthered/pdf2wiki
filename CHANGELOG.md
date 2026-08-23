@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Deterministic tests for the unclosed-label branch of `mermaid_repair`.** Only a property test
+  reached that branch, and only when hypothesis generated an unclosed label. Six identical coverage
+  runs gave two different totals, and the true value sat on the 93/94 rounding boundary. Five new
+  tests close an unclosed `[`, `{` and `(` label, a `'` opener, and prove the repair is idempotent.
+  A clean Mermaid block now has a test too. `mermaid_repair` is at 100% without hypothesis, and the
+  project total is the same number on every run.
+
 ### Fixed
 - **`pdf2wiki phase5 --apply` no longer writes the source `.md`.** It wrote the repaired text back
   over the input so that `chapter_split` could read it from disk, and it did that before the split

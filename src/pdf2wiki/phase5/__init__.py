@@ -98,11 +98,20 @@ def run_chain(
     step in memory and writes NOTHING (the split step reports planned files only).
     Returns a report dict.
 
+    ⚠ `md_path` is never written. It used to be: with apply=True the repaired text was written
+    back over the source so that `chapter_split` could read it from disk, and that rewrote a
+    converter's output in place BEFORE the split ran -- a split that refused (no chapter boundary)
+    still left the source edited. The CLI's stated convention is that no command modifies an
+    existing file in place, and nothing downstream reads the whole-book file after the chain:
+    `batch` copies `chapters/`. The repaired text is handed to `chapter_split.split` directly,
+    in both modes, so a dry run now plans the split on the text the chain produced rather than on
+    the unrepaired file (see bug-phase5-apply-rewrites-the-source-in-place).
+
     Line endings: the file is read in Python's default universal-newline mode, so any `\\r\\n` or
     bare `\\r` in the source is translated to `\\n` before any step sees the text — every step below
     is LF-only and this is what makes that a safe assumption rather than a silent gap. A CRLF book
-    is therefore repaired like any other and, with apply=True, written back out with LF endings —
-    that line-ending change is a side effect of the chain running at all, not a separate decision.
+    is therefore repaired like any other, and the chapter files carry LF endings — that
+    line-ending change is a side effect of the chain running at all, not a separate decision.
     `symbol_pua.remap()` additionally carries its own CRLF guard for callers that hand it text
     directly rather than through this function; that guard cannot fire on anything read via
     `run_chain`, by construction (see bug-pdf2wiki-crlf-guard-unreachable).
@@ -143,12 +152,8 @@ def run_chain(
     md, unescapes = code_unescape.unescape(md)
     report["code_unescape"] = {"fixes": len(unescapes)}
 
-    if apply:
-        with open(md_path, "w", encoding="utf-8") as f:
-            f.write(md)
-
     written, bounds = chapter_split.split(
-        md_path, book, out_dir=out_dir, source_name=source_name, dry_run=not apply
+        md_path, book, out_dir=out_dir, source_name=source_name, dry_run=not apply, text=md
     )
     report["chapter_split"] = {
         "boundaries": len(bounds),

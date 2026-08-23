@@ -77,16 +77,21 @@ def split(
     out_dir: str | None = None,
     source_name: str | None = None,
     dry_run: bool = False,
+    text: str | None = None,
 ) -> tuple[list[str], list[tuple[int, str]]]:
     """Split md_path into chapter files. Returns (written_paths, boundaries).
 
     dry_run: compute boundaries and target paths, write nothing.
     source_name: value for frontmatter `source:` (pass the original PDF filename so staging
     paths don't leak into permanent frontmatter). Defaults to md_path.
+    text: the document to split, when the caller already holds it (`run_chain` passes the
+    repaired text). With `text` given, `md_path` is not read; it only names the default output
+    directory and the default `source`.
     """
     source = source_name or md_path
-    with open(md_path, encoding="utf-8") as f:
-        text = f.read()
+    if text is None:
+        with open(md_path, encoding="utf-8") as f:
+            text = f.read()
     lines = text.split("\n")
     bounds = find_boundaries(lines)
     if not bounds:

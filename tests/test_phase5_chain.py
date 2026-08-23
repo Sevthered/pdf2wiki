@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 """End-to-end tests for the Phase 5 chain runner (`run_chain`): dry-run reports every step and
-writes nothing; apply=True rewrites the md and emits chapter files. All fixtures are synthetic."""
+writes nothing; apply=True writes chapter files and leaves the source .md alone. All fixtures are
+synthetic."""
 
 import os
 import sys
@@ -12,7 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pdf2wiki.phase5 import run_chain
+import pytest
+
+from pdf2wiki.phase5 import chapter_split, run_chain, symbol_pua
 
 # Two H1 boundaries -> front matter + two chapters. An em-dash and an escaped char inside a code
 # fence give the dash_normalize / code_unescape steps something to report on.
@@ -111,7 +114,10 @@ def test_run_chain_strips_nul_before_any_chapter_file_is_written(tmp_path):
 
     assert report["illegal_codepoints"]["removed"] == 2
     assert report["illegal_codepoints"]["counts"] == {"0000": 2}
-    assert nul not in md_path.read_text(encoding="utf-8")
+    # The SOURCE keeps its NUL: the chain repairs what it writes to `chapters/`, and never the
+    # file it was given. This line used to assert the opposite, pinning an in-place rewrite of
+    # the converter's output as a feature (bug-phase5-apply-rewrites-the-source-in-place).
+    assert md_path.read_text(encoding="utf-8") == md
     written = report["chapter_split"]["files"]
     assert written
     for path in written:
@@ -124,3 +130,49 @@ def test_run_chain_reports_illegal_codepoints_step(tmp_path):
     md_path = _write(tmp_path)
     report = run_chain(md_path, book="Sample Book", apply=False)
     assert report["illegal_codepoints"] == {"removed": 0, "counts": {}, "word_joins": 0}
+
+
+def test_run_chain_apply_never_writes_the_source(tmp_path):
+    """`--apply` writes chapters to `--out`, and nothing else.
+
+    It used to write the repaired text back over `md_path` first, so that `chapter_split` could
+    read it from disk. On the GPU box that rewrote two production converter outputs during a
+    verification run, and one of them was rewritten by a chain whose split then REFUSED: the
+    in-place write came before the one step that could fail. Both orders are pinned here.
+    """
+    pua = symbol_pua.BULLET
+    md = f"# Chapter 1 Lists\n\n{pua} an item the chain rewrites\n"
+    md_path = tmp_path / "book.md"
+    md_path.write_text(md, encoding="utf-8")
+    before = (md_path.stat().st_mtime_ns, md)
+
+    report = run_chain(str(md_path), book="Sample Book", out_dir=str(tmp_path / "ch"), apply=True)
+
+    assert report["symbol_pua"]["list_markers"] == 1
+    assert (md_path.stat().st_mtime_ns, md_path.read_text(encoding="utf-8")) == before
+    assert "- an item the chain rewrites" in Path(report["chapter_split"]["files"][-1]).read_text(
+        encoding="utf-8"
+    )
+
+    # ...and a chain whose split refuses leaves the source alone as well.
+    no_heading = tmp_path / "chunk.md"
+    no_heading.write_text(f"{pua} a 25-page chunk with no chapter heading\n", encoding="utf-8")
+    with pytest.raises(chapter_split.NoBoundariesError):
+        run_chain(str(no_heading), book="chunk", out_dir=str(tmp_path / "ch2"), apply=True)
+    assert pua in no_heading.read_text(encoding="utf-8")
+    assert not (tmp_path / "ch2").exists()
+
+
+def test_run_chain_dry_run_plans_the_split_on_the_repaired_text(tmp_path):
+    # The dry run read the UNREPAIRED file from disk to plan the split, so its planned files could
+    # differ from what `--apply` then wrote. Both modes split the text the chain produced now.
+    pua = symbol_pua.BULLET
+    md = f"# {pua} Chapter 1 Promoted\n\nbody\n"  # the heading marker the chain strips
+    md_path = tmp_path / "book.md"
+    md_path.write_text(md, encoding="utf-8")
+
+    dry = run_chain(str(md_path), book="b", out_dir=str(tmp_path / "ch"), apply=False)
+    wet = run_chain(str(md_path), book="b", out_dir=str(tmp_path / "ch"), apply=True)
+
+    assert dry["chapter_split"]["titles"] == wet["chapter_split"]["titles"]
+    assert pua not in dry["chapter_split"]["titles"][0]

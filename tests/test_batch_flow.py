@@ -482,12 +482,48 @@ def test_the_guard_redirects_the_real_descriptor_so_the_exit_flush_cannot_raise(
         signal.signal(signal.SIGPIPE, previous)
 
 
+def test_the_guard_drains_a_block_buffered_pipe_before_it_steps_aside():
+    """A short run can end with every print still in the buffer: nothing reached the dead pipe.
+
+    stdout to a pipe is block-buffered. The only write that hits the descriptor is then the
+    interpreter's flush at exit, after `main` has restored the original stream. Measured on the
+    GPU box with a one-book batch: manifest written, exit 120, `Exception ignored ...
+    BrokenPipeError`, and no guard notice. So `main` flushes THROUGH the guard before it steps
+    aside: the flush fails, the guard loses stdout, and the descriptor points at the null device
+    before the interpreter ever touches it.
+    """
+    import signal
+
+    from pdf2wiki.cli import _StdoutSurvivesItsReader
+
+    previous = signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+    r, w = os.pipe()
+    try:
+        inner = os.fdopen(w, "w", encoding="utf-8")  # block-buffered, as a real pipe is
+        guard = _StdoutSurvivesItsReader(inner)
+        guard.write("short\n")  # sits in the buffer; the reader has not gone yet
+        assert not guard.lost
+        os.close(r)  # now the reader is gone, with the write still buffered
+        guard.flush()  # what `main` does in its `finally`
+        assert guard.lost
+        assert os.write(w, b"raw\n") == 4  # the descriptor already points at /dev/null
+        inner.flush()  # the interpreter's exit flush: must not raise
+        inner.close()
+    finally:
+        signal.signal(signal.SIGPIPE, previous)
+
+
 def test_batch_piped_into_head_exits_zero_and_writes_the_manifest(tmp_path):
     """The real thing: a shell pipe whose reader quits after one line.
 
     Run in a subprocess so the interpreter's own exit flush is exercised too -- that flush hits
     the dead pipe after `main` has returned, and prints `Exception ignored ... BrokenPipeError`
     unless the descriptor was redirected. The exit code and the manifest are read from disk.
+
+    ONE book, and the converter sleeps: `head` reads the flushed header and leaves, and every
+    later print sits in the block buffer with nothing flushing it. That is the shape measured on
+    the GPU box (exit 120 with the first guard), and a three-book run hid it because the next
+    header's `flush=True` hit the dead pipe inside `main`.
     """
     import subprocess
 
@@ -500,11 +536,16 @@ def test_batch_piped_into_head_exits_zero_and_writes_the_manifest(tmp_path):
         "import sys\n"
         f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..', 'src')!r})\n"
         f"sys.path.insert(0, {os.path.dirname(__file__)!r})\n"
+        "import time\n"
         "import pdf2wiki.batch as batch\n"
         "from test_batch_flow import FakeLocal\n"
         "from pdf2wiki import cli\n"
-        "batch.LocalExecutor = FakeLocal\n"
-        f"rc = cli.main(['--config', {str(cfg_toml)!r}, 'batch', {_books_toml(tmp_path, 3)!r},"
+        "class SlowLocal(FakeLocal):\n"
+        "    def convert(self, *a, **k):\n"
+        "        time.sleep(1.0)  # `head` has read its one line and left by now\n"
+        "        return super().convert(*a, **k)\n"
+        "batch.LocalExecutor = SlowLocal\n"
+        f"rc = cli.main(['--config', {str(cfg_toml)!r}, 'batch', {_books_toml(tmp_path, 1)!r},"
         f" '--stage', {str(stage)!r}])\n"
         f"open({str(status)!r}, 'w').write(str(rc))\n"
         "sys.exit(rc)\n"
@@ -524,4 +565,4 @@ def test_batch_piped_into_head_exits_zero_and_writes_the_manifest(tmp_path):
     assert "stdout was closed by its reader" in proc.stderr, proc.stderr
     assert "Exception ignored" not in proc.stderr and "Traceback" not in proc.stderr, proc.stderr
     on_disk = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
-    assert [on_disk[f"book-{i}"]["status"] for i in range(3)] == ["done"] * 3
+    assert on_disk["book-0"]["status"] == "done"

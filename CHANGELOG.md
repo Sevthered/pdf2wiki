@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format is based on
   project total is the same number on every run.
 
 ### Fixed
+- **Dropping a line-edge Symbol space no longer uncovers a hard break.** `U+F020` is not whitespace
+  to CommonMark, so a line that ends in it has no hard break. `symbol_pua` deleted it and left the
+  real spaces behind it in place: `"x  <SPACE>"` became `"x  "`, a `<br>` the page does not have.
+  The tail is now cut back to the whitespace that followed the last Symbol space, which is all
+  CommonMark saw before the step. A break that was already there stays. Counted as
+  `tail_collapsed_f020` when a break was averted. The truth table gained four mixed tails and no
+  other shape changed. No corpus file holds `U+F020` (221 files on the box, the 2,392-file vault).
 - **`pdf2wiki phase5 --apply` no longer writes the source `.md`.** It wrote the repaired text back
   over the input so that `chapter_split` could read it from disk, and it did that before the split
   ran. A split that found no chapter boundary still left the input changed. The `batch` command

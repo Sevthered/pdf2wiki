@@ -1,37 +1,67 @@
 # serializer version: 1
 # name: test_marker_position_truth_table[marker_positions]
   '''
-  20748 shapes, 38 distinct outcomes
+  36948 shapes, 53 distinct outcomes
   
-     24  rewritten: dropped_f020, heading_markers, remap_f020, total_changes
+     24  rewritten: dropped_f020, heading_markers, remap_f020, tail_collapsed_f020, total_changes
+           e.g. '#\uf0a1\uf020item  \uf020' -> '# item'  {'dropped_f020': 1, 'heading_markers': 1, 'remap_f020': 1, 'tail_collapsed_f020': 1, 'total_changes': 4}
+     48  rewritten: dropped_f020, heading_markers, remap_f020, total_changes
            e.g. '#\uf0a1\uf020item\uf020' -> '# item'  {'dropped_f020': 1, 'heading_markers': 1, 'remap_f020': 1, 'total_changes': 3}
-    120  rewritten: dropped_f020, heading_markers, total_changes
+    102  rewritten: dropped_f020, heading_markers, tail_collapsed_f020, total_changes
+           e.g. '#\uf0a1 \uf020 ' -> '# '  {'dropped_f020': 1, 'heading_markers': 1, 'tail_collapsed_f020': 1, 'total_changes': 3}
+    216  rewritten: dropped_f020, heading_markers, total_changes
            e.g. '#\uf0a1\t\uf020' -> '# '  {'dropped_f020': 1, 'heading_markers': 1, 'total_changes': 2}
-     84  rewritten: dropped_f020, line_leading_dot_deferred, remap_f020, total_changes
+     84  rewritten: dropped_f020, line_leading_dot_deferred, remap_f020, tail_collapsed_f020, total_changes
+           e.g. '\uf0b7\uf020= 2x  \uf020' -> '\uf0b7 = 2x'  {'dropped_f020': 1, 'line_leading_dot_deferred': 1, 'remap_f020': 1, 'tail_collapsed_f020': 1, 'total_changes': 3}
+    168  rewritten: dropped_f020, line_leading_dot_deferred, remap_f020, total_changes
            e.g. '\uf0b7\uf020= 2x\uf020' -> '\uf0b7 = 2x'  {'dropped_f020': 1, 'line_leading_dot_deferred': 1, 'remap_f020': 1, 'total_changes': 2}
-    456  rewritten: dropped_f020, line_leading_dot_deferred, total_changes
+    456  rewritten: dropped_f020, line_leading_dot_deferred, tail_collapsed_f020, total_changes
+           e.g. '\uf0b7  \uf020' -> '\uf0b7'  {'dropped_f020': 1, 'line_leading_dot_deferred': 1, 'tail_collapsed_f020': 1, 'total_changes': 2}
+    828  rewritten: dropped_f020, line_leading_dot_deferred, total_changes
            e.g. '\uf0b7\uf020' -> '\uf0b7'  {'dropped_f020': 1, 'line_leading_dot_deferred': 1, 'total_changes': 1}
-    180  rewritten: dropped_f020, line_leading_marker_deferred, remap_f020, total_changes
+    180  rewritten: dropped_f020, line_leading_marker_deferred, remap_f020, tail_collapsed_f020, total_changes
+           e.g. '\uf077\uf020= 2x  \uf020' -> '\uf077 = 2x'  {'dropped_f020': 1, 'line_leading_marker_deferred': 1, 'remap_f020': 1, 'tail_collapsed_f020': 1, 'total_changes': 3}
+    360  rewritten: dropped_f020, line_leading_marker_deferred, remap_f020, total_changes
            e.g. '\uf077\uf020= 2x\uf020' -> '\uf077 = 2x'  {'dropped_f020': 1, 'line_leading_marker_deferred': 1, 'remap_f020': 1, 'total_changes': 2}
-   1056  rewritten: dropped_f020, line_leading_marker_deferred, total_changes
+   1092  rewritten: dropped_f020, line_leading_marker_deferred, tail_collapsed_f020, total_changes
+           e.g. '\uf077  \uf020' -> '\uf077'  {'dropped_f020': 1, 'line_leading_marker_deferred': 1, 'tail_collapsed_f020': 1, 'total_changes': 2}
+   1908  rewritten: dropped_f020, line_leading_marker_deferred, total_changes
            e.g. '\uf077\uf020' -> '\uf077'  {'dropped_f020': 1, 'line_leading_marker_deferred': 1, 'total_changes': 1}
-     48  rewritten: dropped_f020, list_markers, remap_f020, total_changes
+     48  rewritten: dropped_f020, list_markers, remap_f020, tail_collapsed_f020, total_changes
+           e.g. '\uf077\uf020item  \uf020' -> '- item'  {'dropped_f020': 1, 'list_markers': 1, 'remap_f020': 1, 'tail_collapsed_f020': 1, 'total_changes': 4}
+     96  rewritten: dropped_f020, list_markers, remap_f020, total_changes
            e.g. '\uf077\uf020item\uf020' -> '- item'  {'dropped_f020': 1, 'list_markers': 1, 'remap_f020': 1, 'total_changes': 3}
-    240  rewritten: dropped_f020, list_markers, total_changes
+    204  rewritten: dropped_f020, list_markers, tail_collapsed_f020, total_changes
+           e.g. '\uf077 \uf020 ' -> '- '  {'dropped_f020': 1, 'list_markers': 1, 'tail_collapsed_f020': 1, 'total_changes': 3}
+    432  rewritten: dropped_f020, list_markers, total_changes
            e.g. '\uf077\t\uf020' -> '- '  {'dropped_f020': 1, 'list_markers': 1, 'total_changes': 2}
-    288  rewritten: dropped_f020, marker_no_reading, remap_f020, total_changes
+    288  rewritten: dropped_f020, marker_no_reading, remap_f020, tail_collapsed_f020, total_changes
+           e.g. '#*\uf077\uf020= 2x  \uf020' -> '#*\uf077 = 2x'  {'dropped_f020': 1, 'marker_no_reading': 1, 'remap_f020': 1, 'tail_collapsed_f020': 1, 'total_changes': 3}
+    576  rewritten: dropped_f020, marker_no_reading, remap_f020, total_changes
            e.g. '#*\uf077\uf020= 2x\uf020' -> '#*\uf077 = 2x'  {'dropped_f020': 1, 'marker_no_reading': 1, 'remap_f020': 1, 'total_changes': 2}
-   1680  rewritten: dropped_f020, marker_no_reading, total_changes
+   1680  rewritten: dropped_f020, marker_no_reading, tail_collapsed_f020, total_changes
+           e.g. '#*\uf077  \uf020' -> '#*\uf077'  {'dropped_f020': 1, 'marker_no_reading': 1, 'tail_collapsed_f020': 1, 'total_changes': 2}
+   3024  rewritten: dropped_f020, marker_no_reading, total_changes
            e.g. '#*\uf077\uf020' -> '#*\uf077'  {'dropped_f020': 1, 'marker_no_reading': 1, 'total_changes': 1}
-    348  rewritten: dropped_f020, remap_f020, remap_f0b7, total_changes
+    348  rewritten: dropped_f020, remap_f020, remap_f0b7, tail_collapsed_f020, total_changes
+           e.g. '#\uf0b7\uf020item  \uf020' -> '#· item'  {'dropped_f020': 1, 'remap_f020': 1, 'remap_f0b7': 1, 'tail_collapsed_f020': 1, 'total_changes': 4}
+    696  rewritten: dropped_f020, remap_f020, remap_f0b7, total_changes
            e.g. '#\uf0b7\uf020item\uf020' -> '#· item'  {'dropped_f020': 1, 'remap_f020': 1, 'remap_f0b7': 1, 'total_changes': 3}
-    324  rewritten: dropped_f020, remap_f020, stray_markers, total_changes
+    324  rewritten: dropped_f020, remap_f020, stray_markers, tail_collapsed_f020, total_changes
+           e.g. '\t#\uf0a1\uf020= 2x  \uf020' -> '\t# = 2x'  {'dropped_f020': 1, 'remap_f020': 1, 'stray_markers': 1, 'tail_collapsed_f020': 1, 'total_changes': 4}
+    648  rewritten: dropped_f020, remap_f020, stray_markers, total_changes
            e.g. '\t#\uf0a1\uf020= 2x\uf020' -> '\t# = 2x'  {'dropped_f020': 1, 'remap_f020': 1, 'stray_markers': 1, 'total_changes': 3}
-   2064  rewritten: dropped_f020, remap_f0b7, total_changes
+   2064  rewritten: dropped_f020, remap_f0b7, tail_collapsed_f020, total_changes
+           e.g. '#\uf0b7  \uf020' -> '#·'  {'dropped_f020': 1, 'remap_f0b7': 1, 'tail_collapsed_f020': 1, 'total_changes': 3}
+   3708  rewritten: dropped_f020, remap_f0b7, total_changes
            e.g. '#\uf0b7\uf020' -> '#·'  {'dropped_f020': 1, 'remap_f0b7': 1, 'total_changes': 2}
-   1566  rewritten: dropped_f020, stray_markers, total_changes
+   1458  rewritten: dropped_f020, stray_markers, tail_collapsed_f020, total_changes
+           e.g. '\t#\uf0a1 \uf020 ' -> '\t# '  {'dropped_f020': 1, 'stray_markers': 1, 'tail_collapsed_f020': 1, 'total_changes': 3}
+   2862  rewritten: dropped_f020, stray_markers, total_changes
            e.g. '* \uf0a1\uf020' -> '* '  {'dropped_f020': 1, 'stray_markers': 1, 'total_changes': 2}
-    378  rewritten: dropped_f020, stray_unhandled, total_changes
+    504  rewritten: dropped_f020, stray_unhandled, tail_collapsed_f020, total_changes
+           e.g. '#\uf0a1  \uf020' -> '#\uf0a1'  {'dropped_f020': 1, 'stray_unhandled': 1, 'tail_collapsed_f020': 1, 'total_changes': 2}
+    630  rewritten: dropped_f020, stray_unhandled, total_changes
            e.g. '#\uf0a1\uf020' -> '#\uf0a1'  {'dropped_f020': 1, 'stray_unhandled': 1, 'total_changes': 1}
      36  rewritten: heading_markers, remap_f020, total_changes
            e.g. '#\uf0a1\uf020item' -> '# item'  {'heading_markers': 1, 'remap_f020': 1, 'total_changes': 2}
@@ -80,6 +110,6 @@
     427  unchanged: stray_unhandled
            e.g. '#\uf0a1' -> '#\uf0a1'  {'stray_unhandled': 1}
   
-  sha256 of the full table: 1245e69ad7826e99ba2e123edba2643a52636eb01ccc951d2ac90fc6ae19cb4e
+  sha256 of the full table: e655246e67467bb169bf230125aca77bb29f776b6c275d98c70a0b5b441a0331
   '''
 # ---

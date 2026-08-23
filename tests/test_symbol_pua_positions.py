@@ -63,7 +63,19 @@ _STARS = [
 _HEADS = ["", "#", "###"]  # the heading path reads the same marker after the hashes
 _GAPS = ["", " ", "  ", "\t", SPACE]  # no gap means the list pattern declines the line
 _BODIES = ["item", "= 2x", "x = 2", ""]  # an operator FIRST is a formula; a letter first is text
-_TAILS = ["", " ", "  ", SPACE, SPACE + SPACE]
+# Mixed tails: real whitespace BEHIND or AROUND the Symbol space. Every earlier tail was one kind,
+# so the table could not see that dropping the Symbol space uncovers the real spaces as a hard break.
+_TAILS = [
+    "",
+    " ",
+    "  ",
+    SPACE,
+    SPACE + SPACE,
+    " " + SPACE,
+    "  " + SPACE,  # the drop would uncover a hard break
+    " " + SPACE + " ",
+    SPACE + "  ",  # the hard break was already there, in front of CommonMark: it must stay
+]
 
 
 def _shapes() -> list[str]:
@@ -178,6 +190,7 @@ def test_the_table_is_not_all_one_answer():
         "marker_no_reading",
         "dropped_f020",
         "remap_f020",
+        "tail_collapsed_f020",
         "total_changes",
     ):
         assert counter in seen, f"no shape reaches {counter}"

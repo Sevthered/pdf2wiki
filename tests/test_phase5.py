@@ -1426,7 +1426,7 @@ def test_dropping_an_edge_symbol_space_does_not_uncover_a_hard_break():
     """
     SP = symbol_pua.SPACE
     for line, want, collapsed in (
-        ("x  " + SP, "x", 1),  # the break was hidden: cut back to what followed the space
+        ("x  " + SP, "x ", 1),  # the break was hidden: one space stays, which is no break
         ("x " + SP + " ", "x ", 1),
         ("x " + SP, "x ", 0),  # one real space is no break: nothing to avert, nothing touched
         ("x" + SP, "x", 0),  # nothing real behind it

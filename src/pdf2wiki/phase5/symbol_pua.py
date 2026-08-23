@@ -421,8 +421,12 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     claim that it did was measured false: real trailing whitespace already on the line survived, so
     ``"x  <SPACE>"`` still ended in two spaces. Now, when the spaces the drop uncovers would be a
     hard break, the tail is cut back to the whitespace that followed the last Symbol space, which is
-    all CommonMark saw before the step. A break that was already there (``"x<SPACE>  "``) stays,
-    and a tail that was never a break is not touched. Counted as ``tail_collapsed_f020``. ⚠ The head is NOT collapsed: ``<SPACE>`` before
+    all CommonMark saw before the step -- or to ONE space when nothing followed it, because one
+    space is no break and a bare marker needs its gap to be read. A break that was already there
+    (``"x<SPACE>  "``) stays, and a tail that was never a break is not touched. Counted as
+    ``tail_collapsed_f020``. ⚠ The step is line-local and cannot know whether the line ends a
+    paragraph, where CommonMark renders no break anyway; it cuts back there too, which changes
+    nothing visible. ⚠ The head is NOT collapsed: ``<SPACE>`` before
     four real spaces uncovers an indented code block the same way, but leading whitespace also
     decides list nesting, and no corpus file holds ``U+F020`` at all (221 files, 2026-08-23), so
     that reading is left to a page that shows it. ⚠ Dropping does not prevent a paragraph split, and it does not leave
@@ -458,24 +462,23 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
         while stop > start and (ln[stop - 1].isspace() or ln[stop - 1] == SPACE):
             stop -= 1
         head, body, tail = ln[:start], ln[start:stop], ln[stop:]
-        dropped = head.count(SPACE) + tail.count(SPACE)
+        tail_spaces = tail.count(SPACE)
+        dropped = head.count(SPACE) + tail_spaces
         if dropped:  # at an edge it is deleted, not spaced -- counted apart from a substitution
             stats["dropped_f020"] += dropped
         if SPACE in body:
             stats["remap_f020"] += body.count(SPACE)
-        real_tail = tail.replace(SPACE, "")
-        if SPACE in tail:
-            # CommonMark does not read the Symbol space as whitespace, so before the step the line's
-            # trailing whitespace was ONLY what followed the last Symbol space. Deleting every
-            # Symbol space would uncover the real spaces in front of it: "x  <SPACE>" became "x  ",
-            # a hard break the page does not have. Measured, and filed as the fourth claim in this
-            # module found false while correcting the others. Keeping exactly the whitespace that
-            # followed the last Symbol space keeps the rendering the line had -- including a hard
-            # break that was already there, as in "x<SPACE>  ", which is left alone.
+        real_tail = tail
+        if tail_spaces:
+            # Why the tail is cut back, and why only here: see the docstring above.
+            real_tail = tail.replace(SPACE, "")
             seen = tail[tail.rfind(SPACE) + 1 :]
             if real_tail.endswith("  ") and not seen.endswith("  "):
                 stats["tail_collapsed_f020"] += 1
-                real_tail = seen
+                # At least one space stays: it is no break, and when the body is a bare marker
+                # it is the gap `classify` needs. Review measured 108 shapes flip from a read
+                # marker to a deferred one when the cut-back left nothing.
+                real_tail = seen or " "
         ln = head.replace(SPACE, "") + body.replace(SPACE, " ") + real_tail
 
     head = ""

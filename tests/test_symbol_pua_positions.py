@@ -231,3 +231,33 @@ def test_remap_is_idempotent_on_every_shape():
         "the number of shapes that change again on the second pass -- which the chain WILL run -- "
         f"moved from the measured 15: {unstable}"
     )
+
+
+_MARKER_COUNTERS = (
+    "list_markers",
+    "heading_markers",
+    "stray_markers",
+    "stray_unhandled",
+    "line_leading_marker_deferred",
+    "marker_no_reading",
+    "line_leading_dot_deferred",
+)
+
+
+def test_a_tail_symbol_space_never_decides_how_a_marker_is_read():
+    """Strip the Symbol spaces off the end of every shape: the marker counters must not move.
+
+    The tail cut-back for the hard break (`tail_collapsed_f020`) once ate the gap after a bare
+    marker, and 108 shapes flipped from a read marker to a deferred one. The snapshot showed the
+    category shift and nobody read it. This pins the invariant instead: a Symbol space at the line
+    end is about the line end, never about the marker.
+    """
+    for line in _shapes():
+        bare = line.rstrip(SPACE)
+        if bare == line:
+            continue
+        _, with_space = symbol_pua.remap(line + "\n")
+        _, without = symbol_pua.remap(bare + "\n")
+        got = {k: with_space[k] for k in _MARKER_COUNTERS}
+        want = {k: without[k] for k in _MARKER_COUNTERS}
+        assert got == want, repr(line)

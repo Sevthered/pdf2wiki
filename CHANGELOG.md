@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`pdf2wiki phase5 --apply` no longer writes the source `.md`.** It wrote the repaired text back
+  over the input so that `chapter_split` could read it from disk, and it did that before the split
+  ran. A split that found no chapter boundary still left the input changed. The `batch` command
+  went through the same code. The CLI reference said that no command changes an existing file in
+  place, and the how-to said the opposite. The chain now hands the repaired text to the split
+  step directly. The source file keeps its bytes and its modification time in both modes. The dry
+  run also plans the split on the repaired text now. Before, it read the unrepaired file from
+  disk, so its planned files could differ from what `--apply` then wrote. Found when a
+  verification run on the GPU box rewrote two production converter outputs.
+
 ### Added
 - **`symbol_pua` reads a second list marker, `U+F077`.** *Advanced Algorithms and Data Structures*
   p494 prints a filled diamond from the `Wingdings` font at the start of each list item. The step

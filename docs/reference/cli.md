@@ -58,7 +58,7 @@ pdf2wiki phase5 <md> --book <slug> [--out DIR] [--source-name PDF] [--apply]
 | `--book` | yes | — | Book slug written into each chapter's frontmatter. |
 | `--out` | no | `<md dir>/chapters` | Directory for the split chapter files. |
 | `--source-name` | no | the `md` path | Original PDF filename for the frontmatter `source:` field (keeps staging paths out of frontmatter). |
-| `--apply` | no | off (dry-run) | Write the transformed `.md` and chapter files. Without it, pdf2wiki reports what it would do and writes nothing. |
+| `--apply` | no | off (dry-run) | Write the chapter files. The source `.md` is not changed. Without it, pdf2wiki reports what it would do and writes nothing. |
 
 Prints a per-step report (unwrapped captions, retag count, dash/mermaid/unescape fixes, chapter
 boundaries). Exit code `0`.

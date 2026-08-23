@@ -217,8 +217,8 @@ def run_batch(
         # characters shipped into the vault with nothing said about them.
         #
         # Two things guard this print, and each one is a defect that was measured here.
-        # It sits BELOW the `except` above, because `run_chain` has already rewritten the markdown
-        # and written the chapters by now: inside that `try`, an exception from printing would
+        # It sits BELOW the `except` above, because `run_chain` has already written the chapters
+        # by now: inside that `try`, an exception from printing would
         # classify a book that converted correctly as `phase5_failed` and re-convert it on resume.
         # It also carries its OWN `except`, because outside that `try` an unguarded exception left
         # `run_batch` altogether -- the remaining books never converted, no manifest was written,

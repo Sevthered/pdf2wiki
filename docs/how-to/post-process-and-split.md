@@ -25,8 +25,8 @@ pdf2wiki phase5 ~/pdf2wiki/out/my-book/my-book.md \
   --apply
 ```
 
-This overwrites the `.md` with the cleaned version and writes chapter files to
-`~/pdf2wiki/out/my-book/chapters/` (override with `--out DIR`).
+This writes the chapter files to `~/pdf2wiki/out/my-book/chapters/` (override with `--out DIR`).
+The source `.md` is not changed. Each chapter file holds the cleaned text.
 
 ## Keep the source filename in frontmatter
 

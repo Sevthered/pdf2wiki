@@ -31,7 +31,10 @@ All notable changes to this project are documented here. The format is based on
   is not a book's failure. `main` now installs one guard on stdout for every command: on the first
   broken write it points the real file descriptor at the null device, says so once on stderr, and
   discards later output. The run continues to its end with its real exit code, and the interpreter's
-  flush at exit cannot raise the same error. Proven on a real shell pipe in a subprocess.
+  flush at exit cannot raise the same error. Proven on a real shell pipe in a subprocess. A second
+  round on the GPU box found the short-run hole. With one book, every print after the header sat
+  in the block buffer. Nothing reached the dead pipe before `main` returned, and the interpreter's
+  own flush raised (exit 120). `main` now flushes through the guard before it steps aside.
 - **`pdf2wiki phase5 --apply` no longer writes the source `.md`.** It wrote the repaired text back
   over the input so that `chapter_split` could read it from disk, and it did that before the split
   ran. A split that found no chapter boundary still left the input changed. The `batch` command

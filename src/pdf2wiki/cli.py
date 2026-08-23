@@ -358,10 +358,17 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     original = sys.stdout
-    sys.stdout = cast(TextIO, _StdoutSurvivesItsReader(original))
+    guard = _StdoutSurvivesItsReader(original)
+    sys.stdout = cast(TextIO, guard)
     try:
         exit_code: int = a.fn(a, cfg)  # each _cmd_* returns an int exit code
     finally:
+        # A pipe is block-buffered, so a short run can end with every print still in the buffer
+        # and no write ever reaching the dead pipe. The interpreter flushes that buffer at exit,
+        # AFTER this function returned -- measured on the box: manifest written, exit 120,
+        # "Exception ignored ... BrokenPipeError", and the guard never fired. Drain it here,
+        # while the guard can still catch the error and redirect the descriptor.
+        guard.flush()
         sys.stdout = original
     return exit_code
 

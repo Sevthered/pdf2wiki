@@ -738,6 +738,9 @@ def test_pua_report_always_carries_every_documented_key():
         "line_leading_dot_deferred",
         "line_leading_marker_deferred",
         "dropped_f020",
+        "tail_collapsed_f020",
+        "tail_backslash_spaced_f020",
+        "marker_no_reading",
         "in_code",
         "unknown",
         "total_changes",
@@ -1441,3 +1444,52 @@ def test_dropping_an_edge_symbol_space_does_not_uncover_a_hard_break():
     assert (
         symbol_pua.remap("plain\n")[1]["tail_collapsed_f020"] == 0
     )  # always present, as its sibling
+
+
+def test_dropping_an_edge_symbol_space_does_not_uncover_a_backslash_break():
+    """CommonMark has a second hard break, and the space cut-back does not cover it.
+
+    Spec 6.7: a line that ends in an unescaped backslash breaks, exactly as two trailing spaces do.
+    Before the step the Symbol space is the last character of the line, so the backslash is not
+    line-final and there is no break. The drop makes it line-final. Measured with a CommonMark
+    parser on 0.2.10: ``"x\\<SPACE>"`` rendered ``<p>x\\<SPACE>`` before and ``<p>x<br />``
+    after.
+
+    One real space after the backslash is the rendering the page has, and it is no break. The run
+    of backslashes decides whether there is anything to avert: an even run is an escape, it prints
+    a literal backslash, and it never broke a line.
+    """
+    SP = symbol_pua.SPACE
+    B = "\\"
+    for line, want, spaced in (
+        (f"x{B}{SP}", f"x{B} ", 1),  # the break the drop uncovers: one space keeps it off
+        (f"x{B}{SP}{SP}", f"x{B} ", 1),  # two Symbol spaces, one real space
+        (f"{B}{SP}", f"{B} ", 1),  # the whole line is a backslash
+        (f"x{B}{B}{SP}", f"x{B}{B}", 0),  # an even run is an escape: it never broke the line
+        (f"x{B}{B}{B}{SP}", f"x{B}{B}{B} ", 1),  # ...and an odd one does, however long
+        (f"x{B}{SP} ", f"x{B} ", 0),  # a real space is already behind it: nothing to add
+        (f"x{B}{SP}\t", f"x{B}\t", 0),  # a tab is not a line end either
+        (f"x{B} {SP}", f"x{B} ", 0),  # the space in front of it survives the drop
+        (f"x{B}{SP}  ", f"x{B}  ", 0),  # the break CommonMark ALREADY saw is not removed
+        (f"x{B}  {SP}", f"x{B} ", 0),  # ...and the space cut-back still owns this one
+        ("no backslash here" + SP, "no backslash here", 0),
+    ):
+        out, stats = symbol_pua.remap(line + "\nnext\n")
+        assert out == want + "\nnext\n", repr(line)
+        assert stats["tail_backslash_spaced_f020"] == spaced, repr(line)
+        assert stats["dropped_f020"] == line.count(SP), repr(line)
+
+    # the two rules never fire on the same line: one adds a character, the other removes them
+    _, both = symbol_pua.remap(f"x{B}  {SP}\nnext\n")
+    assert both["tail_collapsed_f020"] == 1 and both["tail_backslash_spaced_f020"] == 0
+
+    # a backslash NOT at the line end is untouched, and so is a line with no Symbol space
+    out, stats = symbol_pua.remap(f"a{B}b{SP}c\n")
+    assert out == f"a{B}b c\n" and stats["tail_backslash_spaced_f020"] == 0
+    assert symbol_pua.remap(f"plain{B}\n")[1]["tail_backslash_spaced_f020"] == 0
+
+    # the chain runs this step TWICE, so the space it adds must not move on the second pass
+    for body in (f"x{B}", f"x{B}{B}", f"x{B}{B}{B}", B):
+        for tail in ("", SP, SP + SP, SP + " ", " " + SP, SP + "  ", "  " + SP, SP + "\t"):
+            once = symbol_pua.remap(body + tail + "\nnext\n")[0]
+            assert symbol_pua.remap(once)[0] == once, repr(body + tail)

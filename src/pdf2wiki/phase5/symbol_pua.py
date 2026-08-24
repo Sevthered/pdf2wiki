@@ -412,6 +412,17 @@ def _fix_line(ln: str, stats: Counter[str]) -> str:
     return "".join(out)
 
 
+def _ends_in_unescaped_backslash(s: str) -> bool:
+    """Is the last character of ``s`` a backslash that CommonMark reads as a hard break?
+
+    CommonMark spec 6.7 gives a line-final backslash the same meaning as two trailing spaces, but
+    only when the backslash is not itself escaped. One backslash at the line end breaks the line.
+    Two are an escape: they print one literal backslash and break nothing. Three print one and then
+    break. So the length of the run at the end decides it, and an odd run is a break.
+    """
+    return (len(s) - len(s.rstrip("\\"))) % 2 == 1
+
+
 def _remap_line(ln: str, stats: Counter[str]) -> str:
     """Substitute the verified glyphs in one line, with two exceptions the table cannot express.
 
@@ -426,7 +437,13 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     (``"x<SPACE>  "``) stays, and a tail that was never a break is not touched. Counted as
     ``tail_collapsed_f020``. ⚠ The step is line-local and cannot know whether the line ends a
     paragraph, where CommonMark renders no break anyway; it cuts back there too, which changes
-    nothing visible. ⚠ The head is NOT collapsed: ``<SPACE>`` before
+    nothing visible. ⚠ Two trailing spaces are not CommonMark's only hard break. Spec 6.7 gives a
+    line-final unescaped backslash the same meaning, so a line that ends in a backslash and then a
+    Symbol space has no break before the step and one after it. When the tail holds Symbol spaces
+    only, and the body ends in an odd run of backslashes, ONE real space stays. That space keeps
+    the rendering the page has, and a backslash in front of a space is no break. Counted as
+    ``tail_backslash_spaced_f020``, apart from the space cut-back, because it ADDS a character
+    where the cut-back removes them. ⚠ The head is NOT collapsed: ``<SPACE>`` before
     four real spaces uncovers an indented code block the same way, but leading whitespace also
     decides list nesting, and no corpus file holds ``U+F020`` at all (221 files, 2026-08-23), so
     that reading is left to a page that shows it. ⚠ Dropping does not prevent a paragraph split, and it does not leave
@@ -479,6 +496,13 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
                 # it is the gap `classify` needs. Review measured 108 shapes flip from a read
                 # marker to a deferred one when the cut-back left nothing.
                 real_tail = seen or " "
+            elif not real_tail and _ends_in_unescaped_backslash(body):
+                # CommonMark's OTHER hard break, and the same shape with a different trigger
+                # character. The tail held Symbol spaces only, so the last character of the line
+                # was one of them and the backslash was not line-final. The drop makes it
+                # line-final. One real space keeps the rendering the page has and is no break.
+                stats["tail_backslash_spaced_f020"] += 1
+                real_tail = " "
         ln = head.replace(SPACE, "") + body.replace(SPACE, " ") + real_tail
 
     head = ""
@@ -530,6 +554,10 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         Real trailing spaces that a dropped :data:`SPACE` would have uncovered as a hard break,
         cut back to the whitespace that followed the last Symbol space, so the line renders as it
         did before the step. An edit, counted toward ``total_changes``; one per line.
+    ``tail_backslash_spaced_f020``
+        A line-final backslash that a dropped :data:`SPACE` would have uncovered as CommonMark's
+        other hard break (spec 6.7), kept off the line end by one real space, so the line renders
+        as it did before the step. An edit, counted toward ``total_changes``; one per line.
     ``line_leading_marker_deferred``
         A marker in :data:`BULLETS` opening a line, left in place because it could not be read as a
         list item -- too indented, no gap after it, or an operator where the item's text would
@@ -565,6 +593,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "marker_no_reading": 0,
             "dropped_f020": 0,
             "tail_collapsed_f020": 0,
+            "tail_backslash_spaced_f020": 0,
             "in_code": {},
             "unknown": {},
             "total_changes": 0,
@@ -604,6 +633,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "marker_no_reading": 0,
         "dropped_f020": 0,
         "tail_collapsed_f020": 0,
+        "tail_backslash_spaced_f020": 0,
         "skipped_crlf": False,
     }
     report.update(stats)

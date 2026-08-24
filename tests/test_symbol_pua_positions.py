@@ -62,7 +62,11 @@ _STARS = [
 ]
 _HEADS = ["", "#", "###"]  # the heading path reads the same marker after the hashes
 _GAPS = ["", " ", "  ", "\t", SPACE]  # no gap means the list pattern declines the line
-_BODIES = ["item", "= 2x", "x = 2", ""]  # an operator FIRST is a formula; a letter first is text
+# An operator FIRST is a formula; a letter first is text. A body that ENDS in a backslash is
+# the trigger of the second hard-break rule: without one here, no shape in the table reaches
+# `tail_backslash_spaced_f020`, and a refactor that deleted that rule would reproduce this
+# snapshot and its digest unchanged. Review found the hole; the table did not.
+_BODIES = ["item", "= 2x", "x = 2", "", "item\\"]
 # Mixed tails: real whitespace BEHIND or AROUND the Symbol space. Every earlier tail was one kind,
 # so the table could not see that dropping the Symbol space uncovers the real spaces as a hard break.
 _TAILS = [
@@ -191,6 +195,7 @@ def test_the_table_is_not_all_one_answer():
         "dropped_f020",
         "remap_f020",
         "tail_collapsed_f020",
+        "tail_backslash_spaced_f020",
         "total_changes",
     ):
         assert counter in seen, f"no shape reaches {counter}"

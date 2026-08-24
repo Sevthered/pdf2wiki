@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A dropped Symbol space at a line end no longer uncovers a backslash hard break.** `symbol_pua`
+  deletes a `U+F020` at a line edge, because two real spaces there are a hard break in CommonMark.
+  CommonMark has a second hard break, spec 6.7: a line-final unescaped backslash. A line that ends
+  in a backslash and then a Symbol space has no break, because the Symbol space is the last
+  character. The drop made the backslash line-final and added a break the printed page does not
+  have. One real space stays now, which keeps the rendering and is no break. The run of backslashes
+  decides it. An even run is an escape, it prints one literal backslash, and it never broke a line.
+  Counted as `tail_backslash_spaced_f020`, apart from the space cut-back, because it adds a
+  character where the cut-back removes them. Measured with cmark, the reference implementation, over
+  108 line shapes: 10 of them changed whether the line breaks before this fix, and 0 do after it. No
+  converted file holds `U+F020` (221 files, 2,392 vault pages), so the defect is latent.
+  ([#78](https://github.com/Sevthered/pdf2wiki/issues/78))
+
+### Changed
+- **The position truth table holds 46,668 shapes (from 36,948), and it reaches the new counter.**
+  No body in the table ended in a backslash, so no shape reached `tail_backslash_spaced_f020` while
+  its sibling `tail_collapsed_f020` was reached 8,856 times. A refactor that deleted the new rule
+  reproduced the snapshot AND its sha256 digest without a change. A backslash-terminated body closes
+  that hole: 2,160 shapes reach the counter now, and the rule was removed once to prove the table
+  fails without it. The count of shapes that change again on a second pass is still 15, and every
+  one is still the filed pair of adjacent markers.
+
 ## [0.2.10] - 2026-08-23
 
 ### Added

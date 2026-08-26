@@ -1,7 +1,7 @@
 # serializer version: 1
 # name: test_marker_position_truth_table[marker_positions]
   '''
-  46668 shapes, 68 distinct outcomes
+  47532 shapes, 78 distinct outcomes
   
      12  rewritten: dropped_f020, heading_markers, remap_f020, tail_backslash_spaced_f020, total_changes
            e.g. '#\uf0a1\uf020item\\\uf020' -> '# item\\ '  {'dropped_f020': 1, 'heading_markers': 1, 'remap_f020': 1, 'tail_backslash_spaced_f020': 1, 'total_changes': 4}
@@ -93,8 +93,12 @@
            e.g. '#\uf0a1= 2x  \uf020' -> '#\uf0a1= 2x '  {'dropped_f020': 1, 'stray_unhandled': 1, 'tail_collapsed_f020': 1, 'total_changes': 2}
     714  rewritten: dropped_f020, stray_unhandled, total_changes
            e.g. '#\uf0a1\uf020' -> '#\uf0a1'  {'dropped_f020': 1, 'stray_unhandled': 1, 'total_changes': 1}
+     24  rewritten: heading_markers, marker_no_reading, total_changes
+           e.g. '#\uf0a1\t\uf077' -> '# \uf077'  {'heading_markers': 1, 'marker_no_reading': 1, 'total_changes': 1}
      54  rewritten: heading_markers, remap_f020, total_changes
            e.g. '#\uf0a1\uf020item' -> '# item'  {'heading_markers': 1, 'remap_f020': 1, 'total_changes': 2}
+     24  rewritten: heading_markers, remap_f0b7, total_changes
+           e.g. '#\uf0a1\t\uf0b7' -> '# ·'  {'heading_markers': 1, 'remap_f0b7': 1, 'total_changes': 2}
      24  rewritten: heading_markers, stray_markers, total_changes
            e.g. '#\uf0a1\t\uf0a1' -> '# '  {'heading_markers': 1, 'stray_markers': 1, 'total_changes': 2}
     204  rewritten: heading_markers, total_changes
@@ -103,43 +107,59 @@
            e.g. '\uf0b7\uf020= 2x' -> '\uf0b7 = 2x'  {'line_leading_dot_deferred': 1, 'remap_f020': 1, 'total_changes': 1}
      80  rewritten: line_leading_dot_deferred, remap_f0b7, total_changes
            e.g. '\uf0b7\uf0b7' -> '\uf0b7·'  {'line_leading_dot_deferred': 1, 'remap_f0b7': 1, 'total_changes': 1}
+     70  rewritten: line_leading_dot_deferred, stray_markers, total_changes
+           e.g. '\uf0b7\t\uf0a1' -> '\uf0b7\t'  {'line_leading_dot_deferred': 1, 'stray_markers': 1, 'total_changes': 1}
     342  rewritten: line_leading_marker_deferred, remap_f020, total_changes
            e.g. '\uf077\uf020= 2x' -> '\uf077 = 2x'  {'line_leading_marker_deferred': 1, 'remap_f020': 1, 'total_changes': 1}
-     22  rewritten: line_leading_marker_deferred, stray_markers, total_changes
-           e.g. '\uf0a1\uf0a1 ' -> '\uf0a1 '  {'line_leading_marker_deferred': 1, 'stray_markers': 1, 'total_changes': 1}
-     48  rewritten: list_markers, marker_no_reading, total_changes
+     96  rewritten: line_leading_marker_deferred, remap_f0b7, total_changes
+           e.g. '\uf077\uf0b7' -> '\uf077·'  {'line_leading_marker_deferred': 1, 'remap_f0b7': 1, 'total_changes': 1}
+     48  rewritten: line_leading_marker_deferred, stray_markers, total_changes
+           e.g. '\t\uf077\t\uf0a1' -> '\t\uf077\t'  {'line_leading_marker_deferred': 1, 'stray_markers': 1, 'total_changes': 1}
+     96  rewritten: list_markers, marker_no_reading, total_changes
            e.g. '\uf077\t\uf077' -> '- \uf077'  {'list_markers': 1, 'marker_no_reading': 1, 'total_changes': 1}
     108  rewritten: list_markers, remap_f020, total_changes
            e.g. '\uf077\uf020item' -> '- item'  {'list_markers': 1, 'remap_f020': 1, 'total_changes': 2}
-     48  rewritten: list_markers, stray_markers, total_changes
-           e.g. '\uf0a1\t\uf0a1' -> '- '  {'list_markers': 1, 'stray_markers': 1, 'total_changes': 2}
+     96  rewritten: list_markers, remap_f0b7, total_changes
+           e.g. '\uf077\t\uf0b7' -> '- ·'  {'list_markers': 1, 'remap_f0b7': 1, 'total_changes': 2}
+     96  rewritten: list_markers, stray_markers, total_changes
+           e.g. '\uf077\t\uf0a1' -> '- '  {'list_markers': 1, 'stray_markers': 1, 'total_changes': 2}
     408  rewritten: list_markers, total_changes
            e.g. '\uf077\t' -> '- '  {'list_markers': 1, 'total_changes': 1}
     576  rewritten: marker_no_reading, remap_f020, total_changes
            e.g. '#*\uf077\uf020= 2x' -> '#*\uf077 = 2x'  {'marker_no_reading': 1, 'remap_f020': 1, 'total_changes': 1}
+     96  rewritten: marker_no_reading, remap_f0b7, total_changes
+           e.g. '#\uf0b7\uf077' -> '#·\uf077'  {'marker_no_reading': 1, 'remap_f0b7': 1, 'total_changes': 1}
+     48  rewritten: marker_no_reading, stray_markers, total_changes
+           e.g. 'a\uf077\t\uf0a1' -> 'a\uf077\t'  {'marker_no_reading': 1, 'stray_markers': 1, 'total_changes': 1}
     702  rewritten: remap_f020, remap_f0b7, total_changes
            e.g. '#\uf0b7\uf020item' -> '#· item'  {'remap_f020': 1, 'remap_f0b7': 1, 'total_changes': 2}
     648  rewritten: remap_f020, stray_markers, total_changes
            e.g. '\t#\uf0a1\uf020= 2x' -> '\t# = 2x'  {'remap_f020': 1, 'stray_markers': 1, 'total_changes': 2}
+     84  rewritten: remap_f0b7, stray_markers, total_changes
+           e.g. '#\uf0b7\t\uf0a1' -> '#·\t'  {'remap_f0b7': 1, 'stray_markers': 1, 'total_changes': 2}
+     20  rewritten: remap_f0b7, stray_unhandled, total_changes
+           e.g. '#\uf0a1\uf0b7' -> '#\uf0a1·'  {'remap_f0b7': 1, 'stray_unhandled': 1, 'total_changes': 1}
    3374  rewritten: remap_f0b7, total_changes
            e.g. '#\uf0b7' -> '#·'  {'remap_f0b7': 1, 'total_changes': 1}
-      7  rewritten: stray_markers, stray_unhandled, total_changes
-           e.g. '#\uf0a1\uf0a1 ' -> '#\uf0a1 '  {'stray_markers': 1, 'stray_unhandled': 1, 'total_changes': 1}
-   2586  rewritten: stray_markers, total_changes
+   2582  rewritten: stray_markers, total_changes
            e.g. '* \uf0a1' -> '* '  {'stray_markers': 1, 'total_changes': 1}
+    146  unchanged: adjacent_markers
+           e.g. '\uf077\uf077' -> '\uf077\uf077'  {'adjacent_markers': 2}
     726  unchanged: line_leading_dot_deferred
            e.g. '\uf0b7' -> '\uf0b7'  {'line_leading_dot_deferred': 1}
+     80  unchanged: line_leading_dot_deferred, marker_no_reading
+           e.g. '\uf0b7\uf077' -> '\uf0b7\uf077'  {'line_leading_dot_deferred': 1, 'marker_no_reading': 1}
+     10  unchanged: line_leading_dot_deferred, stray_unhandled
+           e.g. '\uf0b7\uf0a1' -> '\uf0b7\uf0a1'  {'line_leading_dot_deferred': 1, 'stray_unhandled': 1}
    1662  unchanged: line_leading_marker_deferred
            e.g. '\uf077' -> '\uf077'  {'line_leading_marker_deferred': 1}
-     64  unchanged: line_leading_marker_deferred, marker_no_reading
-           e.g. '\uf077\uf077' -> '\uf077\uf077'  {'line_leading_marker_deferred': 1, 'marker_no_reading': 1}
-     10  unchanged: line_leading_marker_deferred, stray_unhandled
-           e.g. '\uf0a1\uf0a1' -> '\uf0a1\uf0a1'  {'line_leading_marker_deferred': 1, 'stray_unhandled': 1}
-   2724  unchanged: marker_no_reading
+     48  unchanged: line_leading_marker_deferred, marker_no_reading
+           e.g. '\t\uf077\t\uf077' -> '\t\uf077\t\uf077'  {'line_leading_marker_deferred': 1, 'marker_no_reading': 1}
+   2715  unchanged: marker_no_reading
            e.g. '#*\uf077' -> '#*\uf077'  {'marker_no_reading': 1}
-    553  unchanged: stray_unhandled
+    547  unchanged: stray_unhandled
            e.g. '#\uf0a1' -> '#\uf0a1'  {'stray_unhandled': 1}
   
-  sha256 of the full table: f8124de24a37d539bf8517a2c01c9bf45be71b21e57869faf254d053cd9455f5
+  sha256 of the full table: dea105b2d96e6a8a2f070e9d2747a7a94098aca59c4f2b78ae2e7c8f73761041
   '''
 # ---

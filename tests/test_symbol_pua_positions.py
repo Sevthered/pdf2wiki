@@ -4,12 +4,16 @@
 
 """The positional truth table for `symbol_pua`, snapshotted.
 
-WHY THIS FILE EXISTS. `symbol_pua` reads one concept -- a marker -- in five position-dependent
-ways: after a heading's hashes, opening a line inside CommonMark's indent limit, opening a line
-outside it, separating two words, and flush between two of them. Those five readings USED TO live in
-three anchored regexes and two branches of a character walk, so every change meant five decisions.
-Nine fresh-context review rounds found the same shape of defect again and again: a caution applied
-where the author was looking and not where the same constant is read next door.
+WHY THIS FILE EXISTS. `symbol_pua` reads one concept -- a marker -- in six position-dependent ways:
+after a heading's hashes, opening a line inside CommonMark's indent limit, opening a line outside
+it, separating two words, flush between two of them, and touching another marker. Five of those
+USED TO live in three anchored regexes and two branches of a character walk, so every change meant
+five decisions. Nine fresh-context review rounds found the same shape of defect again and again: a
+caution applied where the author was looking and not where the same constant is read next door.
+
+The sixth reading, adjacency, was added last and for the opposite reason: not because one rule was
+written five times, but because NO rule covered the shape at all, so the pair was read piecewise
+and the module contradicted itself across the two passes the chain runs (#74).
 
 This file was written BEFORE `classify` collapsed those five readings into one, so that the
 collapse had an oracle to reproduce rather than an argument. It stays afterwards for the same
@@ -35,6 +39,7 @@ see -- and pasting one through a shell silently mangles it.
 
 import os
 import sys
+from itertools import product
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -102,7 +107,8 @@ def _shapes() -> list[str]:
         # mid-line controls: the same marker where no positional rule applies
         for left, right in (("word", "next"), ("word ", " next"), ("word", " next")):
             out.append(f"{left}{marker}{right}")
-        # two adjacent markers: the known shape that needs two passes to settle
+        # two adjacent markers: the #74 shape. It needed two passes to settle, and the second
+        # pass turned the first pass's refusal into a repair. Refused as a run now.
         out.append(f"word{marker}{marker} next")
 
     # TWO markers on one line. A line opens ONCE, and what the first marker's action emits is what
@@ -110,11 +116,19 @@ def _shapes() -> list[str]:
     # prefix, so `#<M>   <M> ` counted TWO promoted headings on one heading and normalised the
     # trailing whitespace a second time. Nothing above reaches that: every shape there carries a
     # single marker.
-    for marker in (BULLET, DIAMOND, DOT):
+    #
+    # ⚠ The pair is drawn from the MARKERS TWICE OVER, not from one marker used twice. It used to
+    # be `f"{left}{marker}{mid}{marker}{right}"` -- the same marker on both sides -- so no shape in
+    # 46,668 ever put a `DOT` next to a `BULLET`. The adjacency fix for #74 then broke the `DOT`
+    # deferral (`<DOT><BULLET> item` was rewritten to `· item` and counted as a repair), and the
+    # whole table, the group counts AND the sha256 digest reproduced without a murmur. Review found
+    # it; the oracle could not. A pair axis that cannot hold two DIFFERENT markers cannot see a
+    # rule that fires on the difference.
+    for first, second in product((BULLET, DIAMOND, DOT), repeat=2):
         for left in ("", " ", "   ", "\t", "#", "###", "*", "a", "a "):
             for mid in ("", " ", "   ", "\t"):
                 for right in ("", " ", "  ", "b"):
-                    out.append(f"{left}{marker}{mid}{marker}{right}")
+                    out.append(f"{left}{first}{mid}{second}{right}")
     return sorted(set(out))
 
 
@@ -204,17 +218,29 @@ def test_the_table_is_not_all_one_answer():
 def test_remap_is_idempotent_on_every_shape():
     """The chain runs `symbol_pua` TWICE, so a shape that keeps changing corrupts on the second pass.
 
-    Every unstable shape in the table is the one already filed: TWO ADJACENT markers. Pass one
-    refuses the first of the pair (it is flush against another marker, which has no safe reading)
-    and deletes the second, and pass two then reads the survivor as a line-opening or a stray marker
-    and acts on it. That is pre-existing, it has no corpus instance, and it is filed rather than
-    fixed.
+    This asserted **15** unstable shapes for two releases, pinned rather than tolerated. Every one
+    was the filed defect (#74): TWO ADJACENT markers, read PIECEWISE. Pass one refused the first of
+    the pair -- flush against another marker, which has no safe reading -- and DELETED the second,
+    because a real space survived to its right and that reads as a separator. The deletion then
+    moved the survivor into a position pass two read as a list item or a heading.
 
-    ⚠ It is pinned by SHAPE and by COUNT rather than tolerated, so a second unstable family -- or one
-    more instance of this one -- fails here instead of joining an allow-list that grows quietly.
-    Measured against the pre-refactor module over this same table: **17** shapes were unstable there
-    and **15** are here, the two removed being tab-indented ones the column fix now defers. The
-    refactor introduced none.
+    ⛔ The damage was not the extra pass. It was that **ten of the fifteen turned a first-pass
+    REFUSAL into a second-pass REPAIR** -- `line_leading_marker_deferred` became `list_markers`,
+    `stray_unhandled` became `heading_markers` -- which is the one thing `_ACTIONS` promises never
+    happens. And because `residue_lines` takes the high-water mark of the two passes, the operator
+    was told a marker had been "LEFT IN PLACE" on a line the chain had already rewritten, and sent
+    to render a page and write by hand a list item the chain had invented on its own. Measured on
+    the real chain before the fix: two warnings claiming two markers left in place, and a chapter
+    file holding **zero**.
+
+    The fix reads adjacency FIRST, in `classify`, and refuses the whole run: every reading in that
+    function was verified against a page printing ONE marker, so a run of them has no reading at
+    all. Both are kept, both are counted as `adjacent_markers`, and neither counts as a change.
+
+    ⚠ The count is now **0**, and it is asserted as 0 rather than deleted. An unstable shape of any
+    family is a defect from here, so a new one fails here instead of joining an allow-list that
+    grows quietly. History for the next reader: 17 shapes before the position refactor, 15 after
+    it, 0 now.
     """
     unstable = [
         line
@@ -222,20 +248,61 @@ def test_remap_is_idempotent_on_every_shape():
         if symbol_pua.remap(symbol_pua.remap(line + "\n")[0])[0] != symbol_pua.remap(line + "\n")[0]
     ]
 
-    # ...and only `BULLET + BULLET` pairs: `DOT` is a verified glyph, so both of a pair are
-    # substituted in the first pass and nothing is left for the second to act on, and a `DIAMOND`
-    # is never deleted, so nothing it leaves behind changes on a second read. A first version of the
-    # second marker promoted it to a heading; then `#<D> <D> ` kept the second diamond on pass one
-    # and pass two read `# <D> ` as a heading again -- 12 shapes, the filed defect in a new family.
-    # Withholding the heading reading, which no rendered page verifies anyway, removed them all.
-    assert all(BULLET + BULLET in line for line in unstable), (
-        "an unstable shape that is NOT two adjacent markers is a new defect, not the filed one: "
-        f"{[line for line in unstable if BULLET + BULLET not in line]}"
+    assert unstable == [], (
+        "a shape that changes again on the second pass -- which the chain WILL run. Every such "
+        f"shape was the adjacent-marker pair, and that is fixed, so this is a new defect: {unstable}"
     )
-    assert len(unstable) == 15, (
-        "the number of shapes that change again on the second pass -- which the chain WILL run -- "
-        f"moved from the measured 15: {unstable}"
-    )
+
+
+def test_adjacent_markers_are_refused_rather_than_read_piecewise():
+    """A marker touching another marker is kept, counted, and never counted as a change.
+
+    This is the invariant behind #74, stated directly rather than only as a by-product of the
+    idempotence sweep. Reading one of a pair while the other is deleted is what let a refusal
+    become a repair, so the property that matters is that BOTH survive and NEITHER is a change.
+    """
+    for line in (
+        f"word{BULLET}{BULLET} next",  # mid-word: the shape the issue was filed on
+        f"{BULLET}{BULLET} an item",  # line-opening: pass two used to write `- an item`
+        f"#{BULLET}{BULLET} a heading",  # after hashes: pass two used to write `# a heading`
+        f"{BULLET}{BULLET}{BULLET} three",  # a run longer than two
+        f"{BULLET}{DIAMOND} mixed",  # the pair need not be the same marker
+    ):
+        out, rep = symbol_pua.remap(line + "\n")
+        assert out == line + "\n", f"text changed for {line!r}: {out!r}"
+        assert rep["total_changes"] == 0, f"a refusal counted as a change for {line!r}"
+        assert rep["adjacent_markers"] >= 2, f"both of the pair must be counted for {line!r}"
+
+
+def test_a_marker_after_a_line_leading_dot_never_cancels_the_dot_deferral():
+    """A `DOT` that opens its line is deferred, whatever follows it.
+
+    ⛔ The first version of the adjacency fix broke this. `_remap_line` asks `classify` one narrow
+    question -- does this `DOT` open its line? -- and the adjacency test answered a wider one, so
+    `<DOT><BULLET> item` came back `Pos.ADJACENT`, the deferral branch was skipped, and the dot was
+    REWRITTEN to a middle dot. That flattens a list to a paragraph, counts as a repair, and drops
+    the operator warning: the exact rewrite the `DOT` docstring says the module must never make.
+    428 shapes lost the deferral, and the truth table could not see one of them, because its pair
+    axis used the same marker on both sides. `_remap_line` passes `runs=False` now.
+
+    ⚠ The second case is the over-fire guard. Putting `Pos.ADJACENT` in the caller's tuple would
+    have fixed the first case and broken this one, where the dot does NOT open the line and must
+    still be substituted.
+    """
+    for line, want_deferred in (
+        (f"{DOT}{BULLET} item", True),
+        (f"  {DOT}{BULLET} nested", True),
+        (f"{DOT}{DIAMOND} item", True),
+        (f"{DOT} item", True),
+        (f"{BULLET}{DOT} item", False),  # the dot does not open the line: substitute it
+        (f"word{DOT} next", False),
+    ):
+        _, rep = symbol_pua.remap(line + "\n")
+        deferred = bool(rep["line_leading_dot_deferred"])
+        assert deferred is want_deferred, (
+            f"{line!r}: line_leading_dot_deferred={rep['line_leading_dot_deferred']}, "
+            f"remap_f0b7={rep.get('remap_f0b7', 0)}"
+        )
 
 
 _MARKER_COUNTERS = (
@@ -246,6 +313,7 @@ _MARKER_COUNTERS = (
     "line_leading_marker_deferred",
     "marker_no_reading",
     "line_leading_dot_deferred",
+    "adjacent_markers",
 )
 
 

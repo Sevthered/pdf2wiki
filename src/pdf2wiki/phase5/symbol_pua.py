@@ -102,6 +102,15 @@ of console output must not become a markdown list item, and a PUA codepoint insi
 content we must not silently rewrite -- it is reported under ``unknown`` instead.
 
 Idempotent: after a pass no mapped PUA codepoint remains outside code, so a second pass is a no-op.
+
+⚠ That claim was FALSE for two ADJACENT markers, and the chain runs this step twice on it. The pair
+was read piecewise -- the first refused as flush against a marker, the second deleted because a real
+space survived to its right -- and the deletion moved the survivor into a position the second pass
+read as a list item or a heading. Ten shapes turned a REFUSAL into a repair that way, and because
+`residue_lines` takes the high-water mark of the two passes, the operator was warned that a marker
+had been "LEFT IN PLACE" on a line the chain had already rewritten. A marker touching another marker
+is now :data:`Pos.ADJACENT`: every reading here was verified against a page printing ONE marker, so
+a run of them has no reading, and both are kept and counted (``adjacent_markers``).
 """
 
 import re
@@ -220,11 +229,13 @@ _NOT_LIST_TEXT = frozenset("=≈≠≡±×÷→←↔⇒⇔∇≤≥∈∉∞")
 class Pos(Enum):
     """Where a marker sits on its line.
 
-    This module reads one concept -- a marker -- in five position-dependent ways, and the position
-    decides the answer in every rule. Those five readings used to live in three anchored regexes and
-    two branches of a character walk, so every change to one of them meant five separate decisions.
+    This module reads one concept -- a marker -- in six position-dependent ways, and the position
+    decides the answer in every rule. Five of them used to live in three anchored regexes and two
+    branches of a character walk, so every change to one of them meant five separate decisions.
     Nine fresh-context review rounds found the same shape of defect again and again: a caution added
-    where the author was looking, and not where the same constant is read next door.
+    where the author was looking, and not where the same constant is read next door. The sixth,
+    :data:`Pos.ADJACENT`, came later and from the opposite direction: no rule covered a marker
+    beside a marker, so the pair was read piecewise and the module contradicted itself.
 
     The reading is :func:`classify` alone now, and what each reading MEANS is the :data:`_ACTIONS`
     table, so a position is decided in one place.
@@ -244,6 +255,9 @@ class Pos(Enum):
         Not at a line-opening position, and not a marker in :data:`STRIPPABLE`: verified as a
         bullet at a line start only, so there is no reading for it here, and it may be a Greek
         letter the table should carry rather than a marker at all.
+    ``ADJACENT``
+        Touching another marker. Every reading below was verified against a page that prints ONE
+        marker, so a marker beside a marker has no reading at all, and both of the pair are kept.
     """
 
     HEADING = "heading"
@@ -252,6 +266,7 @@ class Pos(Enum):
     SEPARATOR = "separator"
     FLUSH = "flush"
     UNREAD = "unread"
+    ADJACENT = "adjacent"
 
 
 #: What each position means: the counter it raises, and whether the marker SURVIVES the pass. The
@@ -268,6 +283,7 @@ _ACTIONS: dict[Pos, tuple[str, bool]] = {
     Pos.SEPARATOR: ("stray_markers", False),
     Pos.FLUSH: ("stray_unhandled", True),
     Pos.UNREAD: ("marker_no_reading", True),
+    Pos.ADJACENT: ("adjacent_markers", True),
 }
 
 
@@ -285,15 +301,18 @@ def _columns(indent: str) -> int:
     return col
 
 
-def classify(left: str, right: str, *, opened: bool = False, strippable: bool = True) -> Pos:
+def classify(
+    left: str, right: str, *, opened: bool = False, strippable: bool = True, runs: bool = True
+) -> Pos:
     """Return where a marker sits, from the text emitted before it and the text still ahead of it.
 
     ``strippable`` says the marker may be deleted mid-line (:data:`STRIPPABLE`), and it is the
     marker with a rendered HEADING page behind it. Any other marker is verified as a list item at a
-    line start only, so it is read in three ways, all of which keep it: :data:`Pos.LIST` where the
-    verified reading applies, :data:`Pos.LINE_OPEN` after hashes or where the list test fails, and
-    :data:`Pos.UNREAD` anywhere else. The per-reading evidence rule of :data:`GLYPHS` applies to
-    the structural readings too: a list page does not verify a heading reading.
+    line start only, so it is read in four ways, all of which keep it: :data:`Pos.ADJACENT` beside
+    another marker, which is tested first, :data:`Pos.LIST` where the verified reading applies,
+    :data:`Pos.LINE_OPEN` after hashes or where the list test fails, and :data:`Pos.UNREAD`
+    anywhere else. The per-reading evidence rule of :data:`GLYPHS` applies to the structural
+    readings too: a list page does not verify a heading reading.
 
     ⚠ That is also what keeps the chain's SECOND pass from deleting such a marker. The heading
     action leaves ``# <M> `` behind when a second, kept marker follows the gap, and a heading path
@@ -320,7 +339,34 @@ def classify(left: str, right: str, *, opened: bool = False, strippable: bool = 
     ⚠ ``right`` must reach past the gap: the text test reads the first character AFTER the
     whitespace, and ``[ \t]+`` would backtrack to one space and then inspect a space, which is not
     an operator -- the guard passes and the formula becomes a list item. One space hid it.
+
+    ⚠ The adjacency test runs FIRST, ahead of every reading below, because a marker that touches
+    another marker is the one shape none of them was verified against. Testing it later let the
+    pair be read PIECEWISE -- the first of the two flush against a marker and refused, the second
+    with a real space to its right and deleted as a separator -- and the deletion then moved the
+    survivor into a position the chain's SECOND pass read as a list item or a heading. Ten shapes
+    turned a first-pass REFUSAL into a second-pass repair that way, which is the one thing
+    :data:`_ACTIONS` promises never happens. Refusing the whole run is what makes this function's
+    answer independent of how many passes run over it.
+
+    ⚠ ``runs`` says whether a neighbouring marker is part of the question, and :func:`_remap_line`
+    is the one caller that passes ``False``. That caller does not ask what to DO with a marker. It
+    asks one narrower thing -- does this :data:`DOT` open its line? -- so that it can defer the
+    per-book bullet-or-dot judgment. Running the adjacency test for it answered a question it never
+    asked: ``<DOT><BULLET> item`` returned :data:`Pos.ADJACENT`, the deferral branch was skipped,
+    and the dot was REWRITTEN to a middle dot and counted as a repair, which is the exact rewrite
+    :data:`DOT` says this module must never make. 428 shapes lost the deferral that way. Adding
+    :data:`Pos.ADJACENT` to that caller's tuple instead would over-fire on ``<BULLET><DOT> item``,
+    where the dot does not open the line at all: the position question and the run question are
+    two questions, so they take two answers.
     """
+    # ⚠ Membership, not slice-in-string: `"" in BULLETS` is True, so `left[-1:] in BULLETS` would
+    # refuse EVERY marker in column 0, where `left` is empty. An empty needle finds everything.
+    if runs:
+        neighbours = {left[-1:], right[:1]} - {""}
+        if neighbours & set(BULLETS):
+            return Pos.ADJACENT
+
     if opened:
         pos = Pos.SEPARATOR if left[-1:].isspace() or right[:1].isspace() else Pos.FLUSH
         return pos if strippable else Pos.UNREAD
@@ -507,7 +553,9 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
 
     head = ""
     at = ln.find(DOT)
-    if at != -1 and classify(ln[:at], ln[at + 1 :]) in (Pos.LIST, Pos.LINE_OPEN):
+    # `runs=False`: this asks only whether the dot OPENS its line. A marker that follows it is a
+    # different question, and answering that one here rewrote the dot instead of deferring it.
+    if at != -1 and classify(ln[:at], ln[at + 1 :], runs=False) in (Pos.LIST, Pos.LINE_OPEN):
         stats["line_leading_dot_deferred"] += 1  # never guess: bullet or dot, per-book judgment
         head, ln = ln[: at + 1], ln[at + 1 :]
 
@@ -563,6 +611,11 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         list item -- too indented, no gap after it, or an operator where the item's text would
         start -- and deleting it would flatten a nested list or a formula. Needs a human, like
         ``unknown``: read the rendered page and decide whether the line is a list item.
+    ``adjacent_markers``
+        A marker in :data:`BULLETS` that TOUCHES another one, left in place with its neighbour.
+        Every other reading in :func:`classify` was verified against a page that prints ONE marker,
+        so a run of them has no reading at all. Needs a human: render the page and write the line
+        by hand. Counted once per marker, so a pair raises it by two.
     ``marker_no_reading``
         A marker that is not in :data:`STRIPPABLE`, found away from a line-opening position. It is
         verified as a bullet at a line start only, and its slot is a Greek letter in Adobe Symbol
@@ -591,6 +644,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "line_leading_dot_deferred": 0,
             "line_leading_marker_deferred": 0,
             "marker_no_reading": 0,
+            "adjacent_markers": 0,
             "dropped_f020": 0,
             "tail_collapsed_f020": 0,
             "tail_backslash_spaced_f020": 0,
@@ -631,6 +685,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "line_leading_dot_deferred": 0,
         "line_leading_marker_deferred": 0,
         "marker_no_reading": 0,
+        "adjacent_markers": 0,
         "dropped_f020": 0,
         "tail_collapsed_f020": 0,
         "tail_backslash_spaced_f020": 0,
@@ -639,13 +694,14 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
     report.update(stats)
     report["in_code"] = dict(in_code)
     report["unknown"] = dict(unknown)
-    # These four count glyphs deliberately LEFT IN PLACE — not changes. Counting them would make
+    # These five count glyphs deliberately LEFT IN PLACE — not changes. Counting them would make
     # a refusal to guess read as a successful repair.
     deliberate = {
         "stray_unhandled",
         "line_leading_dot_deferred",
         "line_leading_marker_deferred",
         "marker_no_reading",
+        "adjacent_markers",
     }
     report["total_changes"] = sum(v for k, v in stats.items() if k not in deliberate)
     return out, report

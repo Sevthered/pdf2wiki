@@ -77,6 +77,13 @@ def residue_lines(report: dict[str, Any]) -> list[str]:
         out.append(
             "  Render the source page: a stray marker, or a letter phase5.symbol_pua should carry"
         )
+    adjacent = max(sp["adjacent_markers"], sp2["adjacent_markers"])
+    if adjacent:
+        out.append(
+            f"⚠ {adjacent} marker(s) TOUCHING ANOTHER MARKER and LEFT IN PLACE — every reading is"
+            " verified against a page printing ONE marker, so a run of them has none"
+        )
+        out.append("  Render the source page, then write the line by hand")
     if sp2["in_code"]:
         out.append(f"· verified glyphs left inside code fences: {sp2['in_code']}")
     if sp2["unknown"]:

@@ -7,6 +7,27 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **Two markers that touch each other are refused as a run, and the operator warning is true
+  again.** `symbol_pua` read a pair of adjacent markers one marker at a time. It refused the first
+  marker, because a marker on one side and a letter on the other side give no safe reading. It then
+  deleted the second marker, because a real space survived to the right of it. That deletion moved
+  the survivor to a position that the next pass reads as a list item or as a heading. The chain
+  runs this step two times. **Ten line shapes turned a first-pass refusal into a second-pass
+  repair.** `line_leading_marker_deferred` became `list_markers`, and `stray_unhandled` became
+  `heading_markers`. The `_ACTIONS` table promises that a refusal never reads as a repair, so this
+  broke the central rule of the step. The report made the result worse. `residue_lines` takes the
+  high-water mark of the two passes, so it kept the refusal from the first pass. A run of the real
+  chain gave two warnings that two markers stay in place. It told the operator to render the page
+  and to write the list item by hand. The chapter file on disk held **zero** markers, and it held a
+  list item that the step invented. `classify` reads adjacency first now. Every other reading in
+  that function comes from a page that prints ONE marker, so a run of markers has no reading at
+  all. The step keeps both markers, counts them as `adjacent_markers`, and counts neither one as a
+  change. `_remap_line` asks `classify` one narrower question, and it passes `runs=False` for it.
+  That caller asks only if a `U+F0B7` opens its line, so that it can defer the per-book
+  bullet-or-dot judgment. The first version of this fix let the adjacency test answer that question
+  too. `<DOT><BULLET> item` became `· item`, which flattens a list to a paragraph, counts as a
+  repair, and drops the operator warning. 428 shapes lost the deferral.
+  ([#74](https://github.com/Sevthered/pdf2wiki/issues/74))
 - **A dropped Symbol space at a line end no longer uncovers a backslash hard break.** `symbol_pua`
   deletes a `U+F020` at a line edge, because two real spaces there are a hard break in CommonMark.
   CommonMark has a second hard break, spec 6.7: a line-final unescaped backslash. A line that ends
@@ -26,8 +47,24 @@ All notable changes to this project are documented here. The format is based on
   its sibling `tail_collapsed_f020` was reached 8,856 times. A refactor that deleted the new rule
   reproduced the snapshot AND its sha256 digest without a change. A backslash-terminated body closes
   that hole: 2,160 shapes reach the counter now, and the rule was removed once to prove the table
-  fails without it. The count of shapes that change again on a second pass is still 15, and every
-  one is still the filed pair of adjacent markers.
+  fails without it.
+- **The truth table holds 47,532 shapes (from 46,668), and a marker pair can hold two DIFFERENT
+  markers.** The pair axis put the same marker on both sides, so no shape of the 46,668 ever put a
+  `U+F0B7` next to a `U+F0A1`. The adjacency rule above fires on the difference, so the table could
+  not see the `DOT` regression that rule introduced. The group counts and the sha256 digest both
+  reproduced while 428 shapes lost the deferral. A review pass found it, and the oracle did not.
+  The axis draws the pair from the markers two times over now. That adds 864 shapes and **11
+  distinct outcomes that no shape reached before** (67 to 78). The regression was put back one time
+  to prove that the table fails with it. **A pair axis that cannot hold two different markers
+  cannot see a rule that fires on the difference.**
+- **No shape in the truth table changes again on a second pass. The count was 15, and it is 0.**
+  It was 17 before the position refactor. The test asserted the number 15 for two releases, and it
+  pinned the defect rather than to accept it. Every one of the 15 was the adjacent-marker pair, and
+  the fix above removes all of them. The test asserts 0 now, so an unstable shape of any family
+  fails there. 74 shapes reach `adjacent_markers`. **21 of them stop being rewritten**, and the
+  other 53 keep the text they always kept but report the true reason. The rule was removed one time
+  to prove that the table fails without it, and all three tests failed, the sha256 digest included.
+  The step is idempotent now, which is what the module docstring always claimed.
 
 ## [0.2.10] - 2026-08-23
 

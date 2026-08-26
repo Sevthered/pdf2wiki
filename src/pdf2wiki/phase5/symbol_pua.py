@@ -310,6 +310,15 @@ def _is_inert(body: str) -> bool:
     ⚠ Deliberately narrow. A digit is excluded although only ``1.`` and ``1)`` open a list, and
     ``**bold**`` is excluded although it opens nothing. Widening this needs a measurement, not an
     argument: every widening this module has taken on an argument has been wrong.
+
+    ⚠ **This tests whether the body OPENS a block. It cannot see that the line sits INSIDE one that
+    is already open**, where CommonMark passes leading whitespace through verbatim. The step is
+    line-local, so ``<pre>`` / ``<SPACE>    literal`` / ``</pre>`` loses the four spaces ``<pre>``
+    would have rendered. The blindness is knowingly accepted rather than guarded, on a measurement:
+    over 1,680 converted files the converter emits ``<details>`` 8,604 times, ``<table>`` 3,024
+    times, ``<div>`` and ``<script>`` besides -- all whitespace-insensitive -- and ``<pre>`` **zero**
+    times, with ``U+F020`` itself absent from the same corpus. 🔑 So the whitelist's promise is
+    narrower than it first reads: it constrains the BODY, never the surrounding block.
     """
     return (
         bool(_INERT_BODY.match(body))
@@ -529,9 +538,14 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     step and an indented code block after it. ⚠ **No rendered page was needed after all.** The
     question here is not what the glyph prints, which is why :data:`DOT` refuses; it is which
     indent the parser already saw, and that is measurable. ⚠ The cut-back does NOT apply when the
-    whitespace before the first Symbol space is already four columns or more: the line is an
-    indented code block on its own, where the whitespace behind the Symbol space is literal
-    content and deleting it would edit the code. Columns, not characters, through :func:`_columns`
+    whitespace before the first Symbol space is already four columns or more. At the top level that
+    line is an indented code block on its own, where the whitespace behind the Symbol space is
+    literal content and deleting it would edit the code. ⚠ The guard measures ABSOLUTE columns, and
+    "four columns is a code block" holds only at the top level. Inside a list item, code starts four
+    columns after the item's content indent, so the same promotion happens there and this rule
+    DECLINES rather than repairs it: `-   item` / `    text` / `     <SPACE>    more` keeps nine
+    columns. That is the previous release's output, so it is a limit and not a regression, and the
+    absolute guard is conservative in the safe direction. Columns, not characters, through :func:`_columns`
     -- a tab is four (spec 2.2). ⚠ It applies only to a body :func:`_is_inert` accepts, which is a
     WHITELIST and not a list of dangerous shapes. Three review rounds each found a shape a
     blacklist did not name, and every one of them read a narrower string than :func:`classify` and

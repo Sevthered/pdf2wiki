@@ -16,8 +16,12 @@ All notable changes to this project are documented here. The format is based on
   preceded the first one. That is the indent the parser read before the step. The rule counts
   columns and not characters, because a tab advances to the next multiple of four (spec 2.2). The
   cut-back does not apply when four or more columns of real whitespace already sit in front of the
-  first Symbol space. That line is an indented code block on its own. The whitespace behind the
-  Symbol space is literal code there, and a cut-back would edit the code. Counted as
+  first Symbol space. At the top level that line is an indented code block on its own. The
+  whitespace behind the Symbol space is literal code there, and a cut-back would edit the code. The
+  guard measures absolute columns, and four columns means code only at the top level. Inside a list
+  item, code starts four columns after the content indent of the item. The same promotion happens
+  there, and this rule declines to repair it. That is the output of the previous release, so it is a
+  limit and not a regression. Counted as
   `head_collapsed_f020`, apart from `dropped_f020`, which holds every benign drop and points an
   operator at nothing.
   **The rule edits only a body that is provably inert.** The body must start with a letter, and it
@@ -30,7 +34,14 @@ All notable changes to this project are documented here. The format is based on
   CommonMark read. Two of them turned a documented refusal into a repair, which the `_ACTIONS`
   table promises never happens, and one deleted a list marker. A body the whitelist does not accept
   keeps the handling of the previous release.
-  Measured with cmark-gfm. Over 2,244 two-line shapes, which carry every shape the three review
+  The whitelist constrains the body, and it does not constrain the block that contains the line.
+  The step reads one line. It cannot see that the line sits inside an HTML block that is
+  already open. CommonMark passes leading whitespace through there without a change. A `<pre>` block loses
+  the spaces it would have rendered. This limit is accepted on a measurement instead of a guard.
+  Over 1,680 converted files the converter emits `<details>` 8,604 times, `<table>` 3,024 times, and
+  `<div>` and `<script>` besides. All of those ignore whitespace. It emits `<pre>` zero times, and
+  `U+F020` is absent from the same corpus.
+  Measured with cmark-gfm. Over 2,688 two-line shapes, which carry every shape the three review
   rounds found: 1,191 shapes changed their block structure before this fix, 1,143 do after it, and
   this change introduces none of them. Over the 47,532 shapes of the previous truth table the
   output is byte-identical to the previous release, in text and in counters. The step stays

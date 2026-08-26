@@ -738,6 +738,7 @@ def test_pua_report_always_carries_every_documented_key():
         "line_leading_dot_deferred",
         "line_leading_marker_deferred",
         "dropped_f020",
+        "head_collapsed_f020",
         "tail_collapsed_f020",
         "tail_backslash_spaced_f020",
         "marker_no_reading",

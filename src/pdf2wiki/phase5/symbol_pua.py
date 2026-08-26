@@ -287,6 +287,38 @@ _ACTIONS: dict[Pos, tuple[str, bool]] = {
 }
 
 
+#: A body this rule will move to column 0. It is a WHITELIST, and that direction is the whole
+#: design. Three review rounds each found a shape a blacklist of block openers did not name: a PUA
+#: marker behind the space, an emphasis opener in front of one (``*<MARKER>``), promoted hashes
+#: (``#<MARKER>``), a Symbol space used as the delimiter itself (``-<SPACE>item``), an HTML block,
+#: and the two-hyphen setext underline. Each time the guard tested a narrower string than
+#: :func:`classify` and CommonMark actually read. A whitelist cannot fail that way: an unlisted
+#: shape is simply not edited, which is the behavior of the release before this rule.
+_INERT_BODY = re.compile(r"[A-Za-z]")
+
+
+def _is_inert(body: str) -> bool:
+    """Is ``body`` provably safe to move to column 0?
+
+    Safe means three things at once. It starts with a LETTER, so it opens no list, heading, quote,
+    fence, thematic break or setext underline, and it is no HTML block. It holds no marker from
+    :data:`BULLETS` and no :data:`DOT`, so moving it cannot change how :func:`classify` reads one --
+    the invariant the tail already carries, and the one this rule broke twice. It holds no
+    :data:`SPACE`, because the body written out is ``body.replace(SPACE, " ")``, so a Symbol space
+    inside it can BECOME the delimiter of an opener that is not visible here.
+
+    ⚠ Deliberately narrow. A digit is excluded although only ``1.`` and ``1)`` open a list, and
+    ``**bold**`` is excluded although it opens nothing. Widening this needs a measurement, not an
+    argument: every widening this module has taken on an argument has been wrong.
+    """
+    return (
+        bool(_INERT_BODY.match(body))
+        and not any(m in body for m in BULLETS)
+        and DOT not in body
+        and SPACE not in body
+    )
+
+
 def _columns(indent: str) -> int:
     r"""Return the width of ``indent`` in COLUMNS, the unit CommonMark measures an indent in.
 
@@ -489,10 +521,21 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     only, and the body ends in an odd run of backslashes, ONE real space stays. That space keeps
     the rendering the page has, and a backslash in front of a space is no break. Counted as
     ``tail_backslash_spaced_f020``, apart from the space cut-back, because it ADDS a character
-    where the cut-back removes them. ⚠ The head is NOT collapsed: ``<SPACE>`` before
-    four real spaces uncovers an indented code block the same way, but leading whitespace also
-    decides list nesting, and no corpus file holds ``U+F020`` at all (221 files, 2026-08-23), so
-    that reading is left to a page that shows it. ⚠ Dropping does not prevent a paragraph split, and it does not leave
+    where the cut-back removes them. ⚠ The head is cut back too, by the MIRROR of the tail
+    rule: the tail keeps the whitespace that followed the LAST Symbol space, the head keeps the
+    whitespace that preceded the FIRST one. That is the indent CommonMark read before the step,
+    because ``U+F020`` is not whitespace to it -- every real space behind one is CONTENT, and the
+    drop promotes it to indent. ``<SPACE>`` and four real spaces is a paragraph line before the
+    step and an indented code block after it. ⚠ **No rendered page was needed after all.** The
+    question here is not what the glyph prints, which is why :data:`DOT` refuses; it is which
+    indent the parser already saw, and that is measurable. ⚠ The cut-back does NOT apply when the
+    whitespace before the first Symbol space is already four columns or more: the line is an
+    indented code block on its own, where the whitespace behind the Symbol space is literal
+    content and deleting it would edit the code. Columns, not characters, through :func:`_columns`
+    -- a tab is four (spec 2.2). ⚠ It applies only to a body :func:`_is_inert` accepts, which is a
+    WHITELIST and not a list of dangerous shapes. Three review rounds each found a shape a
+    blacklist did not name, and every one of them read a narrower string than :func:`classify` and
+    CommonMark do. An unlisted body is simply not edited. Counted as ``head_collapsed_f020``. ⚠ Dropping does not prevent a paragraph split, and it does not leave
     the rendering unchanged either. ``U+F020`` is not whitespace to CommonMark, so a line that holds
     one and nothing else is a paragraph **continuation** line before this step and a **blank** line
     after it, whichever way the space is handled. Measured with a CommonMark parser:
@@ -531,6 +574,33 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
             stats["dropped_f020"] += dropped
         if SPACE in body:
             stats["remap_f020"] += body.count(SPACE)
+        # The head is cut back for the same reason the tail is, and by the mirror
+        # rule: the tail keeps what followed the LAST Symbol space, the head keeps
+        # what preceded the FIRST one. See the docstring above.
+        real_head = head.replace(SPACE, "")
+        # `body` guards a line that is ONLY whitespace and Symbol spaces: it is a blank line to
+        # CommonMark either way, so a cut-back there would report an edit that changes no
+        # rendering -- the "points an operator at nothing" failure this counter exists to avoid.
+        if head.count(SPACE) and body:
+            seen_head = head[: head.find(SPACE)]
+            # The tail twin fires only when a hard break would really appear. The head mirrors
+            # that: below `_TAB_STOP` columns the indent changes no rendering for a body that
+            # opens no block, so an edit there reports a repair that repairs nothing.
+            # ⚠ The head must be CommonMark indentation and nothing else. The edge scan above
+            # uses `str.isspace()`, which is wider than the parser: `U+00A0` and `U+2003` are
+            # `isspace()` and are NOT indentation to CommonMark, and PDF text is full of them. On
+            # `<NBSP><SPACE>    text` the line stands at indent 0 both before and after the drop,
+            # so no code block was ever possible, and a cut-back there would delete four real
+            # spaces of paragraph CONTENT and report an indent repair. The whitelist covers the
+            # head for the same reason it covers the body: an unlisted shape is not edited.
+            plain_indent = set(head) <= {" ", "\t", SPACE}
+            if (
+                plain_indent
+                and _columns(real_head) >= _TAB_STOP > _columns(seen_head)
+                and _is_inert(body)
+            ):
+                stats["head_collapsed_f020"] += 1
+                real_head = seen_head
         real_tail = tail
         if tail_spaces:
             # Why the tail is cut back, and why only here: see the docstring above.
@@ -549,7 +619,7 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
                 # line-final. One real space keeps the rendering the page has and is no break.
                 stats["tail_backslash_spaced_f020"] += 1
                 real_tail = " "
-        ln = head.replace(SPACE, "") + body.replace(SPACE, " ") + real_tail
+        ln = real_head + body.replace(SPACE, " ") + real_tail
 
     head = ""
     at = ln.find(DOT)
@@ -606,6 +676,12 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         A line-final backslash that a dropped :data:`SPACE` would have uncovered as CommonMark's
         other hard break (spec 6.7), kept off the line end by one real space, so the line renders
         as it did before the step. An edit, counted toward ``total_changes``; one per line.
+    ``head_collapsed_f020``
+        Real LEADING spaces that a dropped :data:`SPACE` would have promoted from content to
+        indent, cut back to the whitespace that preceded the first Symbol space, so the line keeps
+        the indent CommonMark read before the step. An edit, counted toward ``total_changes``; one
+        per line. Counted apart from ``dropped_f020``, which holds every benign drop and so points
+        an operator at nothing.
     ``line_leading_marker_deferred``
         A marker in :data:`BULLETS` opening a line, left in place because it could not be read as a
         list item -- too indented, no gap after it, or an operator where the item's text would
@@ -648,6 +724,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "dropped_f020": 0,
             "tail_collapsed_f020": 0,
             "tail_backslash_spaced_f020": 0,
+            "head_collapsed_f020": 0,
             "in_code": {},
             "unknown": {},
             "total_changes": 0,
@@ -689,12 +766,13 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "dropped_f020": 0,
         "tail_collapsed_f020": 0,
         "tail_backslash_spaced_f020": 0,
+        "head_collapsed_f020": 0,
         "skipped_crlf": False,
     }
     report.update(stats)
     report["in_code"] = dict(in_code)
     report["unknown"] = dict(unknown)
-    # These five count glyphs deliberately LEFT IN PLACE — not changes. Counting them would make
+    # These count glyphs deliberately LEFT IN PLACE — not changes. Counting them would make
     # a refusal to guess read as a successful repair.
     deliberate = {
         "stray_unhandled",

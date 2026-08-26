@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-08-26
+
 ### Fixed
 - **A dropped Symbol space at a line head no longer turns content into indent.** `symbol_pua`
   deletes a `U+F020` at a line edge. `U+F020` is not whitespace to CommonMark, so every real space
@@ -791,7 +793,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.10...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...HEAD
+[0.2.11]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.7...v0.2.8

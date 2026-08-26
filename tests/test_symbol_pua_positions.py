@@ -58,6 +58,17 @@ _INDENTS = [
     "    ",  # four spaces: over the limit, and the shape that used to be DELETED
     "\t",  # one tab is four columns to CommonMark and one character to the regex
     " \t",
+    # Symbol spaces IN the indent (#77). `U+F020` is not whitespace to CommonMark, so every real
+    # space BEHIND one is content, and dropping the Symbol space promotes that content to indent.
+    # ⚠ These do NOT let the table reach `head_collapsed_f020`, and an earlier version of this
+    # comment claimed they did. Every shape `_shapes()` builds carries a marker, and `_is_inert`
+    # rejects a body that holds one, so no row here can fire the rule. Review proved it: stubbing
+    # the condition to `if False` reproduces this snapshot AND its digest byte for byte. What
+    # these three cover is the must-NOT-fire path, which is most of the rule. The firing path is
+    # asserted directly by `test_a_plain_body_is_still_cut_back`.
+    SPACE + "    ",  # indent 0 before the step, an indented code block after it
+    "  " + SPACE + "  ",  # real whitespace on BOTH sides: 2 columns before, 4 after
+    "    " + SPACE,  # already a code block at 4 columns: the cut-back must NOT fire
 ]
 _STARS = [
     "",
@@ -198,6 +209,10 @@ def test_the_table_is_not_all_one_answer():
         _, rep = symbol_pua.remap(line + "\n")
         seen.update(k for k, v in rep.items() if v and k not in ("in_code", "unknown"))
 
+    # ⚠ `head_collapsed_f020` is NOT in this list, and that is a property of the table rather than
+    # an omission: every shape it builds carries a marker, and the head rule edits only a body that
+    # holds none. `test_a_plain_body_is_still_cut_back` asserts the counter directly, so a refactor
+    # that deletes the rule still fails a test.
     for counter in (
         "list_markers",
         "heading_markers",
@@ -334,3 +349,187 @@ def test_a_tail_symbol_space_never_decides_how_a_marker_is_read():
         got = {k: with_space[k] for k in _MARKER_COUNTERS}
         want = {k: without[k] for k in _MARKER_COUNTERS}
         assert got == want, repr(line)
+
+
+def test_a_dropped_head_symbol_space_never_promotes_content_to_indent():
+    """#77: the head-side twin of #73, and the mirror rule.
+
+    ``U+F020`` is not whitespace to CommonMark, so the indent it read before the step is the real
+    whitespace BEFORE the first Symbol space. Everything behind that Symbol space is content. The
+    drop used to keep it all, which is how ``<SPACE>`` and four real spaces became an indented code
+    block: a paragraph line before the step, a code block after it.
+
+    Measured with cmark-gfm over 400 shapes: 80 changed their indent-derived structure on `main`,
+    0 on this rule.
+
+    ⚠ The rule fires only when the drop reaches `_TAB_STOP` columns, which mirrors the tail twin:
+    that one fires only when a hard break would really appear. Below four columns the indent
+    changes no rendering for a body that opens no block, and an edit there would report a repair
+    that repairs nothing.
+    """
+    cases = [
+        (SPACE + "    text", "text"),  # the issue's own repro
+        (SPACE + "     text", "text"),
+        ("  " + SPACE + "    text", "  text"),  # 2 columns before the step, 4 after
+        (SPACE + "\ttext", "text"),  # a tab is four columns, not one character
+        (SPACE + "   " + SPACE + " text", "text"),  # two Symbol spaces, one indent
+    ]
+    for line, want in cases:
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == want + "\n", repr(line)
+        assert rep["head_collapsed_f020"] == 1, repr(line)
+
+
+def test_the_head_cut_back_leaves_a_real_indented_code_block_alone():
+    """The one shape the rule must NOT touch, and the reason it is a rule and not a strip.
+
+    When four columns of real whitespace already sit in front of the first Symbol space, the line
+    is an indented code block on its own, before the step. The whitespace behind the Symbol space
+    is then literal code content, and cutting it back would edit the code -- the same class of
+    edit `DOT` exists to refuse.
+    """
+    line = "    " + SPACE + "   text"
+    got, rep = symbol_pua.remap(line + "\n")
+    assert got == "       text\n"  # 4 columns of indent + 3 literal content spaces
+    assert rep["head_collapsed_f020"] == 0
+    assert rep["dropped_f020"] == 1
+
+
+def test_a_head_symbol_space_with_no_real_whitespace_behind_it_is_only_dropped():
+    """A drop that uncovers nothing needs no cut-back, and must not claim one.
+
+    `dropped_f020` holds every benign drop, which is why #77 said it points an operator at nothing.
+    The new counter has to stay narrow enough to mean something.
+    """
+    for line in (SPACE + "text", SPACE + SPACE + "text", " " + SPACE + "text"):
+        _, rep = symbol_pua.remap(line + "\n")
+        assert rep["head_collapsed_f020"] == 0, repr(line)
+        assert rep["dropped_f020"] >= 1, repr(line)
+
+
+def test_the_head_rule_counts_columns_and_not_characters():
+    """CommonMark spec 2.2: a tab advances to the next multiple of four.
+
+    Reading a tab as one character is a live bug elsewhere in this module (the ``[ \\t]{0,3}``
+    limits), so the head rule must not repeat it. ``<SPACE><TAB>`` is four columns and crosses the
+    threshold; ``  <SPACE>\\t`` reaches four columns from two, and crosses it too.
+    """
+    assert symbol_pua._columns("\t") == 4
+    assert symbol_pua._columns("  \t") == 4  # the tab completes the group, it does not add four
+    assert symbol_pua._columns("    ") == 4
+    assert symbol_pua._columns("   ") == 3
+    got, rep = symbol_pua.remap("  " + SPACE + "\ttext\n")
+    assert got == "  text\n"
+    assert rep["head_collapsed_f020"] == 1
+
+
+def test_the_head_is_left_alone_unless_the_body_is_provably_inert():
+    """The whitelist, and the three review rounds behind it.
+
+    A blacklist of block openers was wrong three times, and each time it tested a narrower string
+    than `classify` and CommonMark read: a PUA marker behind the Symbol space, an emphasis opener
+    in front of one, promoted hashes, a Symbol space used as the delimiter itself, an HTML block,
+    and the two-hyphen setext underline. Every shape below was a measured regression in one of
+    those rounds. The rule now edits only a body that starts with a letter and carries no marker
+    and no Symbol space, so an unnamed shape is not edited at all.
+    """
+    for body in (
+        "- item",
+        "1. one",
+        "1) one",
+        "# head",
+        "> quote",
+        "```",
+        "~~~",
+        "*** ",
+        "___ ",
+        "===",
+        "--",
+        "<table>",
+        "<div>",
+        "<!-- c -->",
+        "**bold**",
+        BULLET + " item",
+        DIAMOND + " item",
+        DOT + " item",  # round two
+        "*" + DIAMOND + " item",
+        "#" + BULLET + " item",  # round three: prefix before a marker
+        "-" + SPACE + "item",
+        "#" + SPACE + "h",  # round three: SPACE as the delimiter
+    ):
+        line = "  " + SPACE + "  " + body
+        _, rep = symbol_pua.remap(line + "\n")
+        assert rep["head_collapsed_f020"] == 0, repr(line)
+
+
+def test_an_inert_body_still_renders_like_the_source_under_a_paragraph():
+    """The property the rule exists for, on the shape that broke the first version."""
+    src = "para above\n" + SPACE + "    text\n"
+    got, rep = symbol_pua.remap(src)
+    assert got == "para above\ntext\n"
+    assert rep["head_collapsed_f020"] == 1
+
+
+def test_a_plain_body_is_still_cut_back():
+    """The whitelist must stay wide enough to fix the issue's own repro."""
+    for body in ("text", "word two", "a - b"):
+        line = SPACE + "    " + body
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == body + "\n", repr(line)
+        assert rep["head_collapsed_f020"] == 1, repr(line)
+
+
+def test_a_whitespace_only_line_reports_no_head_cut_back():
+    """Both forms are a blank line to CommonMark, so an edit there points an operator at nothing."""
+    _, rep = symbol_pua.remap("  " + SPACE + "  \n")
+    assert rep["head_collapsed_f020"] == 0
+
+
+def test_a_head_symbol_space_never_decides_how_a_marker_is_read():
+    """The head twin of `test_a_tail_symbol_space_never_decides_how_a_marker_is_read`.
+
+    Review caught both ways this rule broke the invariant on a body that opens with a PUA marker.
+    A cut-back moves the marker to column 0, and a DEFERRAL becomes a REPAIR
+    (`line_leading_marker_deferred` -> `list_markers`), which `_ACTIONS` promises never happens. A
+    refusal keeps the Symbol space in front of the marker, so `classify` stops reading the marker
+    as line-leading, it becomes a stray, and a stray is DELETED -- the flattened nested list of
+    `bug-symbol-pua-nested-bullet-deleted`, which this project has shipped once already. It also
+    left 857 shapes unstable across the chain's two passes, because the same pass deleted the
+    marker that justified the refusal.
+
+    Both branches therefore step aside for a marker body, and the counters must match the tree
+    that has no head rule at all.
+    """
+    for marker in (BULLET, DIAMOND, DOT):
+        for head in (
+            SPACE + "    ",
+            "  " + SPACE + "  ",
+            SPACE + "\t",
+            SPACE + "   " + SPACE + " ",
+        ):
+            line = head + marker + " item"
+            got, rep = symbol_pua.remap(line + "\n")
+            assert rep["head_collapsed_f020"] == 0, repr(line)
+            assert rep["stray_markers"] == 0, repr(line)  # the marker is never deleted
+            # and the line settles: the chain runs this step twice
+            assert symbol_pua.remap(got)[0] == got, repr(line)
+
+
+def test_a_head_that_is_not_commonmark_indentation_is_left_alone():
+    """`str.isspace()` is wider than CommonMark indentation, and PDF text is full of the difference.
+
+    ``U+00A0`` and ``U+2003`` are `isspace()` in Python and are not indentation to the parser. A
+    line that opens with one stands at indent 0 before AND after the drop, so no indented code
+    block was ever possible, and a cut-back would delete real paragraph content while reporting an
+    indent repair. Review found this. The whitelist covers the head for the same reason it covers
+    the body.
+    """
+    for pad in ("\u00a0", "\u2003", "\u3000", ""):
+        line = pad + SPACE + "    text"
+        got, rep = symbol_pua.remap(line + "\n")
+        if pad:
+            assert rep["head_collapsed_f020"] == 0, repr(line)
+            assert got == pad + "    text\n", repr(line)  # the real spaces stay, as on 0.2.10
+        else:
+            assert rep["head_collapsed_f020"] == 1, repr(line)
+            assert got == "text\n", repr(line)

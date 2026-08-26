@@ -738,6 +738,11 @@ def test_pua_report_always_carries_every_documented_key():
         "line_leading_dot_deferred",
         "line_leading_marker_deferred",
         "dropped_f020",
+        "head_collapsed_f020",
+        # `run_chain` reads this one from BOTH passes, including the hand-built CRLF-refusal dict,
+        # so dropping it there would raise KeyError on the first CRLF document. It arrived with the
+        # previous PR and was never pinned here.
+        "adjacent_markers",
         "tail_collapsed_f020",
         "tail_backslash_spaced_f020",
         "marker_no_reading",

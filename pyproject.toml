@@ -49,6 +49,12 @@ dev = [
     "reuse>=5",
     "pre-commit>=4.6.1",
     "pytest-cov>=7.1.0",
+    # The CommonMark reference implementation, for the rendering oracle in
+    # tests/test_symbol_pua_rendering.py. Dev-only, so it does not reach the wheel or affect the
+    # AGPL distribution. cmark is the reference implementation and it decides: markdown-it-py
+    # disagrees with it on a hard break after a backslash, which made an earlier measurement report
+    # five regressions that were not real.
+    "cmarkgfm>=2025.10.22",
 ]
 
 [tool.ruff]

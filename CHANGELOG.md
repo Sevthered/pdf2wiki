@@ -7,6 +7,48 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **A dropped Symbol space at a line head no longer turns content into indent.** `symbol_pua`
+  deletes a `U+F020` at a line edge. `U+F020` is not whitespace to CommonMark, so every real space
+  behind one is content, not indent. The drop kept all of that whitespace and promoted it to
+  indent. A Symbol space and then four real spaces is a paragraph line before the step and an
+  indented code block after it. The head is cut back now, by the mirror of the tail rule. The tail
+  keeps the whitespace that followed the last Symbol space, and the head keeps the whitespace that
+  preceded the first one. That is the indent the parser read before the step. The rule counts
+  columns and not characters, because a tab advances to the next multiple of four (spec 2.2). The
+  cut-back does not apply when four or more columns of real whitespace already sit in front of the
+  first Symbol space. At the top level that line is an indented code block on its own. The
+  whitespace behind the Symbol space is literal code there, and a cut-back would edit the code. The
+  guard measures absolute columns, and four columns means code only at the top level. Inside a list
+  item, code starts four columns after the content indent of the item. The same promotion happens
+  there, and this rule declines to repair it. That is the output of the previous release, so it is a
+  limit and not a regression. Counted as
+  `head_collapsed_f020`, apart from `dropped_f020`, which holds every benign drop and points an
+  operator at nothing.
+  **The rule edits only a body that is provably inert.** The body must start with a letter, and it
+  must hold no PUA marker and no Symbol space. This is a whitelist, and the direction is the
+  design. A first version listed the dangerous shapes instead, and three review rounds each found a
+  shape the list did not name. Those shapes are a PUA marker behind the Symbol space, an emphasis
+  opener in front of one, and promoted hashes. They also include a Symbol space used as the
+  delimiter of an ASCII opener, an HTML block, and the two-hyphen setext underline. Each of those
+  guards read a narrower string than `classify` and
+  CommonMark read. Two of them turned a documented refusal into a repair, which the `_ACTIONS`
+  table promises never happens, and one deleted a list marker. A body the whitelist does not accept
+  keeps the handling of the previous release.
+  The whitelist constrains the body, and it does not constrain the block that contains the line.
+  The step reads one line. It cannot see that the line sits inside an HTML block that is
+  already open. CommonMark passes leading whitespace through there without a change. A `<pre>` block loses
+  the spaces it would have rendered. This limit is accepted on a measurement instead of a guard.
+  Over 1,680 converted files the converter emits `<details>` 8,604 times, `<table>` 3,024 times, and
+  `<div>` and `<script>` besides. All of those ignore whitespace. It emits `<pre>` zero times, and
+  `U+F020` is absent from the same corpus.
+  Measured with cmark-gfm. Over 2,688 two-line shapes, which carry every shape the three review
+  rounds found: 1,191 shapes changed their block structure before this fix, 1,143 do after it, and
+  this change introduces none of them. Over the 47,532 shapes of the previous truth table the
+  output is byte-identical to the previous release, in text and in counters. The step stays
+  idempotent across the two passes the chain runs. The issue asked for a rendered page first. No
+  page was needed. The question is not what the glyph prints. It is which indent the parser already
+  saw, and that is measurable.
+  ([#77](https://github.com/Sevthered/pdf2wiki/issues/77))
 - **Two markers that touch each other are refused as a run, and the operator warning is true
   again.** `symbol_pua` read a pair of adjacent markers one marker at a time. It refused the first
   marker, because a marker on one side and a letter on the other side give no safe reading. It then

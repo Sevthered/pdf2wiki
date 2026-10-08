@@ -739,6 +739,8 @@ def test_pua_report_always_carries_every_documented_key():
         "line_leading_marker_deferred",
         "dropped_f020",
         "head_collapsed_f020",
+        # `run_chain` reads this one from both passes too, for the residue line of #94.
+        "head_kept_f020",
         # `run_chain` reads this one from BOTH passes, including the hand-built CRLF-refusal dict,
         # so dropping it there would raise KeyError on the first CRLF document. It arrived with the
         # previous PR and was never pinned here.
@@ -1147,6 +1149,21 @@ def test_pua_marker_no_reading_reaches_the_operator(tmp_path):
     report = phase5.run_chain(str(md), "book")
     lines = phase5.residue_lines(report)
     assert any(ln.startswith("⚠ 2 list-marker codepoint(s) found AWAY FROM") for ln in lines), lines
+    assert any("Render the source page" in ln for ln in lines)
+
+
+def test_pua_kept_head_space_reaches_the_operator(tmp_path):
+    # #94. A Symbol space kept in front of a block opener is a refusal, and a refusal no command
+    # prints reaches no human. It is the high-water mark of the two passes, like the others.
+    from pdf2wiki import phase5
+
+    md = tmp_path / "book.md"
+    md.write_text(f"# Title\n\npara\n{SYMBOL_SPACE}- not a list item\nnext\n", encoding="utf-8")
+    report = phase5.run_chain(str(md), "book")
+    assert report["symbol_pua"]["head_kept_f020"] == 1
+    assert report["symbol_pua"]["total_changes"] == 0
+    lines = phase5.residue_lines(report)
+    assert any(ln.startswith("⚠ 1 Symbol-font space(s) LEFT IN PLACE") for ln in lines), lines
     assert any("Render the source page" in ln for ln in lines)
 
 

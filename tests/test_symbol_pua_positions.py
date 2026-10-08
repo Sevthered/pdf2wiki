@@ -225,6 +225,9 @@ def test_the_table_is_not_all_one_answer():
         "remap_f020",
         "tail_collapsed_f020",
         "tail_backslash_spaced_f020",
+        # Reached through the three indents that hold a Symbol space, wherever the text in front
+        # of the marker is a real Markdown opener (`* <M>`) or no opener the marker can use (`**`).
+        "head_kept_f020",
         "total_changes",
     ):
         assert counter in seen, f"no shape reaches {counter}"
@@ -533,3 +536,183 @@ def test_a_head_that_is_not_commonmark_indentation_is_left_alone():
         else:
             assert rep["head_collapsed_f020"] == 1, repr(line)
             assert got == "text\n", repr(line)
+
+
+def test_a_head_symbol_space_in_front_of_a_block_opener_is_kept(block_openers):
+    """#94: the drop put a block opener at the start of its line, and the opener became structure.
+
+    ``U+F020`` is not whitespace to CommonMark, so a line that starts with one is paragraph text
+    whatever comes next. ``<SPACE># Title`` is a paragraph line before the step. The plain drop
+    wrote ``# Title``, which is a heading. Nothing shows which of the two the page prints, so the
+    step keeps the Symbol space and counts it, the same answer :data:`DOT` gives.
+
+    The count is per Symbol space, like ``dropped_f020``, and it is a refusal: it is not a change,
+    and the same space is not counted as dropped as well.
+    """
+    for head in (SPACE, " " + SPACE, SPACE + SPACE, SPACE + " ", SPACE + "    "):
+        for body in block_openers:
+            line = head + body
+            got, rep = symbol_pua.remap(line + "\n")
+            assert got == line + "\n", repr(line)
+            assert rep["head_kept_f020"] == head.count(SPACE), repr(line)
+            assert rep["dropped_f020"] == 0, repr(line)
+            assert rep["head_collapsed_f020"] == 0, repr(line)
+            assert rep["total_changes"] == 0, repr(line)
+            # and the line settles: the chain runs this step twice
+            assert symbol_pua.remap(got)[0] == got, repr(line)
+
+
+def test_a_kept_head_does_not_stop_the_rest_of_the_line():
+    """Only the head is refused. A Symbol space inside the body and one at the tail are still read."""
+    got, rep = symbol_pua.remap(SPACE + "# a" + SPACE + "b" + SPACE + "\n")
+    assert got == SPACE + "# a b\n"
+    assert rep["head_kept_f020"] == 1
+    assert rep["remap_f020"] == 1  # the one inside the body became a real space
+    assert rep["dropped_f020"] == 1  # the one at the tail was dropped, and only that one
+
+
+def test_a_head_symbol_space_in_front_of_a_letter_is_still_dropped():
+    """The control. A body that starts with a letter opens no block, so the drop is safe.
+
+    "A letter" is `str.isalpha()`, not ASCII. The first version of the rule tested `[A-Za-z]` and
+    kept the Symbol space in front of an accented letter, where the previous release wrote a clean
+    line. Measured before it was widened: 48,965 letters of the Basic Multilingual Plane, 60
+    contexts each, and the drop changed the block structure of no line.
+    """
+    for line in (
+        SPACE + "text",
+        SPACE + SPACE + "Text more",
+        " " + SPACE + "x = 1",
+        SPACE + "\u00e9 accent",
+        SPACE + "\u03c0 radians",  # a real Greek letter, not the Symbol glyph
+    ):
+        got, rep = symbol_pua.remap(line + "\n")
+        assert SPACE not in got, repr(line)
+        assert rep["head_kept_f020"] == 0, repr(line)
+        assert rep["dropped_f020"] >= 1, repr(line)
+
+
+def test_a_head_symbol_space_in_front_of_a_mapped_glyph_is_still_dropped():
+    """The likely real shape: a line that starts inside a Symbol-font run.
+
+    Review found that the first version of the rule kept the Symbol space here, because a PUA
+    glyph is not a letter. Seventeen of the nineteen glyphs are written out as a non-ASCII
+    character, and the drop in front of one changed the rendering of no measured line, so the line
+    is cleaned as it was before #94. The other two are the parentheses, and the next test is why
+    they are not here.
+    """
+    for glyph, real in symbol_pua.GLYPHS.items():
+        if glyph == SPACE or real.isascii():
+            continue
+        got, rep = symbol_pua.remap(SPACE + glyph + " (pi) symbol 56\n")
+        if glyph == DOT:  # a line-opening dot is deferred, and the head in front of it still goes
+            assert got == DOT + " (pi) symbol 56\n"
+        else:
+            assert got == real + " (pi) symbol 56\n", repr(glyph)
+        assert rep["head_kept_f020"] == 0, repr(glyph)
+
+
+def test_a_glyph_written_out_as_ascii_does_not_unlock_the_drop():
+    """``U+F028`` becomes ``(``, and ``(`` opens the title of a link reference definition.
+
+    ``[x]: /u`` and then ``<SPACE><F028>see note<F029>`` is a definition and a paragraph before the
+    step. With the head dropped the second line is ``(see note)``, a valid title, and the whole
+    line is swallowed: it renders as nothing. Review found it, and the first measurement could not,
+    because it compared block tags and a swallowed line leaves them equal. So a glyph is judged by
+    what it is written out as, and an ASCII character gets no benefit of the doubt.
+    """
+    lparen, rparen = "\uf028", "\uf029"
+    assert symbol_pua.GLYPHS[lparen] == "(" and symbol_pua.GLYPHS[rparen] == ")"
+    for glyph in (lparen, rparen):
+        got, rep = symbol_pua.remap("[x]: /u\n" + SPACE + glyph + "see note" + rparen + "\nnext\n")
+        assert got.split("\n")[1].startswith(SPACE), repr(glyph)
+        assert rep["head_kept_f020"] == 1, repr(glyph)
+
+
+def test_no_glyph_is_written_out_as_an_ascii_letter():
+    """A property of the table that the #94 whitelist leans on, pinned so a new entry cannot break it.
+
+    A glyph that is written out as a non-ASCII character is judged with the indent guard. An ASCII
+    letter is judged without it, because that ground belongs to #77. A glyph that became an ASCII
+    letter would be read by the first rule on one pass and, once written out, by the second rule
+    on the next: kept, then dropped, with a warning about a Symbol space that is gone. No entry
+    does that today. If this fails, read `_head_may_be_dropped` before adding the entry.
+    """
+    for glyph, written in symbol_pua.GLYPHS.items():
+        assert not (written.isascii() and written.isalpha()), repr(glyph)
+
+
+def test_the_indent_guard_measures_indent_as_the_parser_does():
+    """Real spaces behind the Symbol space become indent whatever else the head holds.
+
+    The first version of the guard was switched off for any head that held a character other than
+    a space, a tab or a Symbol space. ``<SPACE>    <NBSP>`` is such a head, and its four real spaces
+    are indent once the Symbol space in front of them is gone: a paragraph line became an indented
+    code block, counted as a harmless drop. ``<NBSP>`` in FRONT is the opposite case. The line
+    stands at indent 0 before and after, so nothing grows and the drop is safe.
+    """
+    pi, nbsp = "\uf070", "\u00a0"
+    got, rep = symbol_pua.remap(SPACE + "    " + nbsp + pi + " radians\n")
+    assert got.startswith(SPACE) and rep["head_kept_f020"] == 1
+    got, rep = symbol_pua.remap(nbsp + SPACE + "    " + pi + " radians\n")
+    assert SPACE not in got and rep["head_kept_f020"] == 0
+
+
+def test_no_short_line_gives_two_passes_two_answers():
+    """Every head, in front of every body of up to four tokens: the second pass changes nothing.
+
+    The chain runs this step twice, and a refusal counts as its high-water mark. So a head that
+    one pass keeps and the next drops leaves a warning about a Symbol space that is no longer
+    there. Two versions of the #94 rule did that, and each time a single test caught it. The
+    second time no committed test did: ``<SPACE>    #<BULLET> <DIAMOND> item`` needs TWO markers,
+    and no shape in either grid had two behind a kept head. Review found it by fuzzing.
+
+    This is that fuzz, cut down to the tokens the marker rules branch on. Both the text and the
+    kept count must agree, because the count is what the operator reads.
+    """
+    heads = [SPACE, SPACE + "    ", "    " + SPACE, "  " + SPACE + "  ", SPACE + "\t"]
+    heads += ["\u00a0" + SPACE + "    ", SPACE + "    \u00a0", SPACE + SPACE]
+    tokens = [BULLET, DIAMOND, DOT, "#", "*", "-", " ", "x", "\uf070"]
+    for size in range(1, 5):
+        for body in map("".join, product(tokens, repeat=size)):
+            for head in heads:
+                once, rep = symbol_pua.remap(head + body + "\n")
+                twice, rep2 = symbol_pua.remap(once)
+                assert twice == once, repr(head + body)
+                assert rep2["head_kept_f020"] == rep["head_kept_f020"], repr(head + body)
+
+
+def test_a_head_symbol_space_in_front_of_a_marker_that_opens_the_line_is_still_dropped():
+    """Keeping the head there would turn a line-opening marker into a mid-line one.
+
+    Every marker reading is positional, and the line-opening tests accept real indent only. A
+    Symbol space left in front of a marker makes it a stray: a list item loses its marker, or a
+    deferral becomes a deletion. Review found that class while #77 was fixed, 857 shapes of it. So
+    a line that a marker opens is read by :func:`classify` exactly as it was before this rule.
+    """
+    for marker in (BULLET, DIAMOND):
+        for prefix in ("", "*"):  # the emphasis opener MinerU misplaces ahead of a marker
+            line = SPACE + prefix + marker + " item"
+            got, rep = symbol_pua.remap(line + "\n")
+            assert got == "- item\n", repr(line)
+            assert rep["list_markers"] == 1 and rep["head_kept_f020"] == 0, repr(line)
+    got, rep = symbol_pua.remap(SPACE + "## " + BULLET + " With temperature\n")
+    assert got == "## With temperature\n"
+    assert rep["heading_markers"] == 1 and rep["head_kept_f020"] == 0
+    got, rep = symbol_pua.remap(SPACE + DOT + " item\n")
+    assert got == DOT + " item\n"
+    assert rep["line_leading_dot_deferred"] == 1 and rep["head_kept_f020"] == 0
+
+
+def test_a_marker_behind_a_block_opener_does_not_unlock_the_drop():
+    """The first marker decides, and only when it OPENS the line.
+
+    ``<SPACE>- <BULLET> item`` has a marker on it, and that marker does not open the line: a real
+    Markdown bullet stands in front of it. The opener is the ``-``, so the head stays. The stray
+    marker behind it is read as it always was.
+    """
+    got, rep = symbol_pua.remap(SPACE + "- " + BULLET + " item\n")
+    assert got == SPACE + "- item\n"
+    assert rep["head_kept_f020"] == 1 and rep["stray_markers"] == 1
+    assert rep["list_markers"] == 0
+    assert symbol_pua.remap(got)[0] == got

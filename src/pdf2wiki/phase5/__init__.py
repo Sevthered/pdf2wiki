@@ -84,6 +84,13 @@ def residue_lines(report: dict[str, Any]) -> list[str]:
             " verified against a page printing ONE marker, so a run of them has none"
         )
         out.append("  Render the source page, then write the line by hand")
+    kept = max(sp["head_kept_f020"], sp2["head_kept_f020"])
+    if kept:
+        out.append(
+            f"⚠ {kept} Symbol-font space(s) LEFT IN PLACE at a line start — the text behind it"
+            " is not proven safe there and COULD open a Markdown block (a heading, a list, a fence)"
+        )
+        out.append("  Render the source page, then write the line by hand")
     if sp2["in_code"]:
         out.append(f"· verified glyphs left inside code fences: {sp2['in_code']}")
     if sp2["unknown"]:

@@ -6,6 +6,57 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A dropped Symbol space at a line start no longer uncovers a block opener (#94).** `symbol_pua`
+  deletes a `U+F020` at a line edge. `U+F020` is not whitespace to CommonMark, so a line that starts
+  with one is paragraph text, whatever comes next. The deletion put the text behind it at the start
+  of the line. `# Title` became a heading there, and `- item` became a list. A code fence opened
+  and had no end. A `---` turned the line above it into a heading. The step reported all of these
+  as `dropped_f020`, the counter for a harmless deletion, and printed no warning.
+  The step now keeps the Symbol space when the text behind it can open a block. No rendered page
+  shows which reading is correct, so the step does not guess. This is the same answer that it gives
+  for a line-leading dot. The new counter is `head_kept_f020`. It counts each Symbol space that
+  stays, it is not part of `total_changes`, and `phase5` and `batch` print a warning for it.
+  **The rule is a whitelist of the lines where the deletion is still safe.** The deletion continues
+  when a list marker leads or opens the line. The marker rules read that line, and a Symbol space in
+  front of the marker would change their answer. It continues when the text starts with an ASCII
+  letter, which is the ground that the rule for #77 already covers. It also continues in front of
+  any other letter. The same applies to a glyph from the table that the step writes as a non-ASCII
+  character. In those two cases the deletion must not change the indent. That was measured on the
+  full rendered HTML, for 48,965 letters and seventeen glyphs in 210 contexts each. The deletion
+  changed the rendering of none of 10.3 million lines behind a bare Symbol space. Through the step
+  itself, behind seven different heads, it changed none of 2.0 million lines. The two glyphs that
+  the step writes as parentheses are not in the list. A `(` can start the title of a link reference
+  definition on the line above, and the line then renders as nothing. All other text keeps its
+  Symbol space. That includes text such as `**bold**` and `2024 was`, where the deletion would do no
+  damage. The whitelist is narrow on purpose, and the counter shows each kept space to the operator.
+  Measured with `cmarkgfm` against the release before this one. In the rendering grid of 7,290
+  shapes, 2,599 change block structure before this change and do not change it now. In the
+  positional table of 70,644 shapes, the number is 11,984. No marker result moves. Each shape is
+  stable on a second pass, and so is each of 1.2 million lines from a token fuzz. The step keeps the
+  head on 5,058 shapes of the rendering grid. The deletion changed the structure of 2,618 of them
+  and did no damage on 2,440.
+  **Two shapes are worse than before.** An emphasis opener in front of a glyph that the step writes
+  as punctuation loses its emphasis when the head stays: `*(x)*` is literal text behind a Symbol
+  space. This occurs on 48 shapes of the rendering grid, all from one body. The block structure does
+  not change, and the same loss already occurs in the middle of a line. The second shape has a link
+  label with no destination on the line above. A kept Symbol space, a real space and a parenthesis
+  glyph are then a destination and a title, and the two lines render as nothing. This occurs on 8
+  shapes, all from one body. The release before this one deleted the head and kept the paragraph. A
+  step that reads one line cannot see the label.
+  **Related shapes are not fixed here.** Each one is the output of the release before this one. The
+  Symbol space on a line that a marker opens is still deleted. Thus a Symbol space and four real
+  spaces ahead of a marker become an indented code block. A Symbol space ahead of hashes, a space
+  and a marker becomes a heading. A Symbol space ahead of a bare marker becomes `-`, which is a
+  setext underline below a paragraph. A body that the rule for #77 does not list still gets no
+  cut-back. Behind an ASCII letter, real spaces still become indent when they stay below four
+  columns. Two of them are sufficient to move a paragraph into the list item above it. Below a link
+  label with no destination, the same real spaces make the text a destination, and the two lines
+  render as nothing. The line head is also only one of three edges. A deleted Symbol space at the
+  end of a line can uncover an opener, and `---` below a paragraph then becomes a setext underline.
+  A Symbol space that becomes a real space inside the text can do the same, and `#`, a Symbol space
+  and `Title` become a heading.
+
 ## [0.2.11] - 2026-08-26
 
 ### Fixed

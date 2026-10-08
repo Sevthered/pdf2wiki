@@ -53,6 +53,14 @@ its non-ASCII letters removed                    ⚠ **NOT here.** A harmless dr
                                                  same blocks, so a structural oracle cannot tell them
                                                  apart. ``test_a_head_symbol_space_in_front_of_a_letter_is_still_dropped``
                                                  in ``test_symbol_pua_positions.py`` catches it.
+the #96 tail rule removed                        the tail snapshot, and the whole-line test below
+the #96 first-gap rule removed                   both snapshots, and the opener test below
+its letter test removed                          both snapshots: ``- <SPACE># x`` is a heading again
+the #96 rules let loose on a marker line         the head snapshot and the positional table: the
+                                                 oldest repair of the step, ``<BULLET><SPACE>item``,
+                                                 stops being one
+the #96 clauses for a definition, a tag, a       ⚠ **NOT here**, or only in part. Each has a test of
+closing hash, a closed tag, a written glyph      its own in ``test_symbol_pua_positions.py``.
 the ``plain_indent`` guard removed               ⚠ **NOT here.** Dropping it deletes real content
                                                  without moving a block, so a structural oracle is
                                                  blind to it by construction. It is caught by
@@ -315,6 +323,69 @@ def test_a_dropped_head_symbol_space_uncovers_no_block_opener(
         src = above + head + body + "\nnext\n"
         out = symbol_pua.remap(src)[0]
         assert skeleton(out) == skeleton(src), repr(src)
+
+
+@pytest.mark.parametrize("above", ["", "para above\n", "- outer\n", "> quote\n", "# head\n"])
+@pytest.mark.parametrize("tail", [SPACE, SPACE + SPACE, " " + SPACE])
+def test_a_dropped_tail_symbol_space_completes_no_whole_line_construct(
+    above: str, tail: str
+) -> None:
+    """#96, the line end, pinned in CI.
+
+    `---<SPACE>` is paragraph text, and `---` alone turns the line ABOVE into a heading. A
+    whole-line construct is a block only when nothing but whitespace follows it, and `U+F020` is
+    not whitespace, so the drop made one out of every such line. cmark judges the whole structure.
+    """
+    for body in ("---", "===", "***", "___", "-", "- - -", "#", "1.", "|---|---|", "[ref]: /url "):
+        src = above + body + tail + "\nnext\n"
+        out = symbol_pua.remap(src)[0]
+        assert skeleton(out) == skeleton(src), repr(src)
+
+
+@pytest.mark.parametrize("above", ["", "para above\n", "- outer\n", "> quote\n", "# head\n"])
+def test_a_symbol_space_written_out_completes_no_opener(above: str) -> None:
+    """#96, inside the text, pinned in CI.
+
+    `#<SPACE>Title` is paragraph text, and `# Title` is a heading. The first gap of a line is the
+    only place where a real space can complete an opener, and only behind text that is one.
+    """
+    for prefix in ("#", "##", "-", "+", "*", "1.", "1)", "<div", "- ", "> ", "1. ", "- > "):
+        # the last four end in real whitespace: the gap is the start of a container's content
+        src = above + prefix + SPACE + ("# x" if prefix.endswith(" ") else "item") + "\nnext\n"
+        out = symbol_pua.remap(src)[0]
+        assert skeleton(out) == skeleton(src), repr(src)
+
+
+def test_a_dropped_tail_makes_and_unmakes_no_pipe_table() -> None:
+    """A table is decided by two lines, and this is the only test here with a line BELOW.
+
+    `| a | b |<SPACE>` over a two-column delimiter row is a paragraph, because the Symbol space is
+    a third cell. `| a | b |` over the same row is a table.
+    """
+    for head in ("| a | b |" + SPACE, "a | b" + SPACE, SPACE + "| a | b |" + SPACE):
+        for below in (
+            "|---|---|\n| 1 | 2 |\n",
+            "--- | ---\n1 | 2\n",
+            "|---|---|---|\n| 1 | 2 | 3 |\n",
+        ):
+            src = head + "\n" + below
+            out = symbol_pua.remap(src)[0]
+            before = "<table" in cmarkgfm.github_flavored_markdown_to_html(src)
+            after = "<table" in cmarkgfm.github_flavored_markdown_to_html(out)
+            assert before == after, repr(src)
+
+
+def test_a_symbol_space_written_out_makes_no_task_box() -> None:
+    """`- [x]<SPACE>done` is a list item with literal text, and `- [x] done` is a checked box.
+
+    Review found it: a task marker is the one marker that holds a letter, so the gap rule, which
+    asks for a letter in front of the gap, let it through.
+    """
+    for mark in ("[x]", "[X]", "[ ]"):
+        src = "- " + mark + SPACE + "done\n"
+        out = symbol_pua.remap(src)[0]
+        assert "<input" not in cmarkgfm.github_flavored_markdown_to_html(src), repr(src)
+        assert "<input" not in cmarkgfm.github_flavored_markdown_to_html(out), repr(src)
 
 
 def test_a_paren_glyph_under_a_link_definition_still_renders() -> None:

@@ -7,6 +7,51 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **A Symbol space at a line end or inside the text no longer uncovers a block opener (#96).**
+  This is the remainder of #94, which covered the start of a line. `symbol_pua` deletes a `U+F020`
+  at the end of a line. `---` and then a Symbol space is paragraph text, and `---` alone is a setext
+  underline, so the line above it became a heading. The step also writes a Symbol space inside the
+  text as a real space. `#`, a Symbol space and `Title` is paragraph text, and `# Title` is a
+  heading. The step reported the two edits as `dropped_f020` and `remap_f020`, the counters for
+  harmless edits, and printed no warning.
+  The step now keeps the Symbol space in these two places. The counters are `tail_kept_f020` and
+  `inner_kept_f020`. Each one counts the Symbol spaces that stay, and neither is part of
+  `total_changes`. `phase5` and `batch` print one warning for each.
+  **The two rules are whitelists, and the two read the lead of the line.** The lead is the text in
+  front of the first character that is clearly text: a letter, or a character that is not ASCII. All
+  markers of lists and quotes are in the lead, and all block openers are there. At the end of a
+  line, the deletion continues when the line has text in it. A setext underline, a thematic break
+  and the delimiter row of a table have none. Five constructs have text, and the rule names each
+  one. They are a link reference definition, an HTML tag in the lead, and a heading that ends in
+  `#`. They are also a task marker such as `[x]`, and a line with a pipe in it. A pipe can make the
+  header row of a table, and the line below decides that. A code fence is the one exception in the
+  other direction. The Symbol space behind it is still deleted, because a fence with a Symbol space
+  behind it does not close a code block.
+  Inside the text, the substitution continues when text is in front of the Symbol space. Only a
+  Symbol space in the lead can complete an opener. That includes the start of a list item or a
+  quote: `- `, a Symbol space and `# x` is a list item with text, not a heading in a list item. The
+  rule has three exceptions. A Symbol space inside a tag stays, and one behind a closed tag does
+  not, which lets the cells of a `<table>` line through. A task marker is not completed. A Symbol
+  space in front of the closing hashes of a heading stays. A link reference definition is not edited
+  inside at all, because the parser reads it to the end of the line. A line that keeps a Symbol
+  space inside also keeps the one at its end.
+  Measured with `cmarkgfm`, through the step, on 9.6 million generated lines, each with a line above
+  it and a line below it. When no link reference definition is open above the line, the step changed
+  the block structure of none. The rendering grid has 3,645 line-end shapes. Before this change, 438
+  of them changed block structure, and they do not change it now. The number for the substitution is
+  27. No shape of the positional table changes, so no marker result moves. Each shape is stable on a
+  second pass.
+  **Limits.** The two rules do not apply to a line that has a bullet marker in it. The marker rules
+  edit that line, and a refusal that they can remove is the defect that the rule for #94 had two
+  times. The two rules also do not see a link reference definition that is still open above this
+  line. It reads this line as its destination or its title, and a Symbol space still decides if the
+  lines are a definition. The label can be one line or two lines above. A line that has only Symbol
+  spaces in it is still deleted, and an empty line can divide a paragraph. The two parenthesis
+  glyphs are not part of this change: `1`, the glyph for `)` and a real space still become an
+  ordered list. The rules are narrow on purpose. `2024` and a Symbol space keeps the Symbol space,
+  although digits open nothing, and a footnote definition keeps all of its Symbol spaces. A line
+  that is only a backslash and a Symbol space is not edited now, where the release before this one
+  wrote a real space. The two render the same.
 - **A dropped Symbol space at a line start no longer uncovers a block opener (#94).** `symbol_pua`
   deletes a `U+F020` at a line edge. `U+F020` is not whitespace to CommonMark, so a line that starts
   with one is paragraph text, whatever comes next. The deletion put the text behind it at the start
@@ -21,15 +66,16 @@ All notable changes to this project are documented here. The format is based on
   when a list marker leads or opens the line. The marker rules read that line, and a Symbol space in
   front of the marker would change their answer. It continues when the text starts with an ASCII
   letter, which is the ground that the rule for #77 already covers. It also continues in front of
-  any other letter. The same applies to a glyph from the table that the step writes as a non-ASCII
-  character. In those two cases the deletion must not change the indent. That was measured on the
-  full rendered HTML, for 48,965 letters and seventeen glyphs in 210 contexts each. The deletion
-  changed the rendering of none of 10.3 million lines behind a bare Symbol space. Through the step
-  itself, behind seven different heads, it changed none of 2.0 million lines. The two glyphs that
-  the step writes as parentheses are not in the list. A `(` can start the title of a link reference
-  definition on the line above, and the line then renders as nothing. All other text keeps its
-  Symbol space. That includes text such as `**bold**` and `2024 was`, where the deletion would do no
-  damage. The whitelist is narrow on purpose, and the counter shows each kept space to the operator.
+  any other letter, and in front of any character that is not ASCII. That includes a glyph from the
+  table and a curly quote. In those cases the deletion must not change the indent. That was measured
+  on the full rendered HTML, in 210 contexts each, for 48,965 letters, seventeen glyphs and 8,028
+  other characters. The deletion changed the rendering of no line, with one exception. The parser
+  ignores a byte order mark, `U+FEFF`, at the start of a document, so the step does not count it as
+  text. The two glyphs that the step writes as parentheses are not in the list. A `(` can start the
+  title of a link reference definition on the line above, and the line then renders as nothing. All
+  other text keeps its Symbol space. That includes text such as `**bold**` and `2024 was`, where the
+  deletion would do no damage. The whitelist is narrow on purpose, and the counter shows each kept
+  space to the operator.
   Measured with `cmarkgfm` against the release before this one. In the rendering grid of 7,290
   shapes, 2,599 change block structure before this change and do not change it now. In the
   positional table of 70,644 shapes, the number is 11,984. No marker result moves. Each shape is

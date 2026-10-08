@@ -84,13 +84,30 @@ def residue_lines(report: dict[str, Any]) -> list[str]:
             " verified against a page printing ONE marker, so a run of them has none"
         )
         out.append("  Render the source page, then write the line by hand")
-    kept = max(sp["head_kept_f020"], sp2["head_kept_f020"])
-    if kept:
-        out.append(
-            f"⚠ {kept} Symbol-font space(s) LEFT IN PLACE at a line start — the text behind it"
-            " is not proven safe there and COULD open a Markdown block (a heading, a list, a fence)"
-        )
-        out.append("  Render the source page, then write the line by hand")
+    # A Symbol space that is the only thing between a line and a Markdown block, at each of the
+    # three places it can stand. One refusal, three counters, because the operator has to look
+    # at a different part of the line for each.
+    for key, where, risk in (
+        (
+            "head_kept_f020",
+            "at a line start — the text behind it is not proven safe there and",
+            "open a Markdown block (a heading, a list, a fence)",
+        ),
+        (
+            "tail_kept_f020",
+            "at a line end — without it the line",
+            "be read as a Markdown marker line (an underline, a rule, a definition, a tag)",
+        ),
+        (
+            "inner_kept_f020",
+            "inside a line — as a real space it",
+            "change what the line is (a heading, a list item, a tag, a task box, a definition)",
+        ),
+    ):
+        kept = max(sp[key], sp2[key])
+        if kept:
+            out.append(f"⚠ {kept} Symbol-font space(s) LEFT IN PLACE {where} COULD {risk}")
+            out.append("  Render the source page, then write the line by hand")
     if sp2["in_code"]:
         out.append(f"· verified glyphs left inside code fences: {sp2['in_code']}")
     if sp2["unknown"]:

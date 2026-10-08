@@ -741,6 +741,8 @@ def test_pua_report_always_carries_every_documented_key():
         "head_collapsed_f020",
         # `run_chain` reads this one from both passes too, for the residue line of #94.
         "head_kept_f020",
+        "tail_kept_f020",
+        "inner_kept_f020",
         # `run_chain` reads this one from BOTH passes, including the hand-built CRLF-refusal dict,
         # so dropping it there would raise KeyError on the first CRLF document. It arrived with the
         # previous PR and was never pinned here.
@@ -1167,6 +1169,28 @@ def test_pua_kept_head_space_reaches_the_operator(tmp_path):
     assert any("Render the source page" in ln for ln in lines)
 
 
+def test_pua_kept_tail_and_inner_spaces_reach_the_operator(tmp_path):
+    # #96. The two other edges of #94 are refusals too, and each one gets its own line, because the
+    # operator has to look at a different end of the line for each.
+    from pdf2wiki import phase5
+
+    md = tmp_path / "book.md"
+    md.write_text(
+        f"# Title\n\npara\n---{SYMBOL_SPACE}\n\nmore\n#{SYMBOL_SPACE}not a heading\nnext\n",
+        encoding="utf-8",
+    )
+    report = phase5.run_chain(str(md), "book")
+    sp = report["symbol_pua"]
+    assert sp["tail_kept_f020"] == 1 and sp["inner_kept_f020"] == 1 and sp["total_changes"] == 0
+    lines = phase5.residue_lines(report)
+    assert any(
+        ln.startswith("⚠ 1 Symbol-font space(s) LEFT IN PLACE at a line end") for ln in lines
+    )
+    assert any(
+        ln.startswith("⚠ 1 Symbol-font space(s) LEFT IN PLACE inside a line") for ln in lines
+    )
+
+
 def test_illegal_nul_removed_inside_a_code_fence():
     # The real defect: it sits INSIDE a ```cpp fence, which is exactly where symbol_pua refuses to
     # go — so only a step scoped to the whole document can remove it.
@@ -1486,7 +1510,6 @@ def test_dropping_an_edge_symbol_space_does_not_uncover_a_backslash_break():
     for line, want, spaced in (
         (f"x{B}{SP}", f"x{B} ", 1),  # the break the drop uncovers: one space keeps it off
         (f"x{B}{SP}{SP}", f"x{B} ", 1),  # two Symbol spaces, one real space
-        (f"{B}{SP}", f"{B} ", 1),  # the whole line is a backslash
         (f"x{B}{B}{SP}", f"x{B}{B}", 0),  # an even run is an escape: it never broke the line
         (f"x{B}{B}{B}{SP}", f"x{B}{B}{B} ", 1),  # ...and an odd one does, however long
         (f"x{B}{SP} ", f"x{B} ", 0),  # a real space is already behind it: nothing to add
@@ -1500,6 +1523,14 @@ def test_dropping_an_edge_symbol_space_does_not_uncover_a_backslash_break():
         assert out == want + "\nnext\n", repr(line)
         assert stats["tail_backslash_spaced_f020"] == spaced, repr(line)
         assert stats["dropped_f020"] == line.count(SP), repr(line)
+
+    # ⚠ One row left this table with #96. A line that is ONLY a backslash holds no letter, so the
+    # tail rule keeps its Symbol space, and a kept Symbol space is the last character of the line:
+    # the backslash is not line-final, and there is no break to avert. Before #96 the step wrote
+    # one real space there. Both render the same, and this one leaves the line as it was.
+    out, stats = symbol_pua.remap(f"{B}{SP}\nnext\n")
+    assert out == f"{B}{SP}\nnext\n"
+    assert stats["tail_kept_f020"] == 1 and stats["tail_backslash_spaced_f020"] == 0
 
     # the two rules never fire on the same line: one adds a character, the other removes them
     _, both = symbol_pua.remap(f"x{B}  {SP}\nnext\n")

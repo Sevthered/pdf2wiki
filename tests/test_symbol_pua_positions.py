@@ -716,3 +716,451 @@ def test_a_marker_behind_a_block_opener_does_not_unlock_the_drop():
     assert rep["head_kept_f020"] == 1 and rep["stray_markers"] == 1
     assert rep["list_markers"] == 0
     assert symbol_pua.remap(got)[0] == got
+
+
+# ---- #96: the other two edges of #94, the line END and the first gap INSIDE the text ----
+
+# Whole-line constructs: text that is a block only when NOTHING but whitespace follows it.
+_WHOLE_LINE = ["---", "===", "***", "___", "-", "- - -", "#", "1.", "# Title #", "|---|---|"]
+
+
+def test_a_tail_symbol_space_behind_a_whole_line_construct_is_kept():
+    """#96: the drop at the line END turned paragraph text into a block marker.
+
+    ``U+F020`` is not whitespace to CommonMark, so ``---<SPACE>`` is paragraph text: an underline
+    must be alone on its line. The drop wrote ``---``, and the line ABOVE became a heading. The
+    same happened for a thematic break, an empty heading, an empty list item, a table delimiter
+    row and the closing hashes of a heading. The Symbol space now stays, counted as
+    ``tail_kept_f020``, a refusal and not a change.
+    """
+    for body in _WHOLE_LINE:
+        for tail in (SPACE, SPACE + SPACE, " " + SPACE):
+            line = body + tail
+            got, rep = symbol_pua.remap("para\n" + line + "\n")
+            assert got == "para\n" + line + "\n", repr(line)
+            assert rep["tail_kept_f020"] == tail.count(SPACE), repr(line)
+            assert rep["dropped_f020"] == 0 and rep["total_changes"] == 0, repr(line)
+            assert rep["tail_collapsed_f020"] == 0, repr(line)
+            assert symbol_pua.remap(got)[0] == got, repr(line)
+
+
+def test_a_tail_symbol_space_behind_a_definition_or_a_tag_is_kept():
+    """The whole-line constructs that DO hold a letter, so the letter test cannot clear them.
+
+    ``[ref]: /url <SPACE>`` is paragraph text, because the Symbol space is no valid title. Without
+    it the line is a link reference definition and renders as nothing. ``<div<SPACE>`` is no tag,
+    and ``<div`` at a line end opens an HTML block. Closing hashes count only at the very end of
+    a heading line. Each is refused by name, and at any depth of list or quote, because a
+    container marker stands in the lead of the line like everything else that decides what it is.
+    """
+    for line in (
+        "[ref]: /url " + SPACE,
+        "> [ref]: /url " + SPACE,
+        "<div" + SPACE,
+        "<span>" + SPACE,
+        "- <div" + SPACE,
+        "# Title #" + SPACE,
+        "- # Title #" + SPACE,
+    ):
+        got, rep = symbol_pua.remap(line + "\nnext\n")
+        assert got == line + "\nnext\n", repr(line)
+        assert rep["tail_kept_f020"] == 1 and rep["dropped_f020"] == 0, repr(line)
+
+
+def test_a_tail_symbol_space_behind_a_line_with_a_word_in_it_is_still_dropped():
+    """The control, and the whole of the whitelist: a whole-line construct holds no letter.
+
+    A setext underline, a thematic break, a table delimiter row, an empty heading and an empty list
+    item are made of punctuation and digits. So a line with a word in it is none of them, whatever
+    it starts or ends with, and the drop is as safe as it always was.
+    """
+    for body in ("text", "## Title", "- item", "1. First step.", "(see note)", "**bold**", "x = 1",
+                 "> quote", "[1] Smith, J.", "- # Title", "H<sub>2</sub>O", "\uf070 radians", "é"):  # fmt: skip
+        got, rep = symbol_pua.remap(body + SPACE + "\nnext\n")
+        assert SPACE not in got, repr(body)
+        assert rep["tail_kept_f020"] == 0 and rep["dropped_f020"] == 1, repr(body)
+
+
+def test_a_symbol_space_that_would_complete_an_opener_is_kept():
+    """#96: written as a real space, the first gap INSIDE the text made the line a block.
+
+    ``#<SPACE>Title`` is paragraph text, because a heading needs real whitespace behind its
+    hashes. The substitution wrote ``# Title``. A list marker and an HTML tag name are completed
+    the same way. The Symbol space stays, counted as ``inner_kept_f020``.
+    """
+    for prefix in ("#", "##", "######", "-", "+", "*", "1.", "1)", "12.", "<div", "</div"):
+        line = prefix + SPACE + "item"
+        got, rep = symbol_pua.remap("para\n" + line + "\nnext\n")
+        assert got == "para\n" + line + "\nnext\n", repr(line)
+        assert rep["inner_kept_f020"] == 1, repr(line)
+        assert rep.get("remap_f020", 0) == 0 and rep["total_changes"] == 0, repr(line)
+        assert symbol_pua.remap(got)[0] == got, repr(line)
+
+
+def test_only_the_first_gap_of_a_line_can_complete_an_opener():
+    """Every Symbol space behind the first gap is written as a real space, as before."""
+    got, rep = symbol_pua.remap("#" + SPACE + "a" + SPACE + "b" + SPACE + "c\n")
+    assert got == "#" + SPACE + "a b c\n"
+    assert rep["inner_kept_f020"] == 1 and rep["remap_f020"] == 2
+    # a word in front of the first Symbol space: the lead of the line is over
+    got, rep = symbol_pua.remap("- real" + SPACE + "item\n")
+    assert got == "- real item\n"
+    assert rep["inner_kept_f020"] == 0 and rep["remap_f020"] == 1
+
+
+def test_a_symbol_space_at_the_start_of_a_container_is_kept():
+    """Real whitespace in front of the gap does NOT make it safe, and the first rule said it did.
+
+    ``- <SPACE># x`` is a list item that holds the text ``# x``. The Symbol space stands at the
+    start of the item's CONTENT, which is a line start of its own, and ``-  # x`` is a heading
+    inside the item. Measured through the step, 1,687 lines of 2.2 million, before any review.
+    The rule asks for a LETTER in front of the gap, and a container marker holds none.
+    """
+    for lead in ("- ", "> ", "1. ", "- > ", "> - ", "* "):
+        for opener in ("# x", "- x", "* x", "> x", "1. x"):
+            line = lead + SPACE + opener
+            got, rep = symbol_pua.remap(line + "\nnext\n")
+            assert got == line + "\nnext\n", repr(line)
+            assert rep["inner_kept_f020"] == 1 and rep["total_changes"] == 0, repr(line)
+
+
+def test_a_link_reference_definition_is_not_edited_inside_at_all():
+    """The one construct parsed to the END of its line, so every gap in it decides what it is.
+
+    ``[x]: a<SPACE>b`` is a definition, with the Symbol space in its destination, and it renders
+    as nothing. ``[x]: a b`` is a paragraph, because ``b`` is no valid title. So all of its
+    Symbol spaces stay, not only the first.
+    """
+    line = "[x]: a" + SPACE + "b" + SPACE + "c" + SPACE
+    got, rep = symbol_pua.remap(line + "\nnext\n")
+    assert got == line + "\nnext\n"
+    assert rep["inner_kept_f020"] == 2 and rep["tail_kept_f020"] == 1 and rep["total_changes"] == 0
+    # ⚠ A bracket alone is no definition. A bibliography is full of lines like this one.
+    got, rep = symbol_pua.remap("[1] Smith" + SPACE + "J." + SPACE + "\n")
+    assert got == "[1] Smith J.\n"
+    assert rep["inner_kept_f020"] == 0 and rep["tail_kept_f020"] == 0
+
+
+def test_a_closed_tag_in_front_of_the_gap_lets_the_cells_of_a_table_through():
+    """``<div<SPACE>class>`` becomes a tag, and a ``<table>`` line is the HTML a converter writes.
+
+    Behind a ``<`` in the lead the gap is safe only when a ``>`` already stands in front of it:
+    then the tag that leads the line was complete before the step, and the gap is in its content.
+    """
+    got, rep = symbol_pua.remap(
+        "<table><tr><td>a" + SPACE + "b</td><td>c" + SPACE + "d</td></tr></table>\n"
+    )
+    assert got == "<table><tr><td>a b</td><td>c d</td></tr></table>\n"
+    assert rep["inner_kept_f020"] == 0 and rep["remap_f020"] == 2
+    got, rep = symbol_pua.remap("<span" + SPACE + 'class="a">x</span>\n')
+    assert got == "<span" + SPACE + 'class="a">x</span>\n' and rep["inner_kept_f020"] == 1
+
+
+def test_a_symbol_space_inside_ordinary_text_is_still_a_real_space():
+    """The control. Substitution is what the step is FOR, so the refusal has to stay narrow.
+
+    The text in front of the first gap holds a letter and is no tag, so it is no opener prefix: an
+    ATX prefix is hashes, a bullet is one character, an ordered marker is digits and a delimiter.
+    """
+    for line, want in (
+        ("a" + SPACE + "b", "a b"),
+        ("\uf070" + SPACE + "(pi) symbol 56", "\N{GREEK SMALL LETTER PI} (pi) symbol 56"),
+        ("(pi)" + SPACE + "symbol 56", "(pi) symbol 56"),
+        ("**bold**" + SPACE + "text", "**bold** text"),
+        ('"Quoted' + SPACE + 'text"', '"Quoted text"'),
+        ("x:" + SPACE + "y", "x: y"),
+    ):
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == want + "\n", repr(line)
+        assert rep["inner_kept_f020"] == 0, repr(line)
+
+
+def test_the_two_new_refusals_leave_a_line_with_a_marker_alone():
+    """A marker on the line, and the tail and the first gap are handled as they always were.
+
+    The marker pass deletes and rewrites, and a refusal it can undo is what broke the #94 rule
+    twice in review. So these two rules act on a line with no marker in it, where one pass changes
+    nothing the next pass reads. A Symbol space as the gap behind a marker is the oldest shape this
+    step repairs, and it must stay repaired.
+    """
+    got, rep = symbol_pua.remap(BULLET + SPACE + "item" + SPACE + "\n")
+    assert got == "- item\n"
+    assert rep["list_markers"] == 1 and rep["inner_kept_f020"] == 0 and rep["tail_kept_f020"] == 0
+    # the previous release's output, and a stated limit: the bullet in front makes it a list
+    got, rep = symbol_pua.remap("-" + SPACE + BULLET + " item\n")
+    assert got == "- item\n" and rep["inner_kept_f020"] == 0
+
+
+def test_a_kept_head_makes_the_rest_of_the_line_safe():
+    """Behind a kept head the line starts with a Symbol space, so nothing on it can open a block."""
+    got, rep = symbol_pua.remap(SPACE + "#" + SPACE + "Title" + SPACE + "\n")
+    assert got == SPACE + "# Title\n"
+    assert rep["head_kept_f020"] == 1 and rep["inner_kept_f020"] == 0 and rep["tail_kept_f020"] == 0
+    got, rep = symbol_pua.remap("para\n" + SPACE + "---" + SPACE + "\n")
+    assert got == "para\n" + SPACE + "---\n"
+    assert rep["head_kept_f020"] == 1 and rep["tail_kept_f020"] == 0
+
+
+def test_a_glyph_is_written_as_ascii_only_where_the_rules_know_it():
+    """The #96 whitelists test three ASCII characters, and no glyph may become one of them.
+
+    The tail rule asks if a line is led by ``[`` or ``<`` or closed by ``#``, and it asks the line
+    as it stands BEFORE the glyphs are written out. A glyph that became one of those would be read
+    one way by this pass and the other way by the next. The parentheses are the only ASCII in the
+    table besides the space itself.
+    """
+    ascii_written = {w for g, w in symbol_pua.GLYPHS.items() if w.isascii()}
+    assert ascii_written == {" ", "(", ")"}
+
+
+def test_no_short_marker_free_line_gives_two_passes_two_answers():
+    """The token fuzz again, for the three refusals together and with no marker in the line.
+
+    Every head, body and tail of short tokens: the second pass must change nothing, and each of
+    the three kept counts must be the same on both passes, because a count is what the operator
+    reads.
+    """
+    heads = ["", SPACE, "  ", SPACE + "    ", "    " + SPACE]
+    tails = ["", SPACE, " " + SPACE, SPACE + SPACE, "  " + SPACE]
+    tokens = ["#", "-", "*", "1.", "x", " ", SPACE, "<", "[", "]:", "_", "\uf070", "\uf028", "\\"]
+    kept = ("head_kept_f020", "tail_kept_f020", "inner_kept_f020")
+    for size in range(1, 4):
+        for body in map("".join, product(tokens, repeat=size)):
+            if not body.strip(" " + SPACE):
+                continue
+            for head, tail in product(heads, tails):
+                once, rep = symbol_pua.remap(head + body + tail + "\n")
+                twice, rep2 = symbol_pua.remap(once)
+                assert twice == once, repr(head + body + tail)
+                assert [rep2[k] for k in kept] == [rep[k] for k in kept], repr(head + body + tail)
+
+
+# ---- #96, what the first review round found ----
+
+
+def test_a_dot_in_the_middle_of_a_line_does_not_switch_the_two_refusals_off():
+    """Only a dot that OPENS its line belongs to a marker rule. Any other is a multiplication sign.
+
+    The first version of the guard skipped every line that held a dot anywhere. A dot and a Symbol
+    space come from the same font, so those are the lines most likely to hold both, and
+    ``#<SPACE>r<DOT>u`` was a heading again.
+    """
+    got, rep = symbol_pua.remap("#" + SPACE + "r" + DOT + "u\n")
+    assert got == "#" + SPACE + "r\N{MIDDLE DOT}u\n"
+    assert rep["inner_kept_f020"] == 1
+    got, rep = symbol_pua.remap("para\n---" + SPACE + DOT + "\n")  # a letter-free line with a dot
+    assert rep["inner_kept_f020"] == 1 and SPACE in got
+    # a dot that opens the line is deferred, and it is text: the gaps behind it are written out
+    got, rep = symbol_pua.remap(DOT + SPACE + "item" + SPACE + "\n")
+    assert got == DOT + " item\n"
+    assert rep["line_leading_dot_deferred"] == 1 and rep["inner_kept_f020"] == 0
+
+
+def test_a_gap_in_front_of_closing_hashes_is_kept():
+    """``# Title<SPACE>#`` prints its last hash, and ``# Title #`` does not.
+
+    The tail rule refused the closing sequence from one side and the gap rule let it in from the
+    other. The gap is kept wherever it stands, and the gaps in front of it are written out.
+    """
+    got, rep = symbol_pua.remap("# Title" + SPACE + "#\n")
+    assert got == "# Title" + SPACE + "#\n" and rep["inner_kept_f020"] == 1
+    got, rep = symbol_pua.remap("## A" + SPACE + "B" + SPACE + "##\n")
+    assert got == "## A B" + SPACE + "##\n"
+    assert rep["inner_kept_f020"] == 1 and rep["remap_f020"] == 1
+
+
+def test_a_quote_marker_is_not_the_end_of_a_tag():
+    """The ``>`` that lets a gap through must close the LAST tag in front of it."""
+    line = "> <div" + SPACE + 'class="a">'
+    got, rep = symbol_pua.remap(line + "\n")
+    assert got == line + "\n" and rep["inner_kept_f020"] == 1
+
+
+def test_a_line_with_a_kept_gap_keeps_its_tail_too():
+    """A kept gap and a dropped tail is a line neither the source nor the last release wrote.
+
+    Under a link label it was a new loss: ``-<SPACE>item <SPACE>`` became one token, a
+    destination, and both lines rendered as nothing. Kept whole, the line is the source's line.
+    """
+    line = "-" + SPACE + "item " + SPACE
+    got, rep = symbol_pua.remap("[x]:\n" + line + "\n")
+    assert got == "[x]:\n" + line + "\n"
+    assert rep["inner_kept_f020"] == 1 and rep["tail_kept_f020"] == 1 and rep["total_changes"] == 0
+
+
+def test_a_task_marker_is_not_completed():
+    """``- [x]<SPACE>done`` holds a letter, and ``- [x] done`` is a checked box in the vault.
+
+    The whitelist of the gap rule says a letter in front means the lead of the line is over. A
+    task marker is the one marker that holds a letter, so a bracket that closes right in front of
+    the gap is refused. ``[link](u)`` closes with a parenthesis and is let through.
+    """
+    for line in ("- [x]" + SPACE + "done", "- [X]" + SPACE + "done", "[12]" + SPACE + "Smith"):
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == line + "\n" and rep["inner_kept_f020"] == 1, repr(line)
+    got, rep = symbol_pua.remap("[link](u)" + SPACE + "text\n")
+    assert got == "[link](u) text\n" and rep["inner_kept_f020"] == 0
+    # and at the line end: `- [x] <SPACE>` is an item with content, `- [x] ` is an empty one
+    got, rep = symbol_pua.remap("- [x] " + SPACE + "\nnext\n")
+    assert got == "- [x] " + SPACE + "\nnext\n" and rep["tail_kept_f020"] == 1
+
+
+def test_the_tail_behind_a_closed_tag_with_content_is_still_dropped():
+    """A ``<table>`` line is the same HTML block with or without its tail, and the commonest one.
+
+    ``<div`` is unfinished and ``<span>`` alone on its line is a block of its own kind, so those
+    two keep their tail. A tag that is closed and has content behind it does not.
+    """
+    got, rep = symbol_pua.remap("<table><tr><td>a</td></tr></table>" + SPACE + "\n")
+    assert got == "<table><tr><td>a</td></tr></table>\n"
+    assert rep["tail_kept_f020"] == 0 and rep["dropped_f020"] == 1
+    for line in ("<div" + SPACE, "<span>" + SPACE, "> <div" + SPACE):
+        assert symbol_pua.remap(line + "\n")[1]["tail_kept_f020"] == 1, repr(line)
+
+
+# ---- #96, what the second review round found ----
+
+
+def test_a_line_with_a_pipe_in_it_keeps_its_tail():
+    """The header row of a pipe table is decided by the line BELOW, which this step cannot see.
+
+    ``| a | b |<SPACE>`` has three cells, and ``| a | b |`` has two. A table needs a delimiter row
+    with the same number, so the drop makes one or unmakes one. Review found it. The measurement
+    behind the first version could not, because none of its lines had a line below. A kept head
+    does not make it safe either: a header row is no line-start construct.
+    """
+    for line in ("| a | b |" + SPACE, "a | b" + SPACE, "x" + SPACE + "|" + SPACE):
+        got, rep = symbol_pua.remap(line + "\n|---|---|\n| 1 | 2 |\n")
+        assert got.split("\n")[0].endswith(SPACE), repr(line)
+        assert rep["tail_kept_f020"] == 1, repr(line)
+    got, rep = symbol_pua.remap(SPACE + "| a | b |" + SPACE + "\n")
+    assert got == SPACE + "| a | b |" + SPACE + "\n"
+    assert rep["head_kept_f020"] == 1 and rep["tail_kept_f020"] == 1
+
+
+def test_a_code_fence_still_loses_its_tail():
+    """The one line that is dropped although it holds no text, and on purpose.
+
+    A fence with a Symbol space behind it does not CLOSE a code block, and without it it does.
+    Kept, the block stays open and the rest of the chapter renders as code, which is what the
+    first version of the tail rule did to a document the previous release repaired.
+    """
+    for fence in ("```", "~~~", "`````"):
+        got, rep = symbol_pua.remap("```python\nx = 1\n" + fence + SPACE + "\n\nprose\n")
+        assert got == "```python\nx = 1\n" + fence + "\n\nprose\n", repr(fence)
+        assert rep["tail_kept_f020"] == 0 and rep["dropped_f020"] == 1, repr(fence)
+
+
+def test_a_glyph_written_as_a_sign_ends_the_lead_like_a_letter():
+    """``<F0A5><SPACE>TPS results for`` is a shape read from a rendered page, and it was kept.
+
+    The first version of the lead stopped at a LETTER, and the table writes this glyph as an
+    infinity sign. No marker and no opener is written outside ASCII, so anything that is not
+    ASCII is plainly text. Judged as it is written out, so both passes agree.
+    """
+    for glyph, written in (
+        ("\uf0a5", "\N{INFINITY}"),
+        ("\uf0d1", "\N{NABLA}"),
+        ("\uf0ae", "\N{RIGHTWARDS ARROW}"),
+    ):
+        got, rep = symbol_pua.remap(glyph + SPACE + "TPS results for" + SPACE + "\n")
+        assert got == written + " TPS results for\n", repr(glyph)
+        assert rep["inner_kept_f020"] == 0 and rep["tail_kept_f020"] == 0, repr(glyph)
+    got, rep = symbol_pua.remap("\u2014" + SPACE + "an em dash leads\n")
+    assert got == "\u2014 an em dash leads\n" and rep["inner_kept_f020"] == 0
+
+
+def test_a_definition_needs_the_colon_right_behind_its_own_label():
+    """``[3] Knuth [TAOCP]: vol. 1`` is a bibliography line, and its first bracket closes on a space."""
+    got, rep = symbol_pua.remap(
+        "[3] Knuth [TAOCP]: vol" + SPACE + "1," + SPACE + "p. 4" + SPACE + "\n"
+    )
+    assert got == "[3] Knuth [TAOCP]: vol 1, p. 4\n"
+    assert rep["inner_kept_f020"] == 0 and rep["tail_kept_f020"] == 0
+
+
+def test_a_tag_is_read_with_its_quoted_attributes():
+    """``<span title="a>b">`` is ONE tag, and the two rules must read it the same way.
+
+    The tail rule took the first ``>`` and saw a closed tag with content behind it. Alone on its
+    line that tag is an HTML block, so its tail stays. The gap rule took the last ``>`` and saw a
+    closed tag where the gap stood inside one. Both ask one quote-aware scanner now.
+    """
+    line = '<span title="a>b">' + SPACE
+    got, rep = symbol_pua.remap("para\n\n" + line + "\nnext\n")
+    assert got == "para\n\n" + line + "\nnext\n" and rep["tail_kept_f020"] == 1
+    line = '<span title="a>b"' + SPACE + "class>"
+    got, rep = symbol_pua.remap(line + "\n")
+    assert got == line + "\n" and rep["inner_kept_f020"] == 1
+    # the tag the gap stands in need not be the first one on the line
+    line = "<td>x</td><span" + SPACE + "class>"
+    got, rep = symbol_pua.remap(line + "\n")
+    assert got == line + "\n" and rep["inner_kept_f020"] == 1
+
+
+def test_a_paren_glyph_does_not_end_the_lead():
+    """The two glyphs written as ASCII parentheses are judged as ``(`` and ``)``, on both passes.
+
+    Raw, each is a Private Use Area codepoint, which is not ASCII and would end the lead as text.
+    Written out, ``1)`` is an ordered list marker. So ``1<F029><SPACE>one`` keeps its Symbol
+    space: ``1) one`` is a list, and the line was a paragraph.
+    """
+    rparen = chr(0xF029)
+    got, rep = symbol_pua.remap("para\n1" + rparen + SPACE + "one\n")
+    assert got == "para\n1)" + SPACE + "one\n"
+    assert rep["inner_kept_f020"] == 1
+    assert symbol_pua.remap(got)[0] == got
+
+
+# ---- #96, what the third review round found ----
+
+
+def test_a_closing_fence_inside_a_quote_still_loses_its_tail():
+    """The fence exception read a bare fence only, and a quoted code block stayed open."""
+    src = "> ```\n> x = 1\n> ```" + SPACE + "\n> after the code\n"
+    got, rep = symbol_pua.remap(src)
+    assert got == src.replace(SPACE, "") and rep["tail_kept_f020"] == 0
+
+
+def test_an_escaped_bracket_does_not_close_a_label():
+    """``[a\\]b]: /u`` is one label. The first ``]`` behind the bracket is escaped."""
+    line = "[a\\]b]: /u " + SPACE
+    got, rep = symbol_pua.remap(line + "\nnext\n")
+    assert got == line + "\nnext\n" and rep["tail_kept_f020"] == 1
+
+
+def test_only_a_label_at_the_start_of_the_content_is_a_definition():
+    """``![x]: a`` is an image and ``(1) [x]: a`` is a sentence. Neither can start a definition."""
+    for line, want in (
+        ("![x]: a" + SPACE + "b", "![x]: a b"),
+        ("(1) [x]: a" + SPACE + "b", "(1) [x]: a b"),
+    ):
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == want + "\n" and rep["inner_kept_f020"] == 0, repr(line)
+
+
+def test_only_a_checked_box_is_a_task_marker():
+    """``[Smith]<SPACE>wrote`` is a citation, and the first version of the test held it too."""
+    got, rep = symbol_pua.remap("[Smith]" + SPACE + "wrote this\n")
+    assert got == "[Smith] wrote this\n" and rep["inner_kept_f020"] == 0
+    got, rep = symbol_pua.remap("[link]" + SPACE + "\n")
+    assert got == "[link]\n" and rep["tail_kept_f020"] == 0
+
+
+def test_the_head_rule_and_the_lead_agree_on_what_text_is():
+    """A curly quote, a dash and a printed bullet open no block, at the head or anywhere else.
+
+    The #94 head rule took letters and table glyphs, and the #96 lead took anything that is not
+    ASCII. So ``<SPACE>“Quoted”`` kept its Symbol space while ``“<SPACE>Quoted`` lost it. Measured
+    before the head rule was widened: 8,028 characters of the Basic Multilingual Plane that are
+    neither ASCII nor letters, 210 contexts each, and the drop changed the rendering of no line
+    but one kind: ``U+FEFF``. The parser skips a byte order mark at the start of a document, so
+    behind a Symbol space it is text and without one it is nothing. It is not counted as text.
+    """
+    for first in ("“Quoted”", "— dash", "• item", "¿Qué?"):
+        got, rep = symbol_pua.remap(SPACE + first + "\n")
+        assert got == first + "\n", repr(first)
+        assert rep["head_kept_f020"] == 0 and rep["dropped_f020"] == 1, repr(first)
+    bom = chr(0xFEFF)
+    got, rep = symbol_pua.remap(SPACE + bom + "# x\n")
+    assert got == SPACE + bom + "# x\n" and rep["head_kept_f020"] == 1

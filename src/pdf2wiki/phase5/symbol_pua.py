@@ -101,7 +101,11 @@ Everything this step does is scoped **outside fenced code blocks**. A marker at 
 of console output must not become a markdown list item, and a PUA codepoint inside a code block is
 content we must not silently rewrite -- it is reported under ``unknown`` instead.
 
-Idempotent: after a pass no mapped PUA codepoint remains outside code, so a second pass is a no-op.
+Idempotent: a second pass is a no-op. ⚠ "No mapped PUA codepoint remains outside code" is NOT part
+of that claim. Every refusal leaves a mapped codepoint in place on purpose and counts it. There are
+six: ``stray_unhandled``, ``line_leading_marker_deferred``, ``marker_no_reading``,
+``adjacent_markers``, ``line_leading_dot_deferred``, and ``head_kept_f020``, a Symbol space at a line
+start that stands in front of text which could open a Markdown block (#94).
 
 ⚠ That claim was FALSE for two ADJACENT markers, and the chain runs this step twice on it. The pair
 was read piecewise -- the first refused as flush against a marker, the second deleted because a real
@@ -328,6 +332,138 @@ def _is_inert(body: str) -> bool:
     )
 
 
+def _opening_dot(line: str) -> int:
+    """Return the index of the :data:`DOT` that opens ``line``, or ``-1``. The one deferral test.
+
+    ``runs=False``: this asks only whether the dot OPENS its line. A marker that follows it is a
+    different question, and answering that one here rewrote the dot instead of deferring it. Two
+    callers read this, :func:`_remap_line` to defer the dot and :func:`_a_marker_opens` to leave
+    the head of such a line alone. They must agree, or one pass keeps a head the next one drops.
+    """
+    at = line.find(DOT)
+    if at != -1 and classify(line[:at], line[at + 1 :], runs=False) in (Pos.LIST, Pos.LINE_OPEN):
+        return at
+    return -1
+
+
+def _a_marker_opens(line: str) -> bool:
+    """Does a marker open ``line``, now or once the marker pass has run over it?
+
+    :func:`_head_may_be_dropped` asks this before a head Symbol space is kept (#94). A marker that
+    opens its line is read by position, and the line-opening tests accept real indent only. A
+    Symbol space left in front of such a marker turns it into a mid-line one: a list item loses its
+    marker, or a deferral becomes a deletion. Review found that class while #77 was fixed, 857
+    shapes of it. So the question is put to :func:`classify` itself, with the arguments its real
+    callers pass, and not to a pattern that reads a narrower string than they do.
+
+    ``line`` is the line as the drop would write it. ``runs=False`` throughout, because this asks
+    where a marker stands and not what to do with a neighbour.
+
+    ⚠ **Every marker in** :data:`BULLETS` **is asked, each with the markers in front of it taken
+    out.** The first version asked the first marker only, and that answer does not survive the
+    marker pass. In ``<SPACE>    #<BULLET> <DIAMOND> item`` the bullet does not open the line,
+    four columns deep, so the head was kept and the bullet deleted as a stray. The diamond then
+    stood right behind the hashes, where a marker that cannot be deleted opens the line at any
+    depth, and the chain's second pass dropped the head the first one had reported as kept. Review
+    found it by fuzzing, 40 of 1.2 million lines. Taking the earlier markers out asks the question
+    the second pass will ask. It over-approximates, since not every marker in front is deleted,
+    and that errs toward the drop, which is the previous release's output.
+
+    ⚠ This says the marker rules own the line. It does NOT say the drop is harmless there. After
+    hashes and a gap the text in front of the marker is itself an ATX opener, so
+    ``<SPACE># <DIAMOND> item`` is a paragraph line before the step and a heading after it, with
+    the deferred marker still in it. A bare ``<SPACE><BULLET>`` under a paragraph becomes ``-``,
+    which is a setext underline. Both are the output of the previous release, and keeping the head
+    there is the edit that deleted markers, so they stay as they were and are stated as a limit.
+    """
+    if _opening_dot(line) != -1:
+        return True
+    if not any(marker in line for marker in BULLETS):
+        return False
+    left = ""  # the line up to here, with every marker in front taken out
+    for i, ch in enumerate(line):
+        if ch not in BULLETS:
+            left += ch
+        elif classify(left, line[i + 1 :], strippable=ch in STRIPPABLE, runs=False) in (
+            Pos.HEADING,
+            Pos.LIST,
+            Pos.LINE_OPEN,
+        ):
+            return True
+    return False
+
+
+def _head_may_be_dropped(body: str, line: str, grows: bool) -> bool:
+    """May the head Symbol space in front of ``body`` be dropped, as every release before #94 did?
+
+    A WHITELIST, and the direction is the design, as it is for :func:`_is_inert`. An unlisted line
+    keeps its Symbol space. ``line`` is the whole line as the drop would write it, which the marker
+    test reads. ``grows`` says the drop would turn real spaces behind the Symbol space into indent.
+
+    1. The body starts with an **ASCII letter**. This is the ground #77 already decides: an inert
+       body is cut back when the drop reaches four columns, and any other is dropped as before.
+    2. A **marker** leads the body, or a marker OPENS the line. The marker rules own that line.
+       See :func:`_a_marker_opens` for why, and for what that does not promise.
+    3. The body starts with **any other letter**, or with a glyph in :data:`GLYPHS` that is
+       **written out as a non-ASCII character**, and the indent does not ``grow``. Measured, not
+       argued, and on the whole rendered HTML: 48,965 letters of the Basic Multilingual Plane and
+       those seventeen glyphs, in 210 contexts each behind a bare Symbol space, and the drop
+       changed the rendering of none of 10.3 million lines. Then through the step itself, behind
+       seven heads: none of 2.0 million dropped lines. A glyph in front is the likely real shape,
+       a line that starts inside a Symbol-font run, and the release before #94 wrote it clean.
+
+    ⚠ **The glyph is judged by what it is WRITTEN OUT as, and** ``U+F028`` **is not on the list.**
+    It becomes ``(``, and ``(`` opens the title of a link reference definition on the line above:
+    ``[x]: /u`` / ``<SPACE><F028>see note<F029>`` is a paragraph before the step and nothing at
+    all after the drop. The first measurement compared block tags, and a swallowed line leaves
+    them equal, so it reported that no glyph could do this. Review found it. ``)`` is excluded with
+    it: an ASCII character gets no benefit of the doubt here.
+
+    ⚠ **Case 1 is NOT measured safe, and one context shows it.** Under a bare link label, real
+    whitespace between the Symbol space and the letter decides everything: ``[note]:`` /
+    ``<SPACE> x`` is a paragraph, because the Symbol space is the destination and `` x`` is no
+    title, and after the drop ``x`` is the destination and both lines render as nothing. That is
+    the previous release's output and it stays, for the reason below. Case 3 does not have it,
+    because that whitespace is growth.
+
+    ⚠ Case 3 needs ``not grows`` and case 1 must not have it. A body in case 3 is never inert, so
+    nothing cuts it back, and without the test ``<SPACE>    <PI> radians`` is an indented code
+    block again. Two columns are enough to do damage, by moving a paragraph into the list item
+    above it, so the test is "any growth" and not "four columns". Case 1 cannot take the same test:
+    ``<SPACE>    text<BULLET> tail`` would be kept, the marker pass would delete the stray bullet,
+    and the chain's second pass would then find an inert body and cut the head back -- a refusal
+    the next pass undoes. That shape stays the previous release's output, and it is one of the
+    limits :func:`_remap_line` states.
+
+    ⚠ The marker test reads ``body[0]`` as well as the whole line, and both are needed. A marker
+    that leads the body can be DELETED by the marker pass, which leaves a letter in front, and the
+    second pass then drops the head this pass reported as kept: ``<NBSP><SPACE>    <BULLET> item``
+    did exactly that in the first version of this rule.
+
+    ⚠ Wider than :func:`_is_inert` on purpose, and the two must not be merged. That one licenses a
+    NEW edit, the cut-back, so it must be sure. This one licenses the OLD edit, so the worst it
+    can do is what the previous release did. ⚠ The two halves of case 3 belong together. A glyph
+    is written out as a letter more often than not, so with letters alone ``<SPACE><PI> radians``
+    is kept by one pass, becomes ``<SPACE>π radians``, and is dropped by the next. Still narrow:
+    ``2024 was``, ``(see note)`` and ``**bold**`` keep their Symbol space although the drop would
+    be harmless there.
+    """
+    first = body[0]
+    if _INERT_BODY.match(body) or first in BULLETS or _a_marker_opens(line):
+        return True
+    written = GLYPHS.get(first, first)
+    return (written.isalpha() or (first in GLYPHS and not written.isascii())) and not grows
+
+
+def _indent(text: str) -> int:
+    """Return the columns of indent CommonMark reads at the start of ``text``: spaces and tabs only.
+
+    Not ``str.isspace()``. ``U+00A0`` and ``U+2003`` are ``isspace()`` and are content to the
+    parser, and so is a Symbol space, so the indent ends at the first of them.
+    """
+    return _columns(text[: len(text) - len(text.lstrip(" \t"))])
+
+
 def _columns(indent: str) -> int:
     r"""Return the width of ``indent`` in COLUMNS, the unit CommonMark measures an indent in.
 
@@ -510,6 +646,31 @@ def _ends_in_unescaped_backslash(s: str) -> bool:
     return (len(s) - len(s.rstrip("\\"))) % 2 == 1
 
 
+def _real_tail(body: str, tail: str, stats: Counter[str]) -> str:
+    """Return the tail of a line with its Symbol spaces dropped, cut back where a drop uncovers a break.
+
+    Why the tail is cut back, and why only here: see the docstring of :func:`_remap_line`.
+    """
+    if SPACE not in tail:
+        return tail
+    real_tail = tail.replace(SPACE, "")
+    seen = tail[tail.rfind(SPACE) + 1 :]
+    if real_tail.endswith("  ") and not seen.endswith("  "):
+        stats["tail_collapsed_f020"] += 1
+        # At least one space stays: it is no break, and when the body is a bare marker
+        # it is the gap `classify` needs. Review measured 108 shapes flip from a read
+        # marker to a deferred one when the cut-back left nothing.
+        return seen or " "
+    if not real_tail and _ends_in_unescaped_backslash(body):
+        # CommonMark's OTHER hard break, and the same shape with a different trigger
+        # character. The tail held Symbol spaces only, so the last character of the line
+        # was one of them and the backslash was not line-final. The drop makes it
+        # line-final. One real space keeps the rendering the page has and is no break.
+        stats["tail_backslash_spaced_f020"] += 1
+        return " "
+    return real_tail
+
+
 def _remap_line(ln: str, stats: Counter[str]) -> str:
     """Substitute the verified glyphs in one line, with two exceptions the table cannot express.
 
@@ -549,7 +710,41 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
     -- a tab is four (spec 2.2). ⚠ It applies only to a body :func:`_is_inert` accepts, which is a
     WHITELIST and not a list of dangerous shapes. Three review rounds each found a shape a
     blacklist did not name, and every one of them read a narrower string than :func:`classify` and
-    CommonMark do. An unlisted body is simply not edited. Counted as ``head_collapsed_f020``. ⚠ Dropping does not prevent a paragraph split, and it does not leave
+    CommonMark do. An unlisted body is simply not edited. Counted as ``head_collapsed_f020``.
+
+    ⚠ **A head Symbol space is KEPT when the body behind it could open a block (#94).** ``U+F020``
+    is not whitespace to CommonMark, so a line that starts with one is paragraph text whatever
+    comes next. ``<SPACE># Title`` is a paragraph line before the step. The plain drop wrote
+    ``# Title``, a heading, and the same happened for a list, a quote, a thematic break, an HTML
+    block, a link reference definition that then renders as nothing, a code fence that then has
+    no end, and a ``---`` that turns the line ABOVE into a heading. No page shows which reading is
+    right, so the head stays as it is and is counted as ``head_kept_f020``, a refusal and not a
+    change, the answer :data:`DOT` gives. What may still be dropped is a whitelist, and
+    :func:`_head_may_be_dropped` is the one place that states it.
+
+    ⚠ **What #94 does NOT cover, each one the output of the previous release and each measured.**
+    (1) A line the marker rules own is dropped as before. So ``<SPACE>    <BULLET> item`` still
+    becomes four columns of indent, ``<SPACE># <DIAMOND> item`` still becomes a heading with the
+    deferred marker in it, and a bare ``<SPACE><BULLET>`` under a paragraph still becomes ``-``, a
+    setext underline. (2) An ASCII-letter body that #77 does not list is still not cut back.
+    (3) Behind an ASCII letter, real spaces that stay BELOW four columns are still promoted to
+    indent, and two of them move a paragraph into the list item above it. (4) The head is one of
+    three edges. A TAIL drop uncovers an opener too -- ``---<SPACE>`` under a paragraph becomes a
+    setext underline -- and so does a substitution INSIDE the body: ``#<SPACE>Title`` becomes
+    ``# Title``. Neither is this rule's.
+    ⚠ **And one thing a kept head costs.** An emphasis opener in front of a glyph that is written
+    out as punctuation, ``<SPACE>*<F028>x<F029>*``, loses its emphasis: with the head kept, ``*``
+    stands between a PUA codepoint and a ``(`` and is no longer left-flanking. The previous
+    release dropped the head and kept the emphasis. Mid-line the same substitution already costs
+    the same emphasis (``a*<F028>x<F029>*``), so it is the substitution's limit, now reachable at
+    a line start. Block structure is not changed by it. The second cost is one shape. Under a
+    bare link label, ``[x]:`` / ``<SPACE> <F028>see note<F029>``, the kept Symbol space is a
+    destination and the written-out ``(see note)`` is its title, so both lines render as nothing,
+    where the previous release dropped the head and left a paragraph. Dropping it instead loses
+    the line under ``[x]: /u``. A step that reads one line cannot see the label, so a body that
+    the paren glyph leads is exposed either way.
+
+    ⚠ Dropping does not prevent a paragraph split, and it does not leave
     the rendering unchanged either. ``U+F020`` is not whitespace to CommonMark, so a line that holds
     one and nothing else is a paragraph **continuation** line before this step and a **blank** line
     after it, whichever way the space is handled. Measured with a CommonMark parser:
@@ -582,24 +777,17 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
         while stop > start and (ln[stop - 1].isspace() or ln[stop - 1] == SPACE):
             stop -= 1
         head, body, tail = ln[:start], ln[start:stop], ln[stop:]
-        tail_spaces = tail.count(SPACE)
-        dropped = head.count(SPACE) + tail_spaces
-        if dropped:  # at an edge it is deleted, not spaced -- counted apart from a substitution
-            stats["dropped_f020"] += dropped
+        head_spaces, tail_spaces = head.count(SPACE), tail.count(SPACE)
         if SPACE in body:
             stats["remap_f020"] += body.count(SPACE)
-        # The head is cut back for the same reason the tail is, and by the mirror
-        # rule: the tail keeps what followed the LAST Symbol space, the head keeps
-        # what preceded the FIRST one. See the docstring above.
+        spaced = body.replace(SPACE, " ")
+        real_tail = _real_tail(body, tail, stats)
         real_head = head.replace(SPACE, "")
         # `body` guards a line that is ONLY whitespace and Symbol spaces: it is a blank line to
-        # CommonMark either way, so a cut-back there would report an edit that changes no
-        # rendering -- the "points an operator at nothing" failure this counter exists to avoid.
-        if head.count(SPACE) and body:
+        # CommonMark either way, so an edit to its head would report a change that changes no
+        # rendering -- the "points an operator at nothing" failure these counters exist to avoid.
+        if head_spaces and body:
             seen_head = head[: head.find(SPACE)]
-            # The tail twin fires only when a hard break would really appear. The head mirrors
-            # that: below `_TAB_STOP` columns the indent changes no rendering for a body that
-            # opens no block, so an edit there reports a repair that repairs nothing.
             # ⚠ The head must be CommonMark indentation and nothing else. The edge scan above
             # uses `str.isspace()`, which is wider than the parser: `U+00A0` and `U+2003` are
             # `isspace()` and are NOT indentation to CommonMark, and PDF text is full of them. On
@@ -608,38 +796,46 @@ def _remap_line(ln: str, stats: Counter[str]) -> str:
             # spaces of paragraph CONTENT and report an indent repair. The whitelist covers the
             # head for the same reason it covers the body: an unlisted shape is not edited.
             plain_indent = set(head) <= {" ", "\t", SPACE}
-            if (
+            # Would the drop promote content to an indented code block? The tail twin fires only
+            # when a hard break would really appear, and the head mirrors that: below `_TAB_STOP`
+            # columns an edit mostly reports a repair that repairs nothing. ⚠ "Mostly", measured:
+            # after a list item and a blank line, two real spaces behind the Symbol space are
+            # enough to move the paragraph INTO the item (`- outer` / `` / `<SPACE>  text`, 12
+            # shapes of the rendering grid). An earlier version of this comment said the indent
+            # "changes no rendering" there. It is a limit this rule keeps, not a property it has.
+            # ⚠ `grows` is NOT gated on `plain_indent`, and it measures the indent as the parser
+            # does. A head of `<SPACE>    <NBSP>` is not plain, and its four real spaces still
+            # become indent once the Symbol space in front of them is gone. Review found that the
+            # gate switched the guard off for exactly that head. ⚠ It guards case 3 of the
+            # whitelist ONLY. An ASCII-letter body behind that head is #77's, the cut-back below
+            # is gated on a plain head, and `<SPACE>    <NBSP>text` is still an indented code
+            # block, as in the previous release.
+            grows = _indent(real_head) > _indent(head)
+            if not _head_may_be_dropped(body, real_head + spaced + real_tail, grows):
+                # #94. The Symbol space is the only thing that keeps this body a paragraph line,
+                # and nothing here proves the drop leaves it one. So the head stays as it is,
+                # Symbol spaces and all, and is counted as a refusal.
+                stats["head_kept_f020"] += head_spaces
+                real_head = head
+                head_spaces = 0  # kept, so not dropped
+            elif (
                 plain_indent
                 and _columns(real_head) >= _TAB_STOP > _columns(seen_head)
                 and _is_inert(body)
             ):
+                # #77. The head is cut back for the same reason the tail is, and by the mirror
+                # rule: the tail keeps what followed the LAST Symbol space, the head keeps what
+                # preceded the FIRST one. See the docstring above.
                 stats["head_collapsed_f020"] += 1
                 real_head = seen_head
-        real_tail = tail
-        if tail_spaces:
-            # Why the tail is cut back, and why only here: see the docstring above.
-            real_tail = tail.replace(SPACE, "")
-            seen = tail[tail.rfind(SPACE) + 1 :]
-            if real_tail.endswith("  ") and not seen.endswith("  "):
-                stats["tail_collapsed_f020"] += 1
-                # At least one space stays: it is no break, and when the body is a bare marker
-                # it is the gap `classify` needs. Review measured 108 shapes flip from a read
-                # marker to a deferred one when the cut-back left nothing.
-                real_tail = seen or " "
-            elif not real_tail and _ends_in_unescaped_backslash(body):
-                # CommonMark's OTHER hard break, and the same shape with a different trigger
-                # character. The tail held Symbol spaces only, so the last character of the line
-                # was one of them and the backslash was not line-final. The drop makes it
-                # line-final. One real space keeps the rendering the page has and is no break.
-                stats["tail_backslash_spaced_f020"] += 1
-                real_tail = " "
-        ln = real_head + body.replace(SPACE, " ") + real_tail
+        dropped = head_spaces + tail_spaces
+        if dropped:  # at an edge it is deleted, not spaced -- counted apart from a substitution
+            stats["dropped_f020"] += dropped
+        ln = real_head + spaced + real_tail
 
     head = ""
-    at = ln.find(DOT)
-    # `runs=False`: this asks only whether the dot OPENS its line. A marker that follows it is a
-    # different question, and answering that one here rewrote the dot instead of deferring it.
-    if at != -1 and classify(ln[:at], ln[at + 1 :], runs=False) in (Pos.LIST, Pos.LINE_OPEN):
+    at = _opening_dot(ln)
+    if at != -1:
         stats["line_leading_dot_deferred"] += 1  # never guess: bullet or dot, per-book judgment
         head, ln = ln[: at + 1], ln[at + 1 :]
 
@@ -696,6 +892,12 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         the indent CommonMark read before the step. An edit, counted toward ``total_changes``; one
         per line. Counted apart from ``dropped_f020``, which holds every benign drop and so points
         an operator at nothing.
+    ``head_kept_f020``
+        A :data:`SPACE` at the start of a line, LEFT IN PLACE because the text behind it could open
+        a Markdown block there -- a heading, a list, a quote, a code fence, a setext underline --
+        and the Symbol space is the only thing that keeps it paragraph text. A refusal, counted per
+        Symbol space and kept out of ``total_changes``. Needs a human: render the source page, then
+        write the line by hand.
     ``line_leading_marker_deferred``
         A marker in :data:`BULLETS` opening a line, left in place because it could not be read as a
         list item -- too indented, no gap after it, or an operator where the item's text would
@@ -739,6 +941,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
             "tail_collapsed_f020": 0,
             "tail_backslash_spaced_f020": 0,
             "head_collapsed_f020": 0,
+            "head_kept_f020": 0,
             "in_code": {},
             "unknown": {},
             "total_changes": 0,
@@ -781,6 +984,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "tail_collapsed_f020": 0,
         "tail_backslash_spaced_f020": 0,
         "head_collapsed_f020": 0,
+        "head_kept_f020": 0,
         "skipped_crlf": False,
     }
     report.update(stats)
@@ -794,6 +998,7 @@ def remap(md: str) -> tuple[str, dict[str, object]]:
         "line_leading_marker_deferred",
         "marker_no_reading",
         "adjacent_markers",
+        "head_kept_f020",
     }
     report["total_changes"] = sum(v for k, v in stats.items() if k not in deliberate)
     return out, report

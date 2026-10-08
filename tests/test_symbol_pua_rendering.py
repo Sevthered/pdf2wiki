@@ -5,7 +5,8 @@
 """The rendering oracle for `symbol_pua`, against the CommonMark reference implementation.
 
 Every rendering claim this module makes -- #73's tail hard break, #78's line-final backslash, #77's
-head indent -- was measured in a throwaway virtual environment and then thrown away. Nothing in CI
+head indent -- was measured in a throwaway virtual environment and then thrown away. (#94's block
+opener came later, and its claim was pinned here in the same change that made it.) Nothing in CI
 held any of them, and the committed truth table is SINGLE-LINE, so it cannot see a class that needs
 a paragraph above the line. Three of the four defects found while fixing #77 lived in exactly that
 blind spot.
@@ -31,6 +32,27 @@ the ``_is_inert`` whitelist removed              the head snapshot below
 the head cut-back removed (#77 returns)          the head snapshot, and the code-block test below
 the tail cut-back removed (#73 returns)          the tail snapshot, and the hard-break test below
 the backslash guard removed (#78 returns)        the backslash test below
+the #94 keep rule removed (#94 returns)          the head snapshot, and the block-opener test below
+its leading-marker test removed                  ``test_every_head_shape_settles_in_one_pass`` ALONE:
+                                                 seven shapes become a refusal the second pass undoes
+its marker-opens test removed                    the head snapshot, and the positional table
+its dot test removed                             the head snapshot, and the positional table
+only the FIRST marker asked                      the settle test and the token fuzz in the positional
+                                                 file: the first is deleted, the second then opens
+its ASCII-letter case removed                    the head snapshot, and six positional tests
+its mapped glyphs removed                        the settle test again, and three positional tests:
+                                                 one pass keeps the head, writes a letter, the next
+                                                 drops it
+its indent guard removed, or gated on a plain    the head snapshot, and
+head again                                       ``test_the_indent_guard_measures_indent_as_the_parser_does``
+a glyph written as ASCII allowed                 the head snapshot, and the paren test below. ⚠ Only
+                                                 since ``_ABOVE`` holds a link label: ``(`` is
+                                                 swallowed as the title of the definition above, and
+                                                 without that context no shape here could show it.
+its non-ASCII letters removed                    ⚠ **NOT here.** A harmless drop and a keep build the
+                                                 same blocks, so a structural oracle cannot tell them
+                                                 apart. ``test_a_head_symbol_space_in_front_of_a_letter_is_still_dropped``
+                                                 in ``test_symbol_pua_positions.py`` catches it.
 the ``plain_indent`` guard removed               ⚠ **NOT here.** Dropping it deletes real content
                                                  without moving a block, so a structural oracle is
                                                  blind to it by construction. It is caught by
@@ -84,6 +106,7 @@ _HEADS = [
     SPACE + SPACE + "    ",
     SPACE + "  " + SPACE + "  ",
     "\u00a0" + SPACE + "    ",  # `isspace()` in Python, and NOT indentation to CommonMark
+    SPACE + "    \u00a0",  # the same character BEHIND the real spaces, which are then indent
 ]
 _BODIES = [
     "text",
@@ -125,6 +148,26 @@ _BODIES = [
     "<em>x</em>",
     "text" + BULLET + " tail",
     "ends in a backslash\\",
+    # The edges of the #94 whitelist. Without these four the grid cannot tell a rule that drops
+    # the head in front of a mapped glyph or a non-ASCII letter from one that keeps it, and the
+    # first version of that whitelist was widened with every test here still green.
+    "\uf070 radians",  # a mapped glyph leads: the likely real shape, a Symbol-font run
+    "\u00e9 accent",  # a letter that is not ASCII
+    "[ref]: /url",  # a link reference definition: an opener that renders as NOTHING
+    # An emphasis opener in front of a glyph that is written out as punctuation. With the head
+    # kept, `*` stands between a PUA codepoint and a `(`, so it is no longer left-flanking and
+    # the emphasis is lost. The same happens mid-line with no head at all (`a*<F028>x<F029>*`),
+    # so it is the substitution's limit and not the keep rule's, and it is recorded here.
+    "*\uf028x\uf029* is",
+    # Two markers behind hashes. The first is deleted as a stray four columns deep, and the
+    # second then opens the line. No shape here had two markers behind a kept head, and the #94
+    # rule shipped to review unstable on this one.
+    "#" + BULLET + " " + DIAMOND + " item",
+    # The paren glyph in front. It is written out as `(`, which a link label above reads as a
+    # title: under `[x]: /u` the dropped line vanishes, and under a bare `[x]:` the KEPT Symbol
+    # space becomes the destination and the line vanishes the other way. A line-local step cannot
+    # see the label, so one of the two is lost whichever way the head goes, and both are recorded.
+    "\uf028see note\uf029",
 ]
 _TAILS = [
     "",
@@ -140,6 +183,9 @@ _TAILS = [
 # A line never stands alone in a chapter, and the block ABOVE it decides how it is read. The
 # committed positional table has no such axis, which is why it cannot see this class at all.
 _ABOVE = ["", "para above\n", "- outer\n", "> quote\n", "prev\n\n", "- outer\n\n", "# head\n"]
+# A link label above. It reads the NEXT line as its destination or its title, so it is the one
+# block that a line below can vanish into, and two defects of the #94 rule needed it to be seen.
+_ABOVE += ["[x]: /u\n", "[x]:\n"]
 
 
 def skeleton(md: str) -> list[str]:
@@ -250,6 +296,53 @@ def test_a_dropped_head_symbol_space_opens_no_code_block(head: str) -> None:
     )
 
 
+@pytest.mark.parametrize("above", ["", "para above\n", "- outer\n", "> quote\n", "# head\n"])
+@pytest.mark.parametrize("head", [SPACE, " " + SPACE, SPACE + SPACE, SPACE + " ", "   " + SPACE])
+def test_a_dropped_head_symbol_space_uncovers_no_block_opener(
+    above: str, head: str, block_openers: list[str]
+) -> None:
+    """#94, pinned in CI.
+
+    `U+F020` is not whitespace to CommonMark, so a line that starts with one is paragraph text
+    whatever comes next. The drop used to put the text behind it at the start of the line, where
+    `# Title` is a heading, `- item` a list, a fence an open code block, and `---` a setext
+    underline that turns the line ABOVE into a heading.
+
+    Every body here holds no marker and no Symbol space of its own, so the head is the only thing
+    the step can act on, and cmark judges the whole block structure and not one tag.
+    """
+    for body in block_openers:
+        src = above + head + body + "\nnext\n"
+        out = symbol_pua.remap(src)[0]
+        assert skeleton(out) == skeleton(src), repr(src)
+
+
+def test_a_paren_glyph_under_a_link_definition_still_renders() -> None:
+    """The reason `U+F028` is not in the #94 whitelist, asserted on the rendering and not on a counter.
+
+    `[x]: /u` and then `<SPACE><F028>see note<F029>` is a definition and a paragraph. With the head
+    dropped the second line is `(see note)`, a valid title, and it renders as NOTHING. The block
+    tags stay equal when that happens, which is why the first measurement missed it.
+    """
+    src = "[x]: /u\n" + SPACE + "\uf028see note\uf029\nnext\n"
+    out = symbol_pua.remap(src)[0]
+    assert "see note" in cmarkgfm.github_flavored_markdown_to_html(src)
+    assert "see note" in cmarkgfm.github_flavored_markdown_to_html(out)
+
+
+def test_every_head_shape_settles_in_one_pass() -> None:
+    """The chain runs this step twice, and a refusal the second pass undoes is a false report.
+
+    The first version of the #94 rule kept the head of ``<NBSP><SPACE>    <BULLET> item``, the
+    marker pass then deleted the bullet as a stray, and the second pass found a letter in front
+    and dropped the head. The operator was told a Symbol space had been left in place on a line
+    that no longer held it. Seven shapes of this grid caught it, and nothing else did.
+    """
+    for above, head, body in itertools.product(_ABOVE, _HEADS, _BODIES):
+        once = symbol_pua.remap(above + head + body + "\n")[0]
+        assert symbol_pua.remap(once)[0] == once, repr(_show(above + head + body))
+
+
 def test_the_grid_is_large_enough_to_have_found_the_defects_it_was_written_for() -> None:
     """A grid that shrinks silently stops being an oracle.
 
@@ -257,7 +350,7 @@ def test_the_grid_is_large_enough_to_have_found_the_defects_it_was_written_for()
     marker body under a long head. Both axes must stay crossed, which a bare count does not say, so
     the axes are asserted directly.
     """
-    assert len(_ABOVE) >= 7 and "para above\n" in _ABOVE
+    assert len(_ABOVE) >= 9 and "para above\n" in _ABOVE and "[x]:\n" in _ABOVE
     assert any(
         SPACE in h and h.replace(SPACE, "").strip(" \t") == "" and len(h) > 4 for h in _HEADS
     )

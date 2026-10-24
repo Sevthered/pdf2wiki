@@ -86,3 +86,16 @@ files = ["src/pdf2wiki"]  # the shipped package; tests keep their sys.path/fixtu
 module = ["pymupdf", "pymupdf.*", "fitz", "fitz.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
+
+[tool.coverage.run]
+# CPython 3.12 stores the line of each instruction as an 8-bit offset from the first line of its
+# function. For a line outside that range, each `sys.settrace` line event scans the line table of
+# the function, and the C tracer of coverage.py gets a line event each time a line runs.
+# `symbol_pua._remap_line` is 237 lines long, and the suite took 286 s on 3.12 and 45 s on 3.13,
+# where CPython has no such limit. The `sysmon` core gets one event for each line and then disables
+# it: 26 s on 3.12, with the same 2,255 statements and the same 134 missed, line for line.
+# 3.11 has no `sys.monitoring`. coverage.py uses the C tracer there and prints a warning, and
+# `no-sysmon` is that warning. This core cannot measure branches before 3.14. If `branch` is set,
+# 3.12 and 3.13 use the C tracer again, and the disabled warning does not report it.
+core = "sysmon"
+disable_warnings = ["no-sysmon"]

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-10-26
+
 ### Fixed
 - **A Symbol space at a line end or inside the text no longer uncovers a block opener (#96).**
   This is the remainder of #94, which covered the start of a line. `symbol_pua` deletes a `U+F020`
@@ -890,7 +892,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.12...HEAD
+[0.2.12]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...v0.2.9

@@ -7,6 +7,40 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **Real spaces behind a Symbol space at a line start no longer move a paragraph into a list item
+  (#98).** `symbol_pua` deletes a `U+F020` at the start of a line. Every real space behind it is
+  content to CommonMark, and the deletion makes that content indent. The rule for #77 cut the head
+  back only at four columns, where an indented code block starts. Two or three columns also decide
+  the structure. Put a list item, an empty line, and then a Symbol space, two real spaces and
+  `text`. That last line is a paragraph after the list. The deletion moved it into the list item.
+  The head is cut back now each time the indent grows. The rule keeps the whitespace in front of the
+  first Symbol space, as for #77. It applies when that whitespace is less than four columns and the
+  head holds only spaces, tabs and Symbol spaces. **The rule now moves any text that starts with an
+  ASCII letter.** Before, it also refused text with a bullet marker, a dot or a Symbol space in it.
+  Those lines were still moved into a list item, or became an indented code block. The cut-back
+  changes only the indent, and a line that starts with a letter is paragraph text at any indent
+  below four columns.
+  **Counters.** `head_collapsed_f020` still counts only a line where the deletion would reach four
+  columns. Below four columns, the cut-back is part of the deletion and counts as `dropped_f020`.
+  The step reads one line, so it cannot see the list above it. A line such as a Symbol space, one
+  real space and `text` is frequent. A count for each one would make the counter useless to an
+  operator. Measured with `cmarkgfm` against `main` and 0.2.11, on 1,394,586 generated lines. The
+  lines have 28 different blocks above them and 5 different lines below them. 24,763 lines render as
+  the source now, and they did not before. In 140 of them, the deletion had put the line into the
+  code block above it. No line renders worse, no visible word changes, and each line is stable on a
+  second pass. In the rendering grid, 35 of 7,290 shapes no longer change their block structure. No
+  shape of the positional table changes.
+  **Limits.** Under a link label with no destination, the line is still a destination. `[note]:` and
+  then a Symbol space, a real space and `x` is a paragraph before the step, and nothing after it.
+  Before the step, the Symbol space was the destination. The step cannot see the label. Text that
+  starts with another letter or a glyph is not moved, so its Symbol space stays when the indent
+  grows. A wider rule made the link-label loss worse, and it was not stable on a second pass. Two
+  limits of #77 also stay. A head with a `U+00A0` or a `U+2003` behind the real spaces is not cut
+  back, so its paragraph still moves into the list item. A cut-back there must keep that character,
+  and that is a new edit. When four columns or more stand in front of the first Symbol space, the
+  head is not cut back either. In a nested list, the paragraph can then move into a deeper item. In
+  an HTML `<pre>` block, the real spaces behind the Symbol space are deleted, and `<pre>` shows
+  them. The converter emits no `<pre>` in 1,680 measured files.
 - **A Symbol space at a line end or inside the text no longer uncovers a block opener (#96).**
   This is the remainder of #94, which covered the start of a line. `symbol_pua` deletes a `U+F020`
   at the end of a line. `---` and then a Symbol space is paragraph text, and `---` alone is a setext

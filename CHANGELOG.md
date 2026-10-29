@@ -7,6 +7,30 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **Text behind real spaces and a `U+00A0` at a line start no longer becomes an indented code
+  block (#99).** `symbol_pua` deletes a `U+F020` at the start of a line, and the real spaces behind it
+  become indent. The rule for #77 and #98 cuts that indent back. It did not apply when the head
+  held a `U+00A0` or a `U+2003` behind the real spaces. Put a Symbol space, four real spaces, a
+  `U+00A0` and `text` on a line. That line is a paragraph before the step. The step made it an
+  indented code block. With two real spaces, the paragraph moved into the list item above. The rule
+  now applies to these heads too. It deletes only the real spaces and tabs that the deletion moved
+  into the indent. The `U+00A0` stays, because it is text to CommonMark, and all that follows it
+  stays too. This applies to the 16 Unicode space characters that are not ASCII (category Zs). Any
+  other character in the head stops the rule, for example a form feed or a `U+0085`. The counters
+  do not change. `head_collapsed_f020` counts a line where the deletion would reach four columns.
+  Below four columns, the edit counts as `dropped_f020`. Measured with `cmarkgfm` against `main`.
+  22,464 lines get a new text. Each one was rendered with 16 different blocks above it and 6 below
+  it, 2,156,544 documents. 921,024 documents render as the source now, and they did not before. No
+  document renders worse, no visible word changes, and each line is stable on a second pass. A line
+  with no such character in its head gets the same text as before. In the rendering grid, 24 shapes
+  no longer change their block structure. The fix for #98 below already fixed the other two shapes
+  of #99, a marker or a Symbol space in the text.
+  **Limits.** The two limits of #98 stay. Under a link label with no destination, the line is
+  still a destination. In an HTML `<pre>` block, the real spaces are deleted. When a marker starts
+  the text behind the `U+00A0`, the head is not cut back. A Symbol space, four real spaces, a
+  `U+00A0`, a `U+F0A1` and ` item` becomes four real spaces, a `U+00A0` and `item`. The marker pass
+  deletes the marker, and the line is an indented code block. The output is the same as before.
+  The head rule and the marker pass must decide such a line together, and that is #97.
 - **Real spaces behind a Symbol space at a line start no longer move a paragraph into a list item
   (#98).** `symbol_pua` deletes a `U+F020` at the start of a line. Every real space behind it is
   content to CommonMark, and the deletion makes that content indent. The rule for #77 cut the head
@@ -34,11 +58,9 @@ All notable changes to this project are documented here. The format is based on
   then a Symbol space, a real space and `x` is a paragraph before the step, and nothing after it.
   Before the step, the Symbol space was the destination. The step cannot see the label. Text that
   starts with another letter or a glyph is not moved, so its Symbol space stays when the indent
-  grows. A wider rule made the link-label loss worse, and it was not stable on a second pass. Two
-  limits of #77 also stay. A head with a `U+00A0` or a `U+2003` behind the real spaces is not cut
-  back, so its paragraph still moves into the list item. A cut-back there must keep that character,
-  and that is a new edit. When four columns or more stand in front of the first Symbol space, the
-  head is not cut back either. In a nested list, the paragraph can then move into a deeper item. In
+  grows. A wider rule made the link-label loss worse, and it was not stable on a second pass. One
+  limit of #77 also stays. When four columns or more stand in front of the first Symbol space, the
+  head is not cut back. In a nested list, the paragraph can then move into a deeper item. In
   an HTML `<pre>` block, the real spaces behind the Symbol space are deleted, and `<pre>` shows
   them. The converter emits no `<pre>` in 1,680 measured files.
 - **A Symbol space at a line end or inside the text no longer uncovers a block opener (#96).**

@@ -576,8 +576,10 @@ def test_a_head_that_is_not_commonmark_indentation_is_left_alone():
     ``U+00A0`` and ``U+2003`` are `isspace()` in Python and are not indentation to the parser. A
     line that opens with one stands at indent 0 before AND after the drop, so no indented code
     block was ever possible, and a cut-back would delete real paragraph content while reporting an
-    indent repair. Review found this. The whitelist covers the head for the same reason it covers
-    the body.
+    indent repair. Review found this. ⚠ Since #99 the head whitelist ADMITS these characters, so
+    it is no longer what guards this line. ``grows`` is: it measures the indent with ``_indent``,
+    which stops at the ``U+00A0``, so nothing grows and nothing is cut back. A ``grows`` that
+    measured characters would delete the four real spaces here.
     """
     for pad in ("\u00a0", "\u2003", "\u3000", ""):
         line = pad + SPACE + "    text"
@@ -588,6 +590,53 @@ def test_a_head_that_is_not_commonmark_indentation_is_left_alone():
         else:
             assert rep["head_collapsed_f020"] == 1, repr(line)
             assert got == "text\n", repr(line)
+
+
+def test_a_content_space_behind_the_real_spaces_is_kept_by_the_cut_back():
+    """#99: the cut-back deletes the indent the drop made, and nothing that is content.
+
+    ``<SPACE>    <NBSP>text`` is a paragraph line before the step. The drop made the four real
+    spaces indent, and the line an indented code block, because the head held a ``U+00A0`` and
+    the cut-back refused it. The ``U+00A0`` is text to CommonMark, so it stays, with all that
+    follows it in the head. The counter rule is the one of #98: four columns or more of growth
+    counts as ``head_collapsed_f020``, less counts as the drop only. The last case catches a
+    counter that measures the head in characters, ``_columns`` of ``"   <NBSP>"`` is four.
+    """
+    nbsp, em, ideo = "\u00a0", "\u2003", "\u3000"
+    cases = [
+        (SPACE + "    " + nbsp + "text here", nbsp + "text here", 1),  # the issue's own repro
+        (" " + SPACE + "    " + em + "text", " " + em + "text", 1),
+        (SPACE + "\t" + ideo + "a", ideo + "a", 1),  # a tab is four columns
+        (SPACE + "    " + nbsp + SPACE + " x", nbsp + " x", 1),  # what follows it stays
+        (SPACE + "    " + nbsp + "\t" + em + "x", nbsp + "\t" + em + "x", 1),
+        (SPACE + "  " + nbsp + "text", nbsp + "text", 0),
+        (SPACE + "   " + nbsp + "text", nbsp + "text", 0),
+    ]
+    for line, want, collapsed in cases:
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == want + "\n", repr(line)
+        assert rep["head_collapsed_f020"] == collapsed, repr(line)
+        assert rep["head_kept_f020"] == 0, repr(line)
+        assert rep["dropped_f020"] == line.count(SPACE), repr(line)
+        assert symbol_pua.remap(got)[0] == got, repr(line)  # the chain runs this step twice
+
+
+def test_a_head_character_outside_the_whitelist_stops_the_cut_back():
+    """The head is a whitelist. A character that is not on it is not edited, as before #99.
+
+    A form feed, a ``U+0085`` and a line separator are ``isspace()`` in Python and are not
+    category Zs. Each line keeps the output of the previous release. ``_CONTENT_SPACES`` is
+    asserted against the Unicode database, so the list cannot drift from what it says it is.
+    """
+    import unicodedata
+
+    zs = {chr(c) for c in range(sys.maxunicode + 1) if unicodedata.category(chr(c)) == "Zs"}
+    assert set(symbol_pua._CONTENT_SPACES) == zs - {" "}
+    for ch in ("\x0c", "\x0b", "\x85", "\u2028", "\x1f"):
+        line = SPACE + "    " + ch + "text"
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == "    " + ch + "text\n", repr(line)
+        assert rep["head_collapsed_f020"] == 0, repr(line)
 
 
 def test_a_head_symbol_space_in_front_of_a_block_opener_is_kept(block_openers):

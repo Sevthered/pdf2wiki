@@ -30,6 +30,10 @@ mutation                                         caught by
 ===============================================  ====================================================
 the ``_is_inert`` whitelist removed              the head snapshot below
 the head cut-back removed (#77 returns)          the head snapshot, and the code-block test below
+the cut-back at four columns only (#98 returns)  the head snapshot, the list-item test below, and
+                                                 the below-four cases in the positional file
+``_is_inert`` refusing a marker or a Symbol space  the list-item test below, the head snapshot, and
+again                                            the letter-body test in the positional file
 the tail cut-back removed (#73 returns)          the tail snapshot, and the hard-break test below
 the backslash guard removed (#78 returns)        the backslash test below
 the #94 keep rule removed (#94 returns)          the head snapshot, and the block-opener test below
@@ -302,6 +306,27 @@ def test_a_dropped_head_symbol_space_opens_no_code_block(head: str) -> None:
     assert "<pre" not in cmarkgfm.github_flavored_markdown_to_html(src), (
         "the source was already code"
     )
+
+
+@pytest.mark.parametrize(
+    "above", ["- outer\n\n", "1. one\n\n", "1) one\n\n", "* outer\n\n", "- a\n  - b\n\n"]
+)
+@pytest.mark.parametrize("head", [SPACE + "  ", SPACE + "   ", " " + SPACE + " ", SPACE + " \t"])
+@pytest.mark.parametrize("body", ["text", "x" + SPACE + "=1", "text" + BULLET + " tail"])
+def test_a_dropped_head_symbol_space_moves_no_paragraph_into_a_list_item(
+    above: str, head: str, body: str
+) -> None:
+    """#98, the issue's own repro, pinned in CI.
+
+    Below four columns the indent still decides whether a paragraph belongs to the list item above
+    it. `<SPACE>  text` stands at column 0 before the step, so it is a paragraph after the list.
+    The drop made the two real spaces indent, and the paragraph moved INTO the item. The last two
+    bodies are the shapes review found the first fix left alone: a line that starts inside a
+    Symbol-font run holds more Symbol spaces, and a marker can stand behind the text.
+    """
+    src = above + head + body + "\nnext\n"
+    out = symbol_pua.remap(src)[0]
+    assert skeleton(out) == skeleton(src), repr(src)
 
 
 @pytest.mark.parametrize("above", ["", "para above\n", "- outer\n", "> quote\n", "# head\n"])

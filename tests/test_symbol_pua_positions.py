@@ -365,10 +365,10 @@ def test_a_dropped_head_symbol_space_never_promotes_content_to_indent():
     Measured with cmark-gfm over 400 shapes: 80 changed their indent-derived structure on `main`,
     0 on this rule.
 
-    ⚠ The rule fires only when the drop reaches `_TAB_STOP` columns, which mirrors the tail twin:
-    that one fires only when a hard break would really appear. Below four columns the indent
-    changes no rendering for a body that opens no block, and an edit there would report a repair
-    that repairs nothing.
+    ⚠ The rule fires on ANY growth, not only when the drop reaches `_TAB_STOP` columns (#98).
+    An earlier version fired at four columns only and said that below four the indent changes no
+    rendering. It does: two columns move a paragraph into the list item above it. The rendering
+    side of that is `test_a_dropped_head_symbol_space_moves_no_paragraph_into_a_list_item`.
     """
     cases = [
         (SPACE + "    text", "text"),  # the issue's own repro
@@ -381,6 +381,56 @@ def test_a_dropped_head_symbol_space_never_promotes_content_to_indent():
         got, rep = symbol_pua.remap(line + "\n")
         assert got == want + "\n", repr(line)
         assert rep["head_collapsed_f020"] == 1, repr(line)
+
+
+def test_growth_below_four_columns_is_cut_back_and_counted_as_the_drop():
+    """#98: below four columns the cut-back is part of the drop, and the counter stays narrow.
+
+    A line-local step cannot tell `<SPACE>  text` under a list item, where two columns move a
+    paragraph into the item, from the same line under a paragraph, where nothing changes. So it
+    cuts back both. `<SPACE> text` is a common shape, and counting each one in
+    `head_collapsed_f020` would make that counter point an operator at nothing, the reason it is
+    kept apart from `dropped_f020`. It counts only where the drop would reach an indented code
+    block.
+    """
+    cases = [
+        (SPACE + " text", "text"),
+        (SPACE + "  text", "text"),
+        (SPACE + "   text", "text"),
+        (" " + SPACE + "  text", " text"),  # 1 column before the step, 3 after
+        (SPACE + " " + SPACE + " text", "text"),
+    ]
+    for line, want in cases:
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == want + "\n", repr(line)
+        assert rep["head_collapsed_f020"] == 0, repr(line)
+        assert rep["dropped_f020"] == line.count(SPACE), repr(line)
+        assert rep["total_changes"] == line.count(SPACE), repr(line)  # as before #98
+
+
+def test_a_letter_body_is_cut_back_whatever_follows_the_letter():
+    """#98: the cut-back changes the indent and nothing else, so only the first character decides.
+
+    Until #98 a marker, a dot or a Symbol space inside the body stopped the cut-back, and the drop
+    still made `<SPACE>    text<BULLET> tail` an indented code block. The marker is read by the
+    letter in front of it, mid-line at any depth, so the marker counters must not move.
+    """
+    cases = [
+        (SPACE + "    x" + SPACE + "=1", "x =1", 1),
+        (SPACE + "    text" + BULLET + " tail", "text tail", 1),
+        (SPACE + "    a" + DOT + "b", "a·b", 1),
+        (SPACE + "  x" + SPACE + "=1", "x =1", 0),  # below four: the drop's count only
+        (SPACE + "  text" + DIAMOND + " tail", "text" + DIAMOND + " tail", 0),
+    ]
+    for line, want, collapsed in cases:
+        got, rep = symbol_pua.remap(line + "\n")
+        assert got == want + "\n", repr(line)
+        assert rep["head_collapsed_f020"] == collapsed, repr(line)
+        assert rep["head_kept_f020"] == 0, repr(line)
+        assert symbol_pua.remap(got)[0] == got, repr(line)  # the chain runs this step twice
+        bare = line.replace(SPACE, "").lstrip(" \t")
+        want_markers = {k: symbol_pua.remap(bare + "\n")[1][k] for k in _MARKER_COUNTERS}
+        assert {k: rep[k] for k in _MARKER_COUNTERS} == want_markers, repr(line)
 
 
 def test_the_head_cut_back_leaves_a_real_indented_code_block_alone():
@@ -414,8 +464,9 @@ def test_the_head_rule_counts_columns_and_not_characters():
     """CommonMark spec 2.2: a tab advances to the next multiple of four.
 
     Reading a tab as one character is a live bug elsewhere in this module (the ``[ \\t]{0,3}``
-    limits), so the head rule must not repeat it. ``<SPACE><TAB>`` is four columns and crosses the
-    threshold; ``  <SPACE>\\t`` reaches four columns from two, and crosses it too.
+    limits), so the head rule must not repeat it. ``<SPACE><TAB>`` is four columns, so the drop
+    would reach an indented code block and the cut-back is counted. ``  <SPACE>\\t`` reaches four
+    columns from two, and is counted too.
     """
     assert symbol_pua._columns("\t") == 4
     assert symbol_pua._columns("  \t") == 4  # the tab completes the group, it does not add four
@@ -433,8 +484,9 @@ def test_the_head_is_left_alone_unless_the_body_is_provably_inert():
     than `classify` and CommonMark read: a PUA marker behind the Symbol space, an emphasis opener
     in front of one, promoted hashes, a Symbol space used as the delimiter itself, an HTML block,
     and the two-hyphen setext underline. Every shape below was a measured regression in one of
-    those rounds. The rule now edits only a body that starts with a letter and carries no marker
-    and no Symbol space, so an unnamed shape is not edited at all.
+    those rounds. The rule now edits only a body that starts with an ASCII letter, so an unnamed
+    shape is not edited at all. Until #98 it also refused a marker and a Symbol space behind the
+    letter. A measurement removed that, not an argument.
     """
     for body in (
         "- item",

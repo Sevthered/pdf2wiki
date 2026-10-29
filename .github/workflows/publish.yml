@@ -40,4 +40,4 @@ jobs:
           path: dist/
       # NB: this is a Docker action — its image is tagged by the COMMIT sha, so pin the commit,
       # not the annotated-tag object sha (2834a31… was the tag object → ghcr manifest unknown).
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3

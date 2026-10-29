@@ -12,3 +12,6 @@ uv.lock
 
 # project-local config may hold a mineru.net token inline — never commit it (prefer env/token_file)
 pdf2wiki.toml
+
+# local Obsidian workspace state, written when the repo is opened as a vault
+.obsidian/

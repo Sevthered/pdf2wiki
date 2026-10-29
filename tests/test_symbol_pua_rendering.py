@@ -65,10 +65,17 @@ the #96 rules let loose on a marker line         the head snapshot and the posit
                                                  stops being one
 the #96 clauses for a definition, a tag, a       ⚠ **NOT here**, or only in part. Each has a test of
 closing hash, a closed tag, a written glyph      its own in ``test_symbol_pua_positions.py``.
-the ``plain_indent`` guard removed               ⚠ **NOT here.** Dropping it deletes real content
-                                                 without moving a block, so a structural oracle is
-                                                 blind to it by construction. It is caught by
-                                                 ``test_a_head_that_is_not_commonmark_indentation_is_left_alone``
+the ``movable_head`` guard removed               ⚠ **NOT here.** A form feed in the head moves no
+                                                 block either way, so a structural oracle is blind
+                                                 to it. It is caught by
+                                                 ``test_a_head_character_outside_the_whitelist_stops_the_cut_back``
+                                                 in ``test_symbol_pua_positions.py``.
+the cut-back on a plain head only (#99 returns)  the head snapshot, the code-block test and the
+                                                 list-item test below
+the cut-back deletes the ``U+00A0`` too          the head snapshot, by its one bare-label record,
+                                                 which prints the text. Whitespace is no block, so
+                                                 the direct check is
+                                                 ``test_a_content_space_behind_the_real_spaces_is_kept_by_the_cut_back``
                                                  in ``test_symbol_pua_positions.py``.
 ===============================================  ====================================================
 """
@@ -292,13 +299,26 @@ def test_a_dropped_tail_symbol_space_uncovers_no_backslash_break(body: str) -> N
 
 
 @pytest.mark.parametrize(
-    "head", [SPACE + "    ", SPACE + "     ", "  " + SPACE + "    ", SPACE + "\t"]
+    "head",
+    [
+        SPACE + "    ",
+        SPACE + "     ",
+        "  " + SPACE + "    ",
+        SPACE + "\t",
+        SPACE + "    \u00a0",
+        SPACE + "    \u2003",
+        "  " + SPACE + "    \u00a0",
+        SPACE + "\t\u3000",
+        " " + SPACE + " \t\u00a0 ",
+    ],
 )
 def test_a_dropped_head_symbol_space_opens_no_code_block(head: str) -> None:
     """#77, the issue's own repro, pinned in CI.
 
     `U+F020` is not whitespace to CommonMark, so the real spaces behind one are content. Promoting
-    them to indent turns a paragraph line into an indented code block.
+    them to indent turns a paragraph line into an indented code block. The last head is #99: a
+    ``U+00A0`` behind the real spaces stopped the cut-back, and the four heads behind it vary the
+    character, the indent in front and a tab.
     """
     src = head + "text\nnext\n"
     out = symbol_pua.remap(src)[0]
@@ -311,7 +331,19 @@ def test_a_dropped_head_symbol_space_opens_no_code_block(head: str) -> None:
 @pytest.mark.parametrize(
     "above", ["- outer\n\n", "1. one\n\n", "1) one\n\n", "* outer\n\n", "- a\n  - b\n\n"]
 )
-@pytest.mark.parametrize("head", [SPACE + "  ", SPACE + "   ", " " + SPACE + " ", SPACE + " \t"])
+@pytest.mark.parametrize(
+    "head",
+    [
+        SPACE + "  ",
+        SPACE + "   ",
+        " " + SPACE + " ",
+        SPACE + " \t",
+        SPACE + "  \u00a0",
+        SPACE + "  \u2003",
+        SPACE + "   \u00a0",
+        " " + SPACE + " \u202f",
+    ],
+)
 @pytest.mark.parametrize("body", ["text", "x" + SPACE + "=1", "text" + BULLET + " tail"])
 def test_a_dropped_head_symbol_space_moves_no_paragraph_into_a_list_item(
     above: str, head: str, body: str
@@ -322,7 +354,9 @@ def test_a_dropped_head_symbol_space_moves_no_paragraph_into_a_list_item(
     it. `<SPACE>  text` stands at column 0 before the step, so it is a paragraph after the list.
     The drop made the two real spaces indent, and the paragraph moved INTO the item. The last two
     bodies are the shapes review found the first fix left alone: a line that starts inside a
-    Symbol-font run holds more Symbol spaces, and a marker can stand behind the text.
+    Symbol-font run holds more Symbol spaces, and a marker can stand behind the text. The last four
+    heads are #99: a ``U+00A0``, a ``U+2003`` or a ``U+202F`` behind the real spaces stopped the
+    cut-back.
     """
     src = above + head + body + "\nnext\n"
     out = symbol_pua.remap(src)[0]

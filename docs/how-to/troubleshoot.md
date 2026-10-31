@@ -2,6 +2,9 @@
 
 Recipes for the failures you are most likely to hit. Each entry is a symptom and its fix.
 
+Start with `pdf2wiki doctor`. It checks MinerU, the GPU, the C compiler, the workdir, and the SSH
+host. It prints a fix for each failed check. Add `--remote HOST` to check the GPU host.
+
 ## `mineru` not found
 
 **Symptom:** `convert` fails with a `FileNotFoundError` that names `mineru`.

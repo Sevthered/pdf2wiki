@@ -449,3 +449,16 @@ def test_run_cloud_pass_resumes_from_done(tmp_path, monkeypatch):
     )
     assert out == str(dest)
     assert any("reusing cached" in s for s in said)
+
+
+def test_a_non_utf8_token_file_never_shows_its_bytes(tmp_path):
+    from pdf2wiki.config import Config
+
+    secret = tmp_path / "token"
+    secret.write_bytes(b"sk-SECRETVALUE\xe9tail")
+    cfg = Config()
+    cfg.mineru_cloud.token_file = str(secret)
+    read = cloud.read_token(cloud.token_sources(cfg)[-1])
+    assert read.cause == "decode" and not read.value
+    assert read.error == "not UTF-8 text (at byte offset 14)"
+    assert "0xe9" not in read.error and "SECRET" not in read.error

@@ -115,30 +115,136 @@ class Config:
     output: OutputConfig = field(default_factory=OutputConfig)
 
 
-def _apply_section(obj: Any, data: dict[str, Any]) -> None:
-    valid = {f.name for f in fields(obj)}
-    for k, v in data.items():
-        if k in valid:
-            setattr(obj, k, v)
+SECTIONS = tuple(f.name for f in fields(Config))  # derived once: the sections a file may set
 
 
-def load_config(explicit_path: str | None = None) -> Config:
-    """Load config, merging user config then project-local config over defaults."""
-    cfg = Config()
-    candidates = []
+def config_candidates(explicit_path: str | None = None) -> list[str]:
+    """The config files load_config reads, in merge order (later files win). One list, so a tool
+    that reports on the search (`pdf2wiki doctor`) cannot drift from the search itself."""
     if explicit_path:
-        candidates = [explicit_path]
-    else:
-        candidates = [
-            os.path.expanduser("~/.config/pdf2wiki/config.toml"),
-            "pdf2wiki.toml",
-        ]
-    for path in candidates:
+        return [explicit_path]
+    return [os.path.expanduser("~/.config/pdf2wiki/config.toml"), "pdf2wiki.toml"]
+
+
+@dataclass
+class ConfigProblem:
+    path: str
+    # "read" (OSError) | "parse" (bad TOML or encoding) | "type" (wrong section or value)
+    # | "missing" (an explicit --config path that does not exist)
+    kind: str
+    message: str
+    section: str = ""  # kind "type" only
+    key: str = ""  # kind "type" only; empty when the whole section is the wrong type
+    expected: str = ""  # kind "type" only
+
+
+class ConfigError(ValueError):
+    """A config file cannot be used. The message names the file and says what failed: a missing
+    explicit file, a read or parse error, or a value or section of the wrong type (then it names
+    the key, the expected type and the actual type)."""
+
+    def __init__(self, problem: ConfigProblem) -> None:
+        what = {"read": "cannot read: ", "parse": "cannot parse: ", "missing": ""}.get(
+            problem.kind, ""
+        )
+        super().__init__(f"{problem.path}: {what}{problem.message}")
+        self.problem = problem
+
+
+@dataclass
+class ConfigFileInfo:
+    path: str
+    exists: bool
+    data: dict[str, Any] | None = None  # the parsed file; None when it could not be read
+
+
+@dataclass
+class ConfigReport:
+    config: Config
+    files: list[ConfigFileInfo] = field(default_factory=list)
+    problems: list[ConfigProblem] = field(default_factory=list)
+    explicit: bool = False  # the path came from --config
+
+
+def _type_name(template: Any) -> str:
+    return {bool: "a boolean", int: "an integer", float: "a number", list: "a list"}.get(
+        type(template), "a string"
+    )
+
+
+def _value_ok(template: Any, value: Any) -> bool:
+    """Does `value` have the type of the field's default? bool is not an int here, and an int is
+    fine for a float field (TOML `2` is an int)."""
+    if isinstance(template, bool):
+        return isinstance(value, bool)
+    if isinstance(template, int):
+        return isinstance(value, int) and not isinstance(value, bool)
+    if isinstance(template, float):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(template, list):
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    return isinstance(value, str)
+
+
+def load_config_report(explicit_path: str | None = None, strict: bool = False) -> ConfigReport:
+    """The one place config files are read, merged and checked.
+
+    Both modes check every section and value against the type of its DEFAULT (never the merged
+    value, which an earlier file may have set), so a wrong type stops early and clearly instead
+    of crashing later (`subprocess.run(timeout="7200")`).
+    strict=True is for every command except doctor: the first problem raises ConfigError. That is
+    an explicit --config file that does not exist, a file that cannot be read or parsed, and a
+    section or value of the wrong type. strict=False never raises. It skips what it cannot use
+    (the key keeps its default) and lists each as a problem. `pdf2wiki doctor` reports them."""
+    report = ConfigReport(Config(), explicit=bool(explicit_path))
+    cfg = report.config
+    defaults = Config()
+
+    def problem(p: ConfigProblem) -> None:
+        if strict:
+            raise ConfigError(p)
+        report.problems.append(p)
+
+    for path in config_candidates(explicit_path):
         if not os.path.exists(path):
+            if strict and explicit_path:  # the default search paths stay optional
+                raise ConfigError(ConfigProblem(path, "missing", "--config file does not exist"))
+            report.files.append(ConfigFileInfo(path, False))
             continue
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-        for section_name in ("mineru", "mineru_cloud", "convert", "qa", "remote", "output"):
-            if section_name in data:
-                _apply_section(getattr(cfg, section_name), data[section_name])
-    return cfg
+        try:
+            with open(path, "rb") as f:
+                data = tomllib.load(f)
+        except (OSError, ValueError) as e:  # ValueError: TOMLDecodeError and UnicodeDecodeError
+            report.files.append(ConfigFileInfo(path, True))
+            problem(ConfigProblem(path, "read" if isinstance(e, OSError) else "parse", str(e)))
+            continue
+        report.files.append(ConfigFileInfo(path, True, data))
+        for section in SECTIONS:
+            if section not in data:
+                continue
+            if not isinstance(data[section], dict):
+                msg = f"[{section}] must be a table, not {type(data[section]).__name__}"
+                problem(ConfigProblem(path, "type", msg, section, "", "a table"))
+                continue
+            obj = getattr(cfg, section)
+            fresh = getattr(defaults, section)
+            valid = {f.name for f in fields(obj)}
+            for key, value in data[section].items():
+                if key not in valid:
+                    continue
+                template = getattr(fresh, key)
+                if not _value_ok(template, value):
+                    exp = _type_name(template)
+                    msg = f"[{section}] {key} must be {exp}, not {type(value).__name__}"
+                    problem(ConfigProblem(path, "type", msg, section, key, exp))
+                    continue
+                if isinstance(template, float) and isinstance(value, int):
+                    value = float(value)
+                setattr(obj, key, value)
+    return report
+
+
+def load_config(explicit_path: str | None = None, strict: bool = True) -> Config:
+    """Load config, merging user config then project-local config over defaults.
+    See load_config_report for the strict and lenient modes."""
+    return load_config_report(explicit_path, strict).config

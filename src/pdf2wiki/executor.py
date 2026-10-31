@@ -27,6 +27,29 @@ class ExecutionError(RuntimeError):
     pass
 
 
+class InvalidHostError(ExecutionError):
+    pass
+
+
+def validate_host(host: str) -> str:
+    """Refuse an ssh destination that ssh would read as an option or as several words.
+
+    The host comes from config or --remote and reaches ssh and scp as an argument. A value that
+    starts with `-` is an option to ssh: `-oProxyCommand=...` in a cloned repo's pdf2wiki.toml
+    would run a command. Whitespace and control characters have no place in a destination
+    either. Returns the host unchanged when it is fine."""
+    if (
+        not host
+        or host.startswith("-")
+        or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in host)
+    ):
+        raise InvalidHostError(
+            f"invalid ssh host {host!r}: it must not be empty, start with '-', "
+            "or hold whitespace or control characters"
+        )
+    return host
+
+
 class LocalExecutor:
     def check(self) -> None:
         pass  # nothing to verify locally
@@ -68,7 +91,7 @@ class SSHExecutor:
         fetch_timeout: int = 600,
         reap_grace: int = 120,
     ):
-        self.host = host
+        self.host = validate_host(host)
         self.books_dir = _remote_path(books_dir) if books_dir else books_dir
         self.workdir = _remote_path(workdir)
         self.connect_timeout = connect_timeout

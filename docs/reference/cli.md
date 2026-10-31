@@ -4,12 +4,15 @@ Every `pdf2wiki` command, flag, default, and exit code. For task-oriented walkth
 [how-to guides](../how-to/). For the config file see [configuration](configuration.md).
 
 ```
-pdf2wiki [--config PATH] <command> ...
+pdf2wiki [--version] [--config PATH] <command> ...
 ```
 
-`--config PATH` points at an explicit config TOML. Without it, pdf2wiki reads
-`./pdf2wiki.toml` then `~/.config/pdf2wiki/config.toml`, then the built-in defaults — see
-[configuration](configuration.md).
+`--version` prints `pdf2wiki <version>` and exits.
+
+`--config PATH` points at an explicit config TOML. A path that does not exist is an error (exit 2).
+Without it,
+pdf2wiki reads `~/.config/pdf2wiki/config.toml` and then `./pdf2wiki.toml`, over the built-in defaults.
+The project file wins. See [configuration](configuration.md).
 
 **Dry-run convention:** mutating commands default to dry-run and require `--apply` to write. The
 exceptions are `convert` and `qa`, whose purpose is to produce new artifacts in their own output
@@ -103,6 +106,41 @@ pdf2wiki qa review <qa_dir> <name> [--blocks PATH]
 | `--blocks` | no | `<qa_dir>/out/<name>_sample/blocks.json` | Explicit `blocks.json` path. |
 
 Writes `<qa_dir>/review.txt`.
+
+## `doctor`
+
+Check this machine and the remote host. The command is read-only and has no `--apply` flag.
+
+```
+pdf2wiki doctor [--remote HOST] [--json]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `--remote HOST` | no | `[remote].host` | SSH host to check. |
+| `--json` | no | off | Print `{"version", "checks", "fails", "warns"}` as JSON. |
+
+Each check has a status. The human output shows `ok`, `warn`, `FAIL`, or `skip`. The JSON `status`
+field holds `ok`, `warn`, `fail`, or `skip`. A failed check has a `fix:` line. In JSON, it is the
+`fix` field.
+The command checks these groups:
+
+- **core:** Python, pdf2wiki, and PyMuPDF versions. The config files that were read. A `--config` path
+  that does not exist is a failure. An inline `[mineru_cloud].token` is a warning in any config file
+  but the user file.
+- **local convert:** The MinerU binary and version. Whether the MinerU torch sees CUDA. The GPU
+  name and memory. A C compiler. A workdir with no names that shadow the standard library, and no other
+  Python modules. Free disk space. On other systems than Linux, the group is one `skip` line. When
+  `[mineru].hybrid_server_url` is set, the MinerU binary and version checks also run there.
+- **hybrid server:** A TCP connection to `[mineru].hybrid_server_url`. The command sends no HTTP request.
+- **remote:** A check that the host is a valid SSH destination (a value that starts with `-` is
+  refused). SSH access, the remote pdf2wiki version, and `[remote].books_dir`. When SSH fails, the
+  command compares the subnet of this machine with the subnet of the host. It tells you when this
+  machine is on another network.
+- **cloud:** The place and the length of each configured mineru.net token. The command never prints
+  the token. It sends nothing to mineru.net.
+
+Exit codes: `0` when no check failed, `1` when at least one check failed.
 
 ## `scan`
 

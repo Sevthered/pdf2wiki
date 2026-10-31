@@ -24,6 +24,12 @@ All notable changes to this project are documented here. The format is based on
   chapter files got a page range. 58 chapters have a printed page in the converted table of
   contents. For all 58, the PDF page minus the printed page is one number per book: 37, 29, 25
   and 27.
+- **`pdf2wiki doctor [--remote HOST] [--json]` checks the environment (read-only).** It checks
+  Python, PyMuPDF, the config files, MinerU, CUDA, the GPU, and the C compiler. It also checks the
+  workdir for files that have stdlib names, free disk space, the hybrid server, the SSH host, and the
+  mineru.net token. When SSH fails, it tells you if this machine is on another network. It prints a
+  fix for each failed check. It exits with 1 when a check fails. It never prints a token.
+  **`pdf2wiki --version`** prints the version.
 
 ### Changed
 - **Frontmatter writes printable characters as they are.** `title`, `book` and `source` were written
@@ -34,6 +40,20 @@ All notable changes to this project are documented here. The format is based on
   that the emoji case is now correct.
 
 ### Fixed
+- **A config value of the wrong type now stops every command with a clear error.** Before, a
+  value such as `timeout = "7200"` or `mineru = "x"` loaded as written. The command then crashed
+  late with a traceback. Now the command prints `error: <file>: [convert] timeout must be an
+  integer, not str` and exits with 2. `pdf2wiki doctor` reports the same problem as a failed
+  check, and it goes on with the default for that key. The other commands stop on that value. This
+  also applies to the Python API when you call `convert_book` or `convert_book_cloud` without `cfg`.
+- **An unreadable config file, a syntax error, and a missing `--config` path now stop every
+  command with a clear error (exit 2).** Before, a syntax error ended in a
+  traceback. A missing `--config` file was ignored without a word, and the command ran with the
+  defaults. The default search paths stay optional. A TOML integer is still fine for a float key,
+  also when a second config file sets the same key as a float.
+- **A missing or unreadable `token_file` now gives a `CloudError` that names the file.** Before,
+  `--mineru-cloud` ended with a `FileNotFoundError` traceback. A `token_file` that is not UTF-8
+  gives the same error. The file is still read only when no inline or env token resolves.
 - **Text behind real spaces and a `U+00A0` at a line start no longer becomes an indented code
   block (#99).** `symbol_pua` deletes a `U+F020` at the start of a line, and the real spaces behind it
   become indent. The rule for #77 and #98 cuts that indent back. It did not apply when the head
@@ -185,6 +205,16 @@ All notable changes to this project are documented here. The format is based on
   end of a line can uncover an opener, and `---` below a paragraph then becomes a setext underline.
   A Symbol space that becomes a real space inside the text can do the same, and `#`, a Symbol space
   and `Title` become a heading.
+
+### Security
+- **A remote host that starts with `-` is refused.** The host from `[remote].host` or `--remote`
+  went to `ssh` and `scp` as an argument. A value such as `-oProxyCommand=...` in a cloned
+  repository's `pdf2wiki.toml` was read as an `ssh` option. In a test with OpenSSH 10.5, `ssh` then
+  read the next argument as the host name and refused it, so no command ran. That result depends
+  on the `ssh` version and on the arguments. So `convert`, `batch` and `doctor` now check the host
+  before any `ssh` runs. They refuse an empty host, a host that starts with `-`, and a host with
+  white space or control characters. `convert` and `batch` exit with 2. `doctor` reports a failed
+  check. `doctor` also puts `--` before the host in its own `ssh` calls.
 
 ## [0.2.11] - 2026-08-26
 

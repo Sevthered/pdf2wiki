@@ -32,6 +32,7 @@ import random
 import time
 import zipfile
 from collections.abc import Callable
+from dataclasses import dataclass
 from io import BytesIO
 from types import ModuleType
 from typing import Any
@@ -127,21 +128,76 @@ def _requests() -> ModuleType:
     return requests
 
 
-def _resolve_token(cfg: Any) -> str:
+@dataclass
+class TokenSource:
+    """One place a token is configured. `load()` returns the stripped token ("" when the source
+    holds nothing) and raises OSError or ValueError when a token_file cannot be read or decoded.
+    It is lazy on purpose: a source after the winning one is never opened."""
+
+    label: str
+    load: Callable[[], str]
+
+
+def token_sources(cfg: Any) -> list[TokenSource]:
+    """Every place a token is configured, in resolution order. `_resolve_token` and
+    `pdf2wiki doctor` both read this list, so their order cannot drift. Never print `load()`."""
     c = cfg.mineru_cloud
-    if c.token.strip():
-        return str(c.token.strip())
-    env = os.environ.get("MINERU_API_TOKEN", "")
-    if env.strip():
-        return env.strip()
+    found: list[TokenSource] = []
+    inline = c.token.strip()
+    if inline:
+        found.append(TokenSource("config inline [mineru_cloud].token", lambda: inline))
+    env = os.environ.get("MINERU_API_TOKEN", "").strip()
+    if env:
+        found.append(TokenSource("env MINERU_API_TOKEN", lambda: env))
     if c.token_file:
-        with open(os.path.expanduser(c.token_file), encoding="utf-8") as f:
-            tok = f.read().strip()
-        if tok:
-            return tok
+        path = os.path.expanduser(c.token_file)
+
+        def read_file() -> str:
+            with open(path, encoding="utf-8") as f:
+                return f.read().strip()
+
+        found.append(TokenSource(f"token_file {path}", read_file))
+    return found
+
+
+@dataclass
+class TokenRead:
+    """The result of loading one TokenSource. `cause` says why a read failed, so a caller can
+    advise: "missing", "permission", "decode" or "other". All are empty after a good read."""
+
+    value: str = ""
+    error: str = ""
+    cause: str = ""
+    length: int | None = None  # characters in the token; None when the read failed
+
+
+def read_token(src: TokenSource) -> TokenRead:
+    """Load one source without raising. The one place that turns a read failure into text."""
+    try:
+        value = src.load()
+        return TokenRead(value, length=len(value))
+    except FileNotFoundError as e:
+        return TokenRead(error=str(e.strerror or e), cause="missing")
+    except PermissionError as e:
+        return TokenRead(error=str(e.strerror or e), cause="permission")
+    except UnicodeDecodeError as e:  # a token_file that is not UTF-8
+        # Never str(e): it quotes the byte that failed, and that byte is part of the secret.
+        return TokenRead(error=f"not UTF-8 text (at byte offset {e.start})", cause="decode")
+    except (OSError, ValueError) as e:
+        return TokenRead(error=str(getattr(e, "strerror", None) or e), cause="other")
+
+
+def _resolve_token(cfg: Any) -> str:
+    problems = ""
+    for src in token_sources(cfg):
+        r = read_token(src)
+        if r.error:
+            problems += f" ({src.label}: cannot read: {r.error})"
+        elif r.value:
+            return r.value
     raise CloudError(
         "no mineru.net token: set [mineru_cloud].token, or env MINERU_API_TOKEN, or "
-        "[mineru_cloud].token_file. Create one at https://mineru.net/apiManage/token"
+        f"[mineru_cloud].token_file{problems}. Create one at https://mineru.net/apiManage/token"
     )
 
 

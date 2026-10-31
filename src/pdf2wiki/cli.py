@@ -16,7 +16,9 @@ import os
 import sys
 from typing import Any, TextIO, cast
 
-from .config import load_config
+from . import __version__
+from .config import Config, ConfigError, load_config
+from .executor import InvalidHostError
 
 
 class _StdoutSurvivesItsReader:
@@ -268,12 +270,27 @@ def _cmd_batch(a: argparse.Namespace, cfg: Any) -> int:
     return 0
 
 
+def _cmd_doctor(a: argparse.Namespace, cfg: Any) -> int:
+    from .config import load_config_report
+    from .doctor import counts, render_human, render_json, run_checks
+
+    # lenient and read once: doctor reports a broken config file itself, so it must survive one
+    report = load_config_report(a.config)
+    checks = run_checks(report, remote=a.remote)
+    if a.json:
+        print(json.dumps(render_json(checks, __version__), indent=1))
+    else:
+        print(render_human(checks, __version__))
+    return 1 if counts(checks)[0] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="pdf2wiki",
         description="Convert technical books (native-text PDFs) into "
         "clean, chapter-split, LLM-ready Markdown.",
     )
+    ap.add_argument("--version", action="version", version=f"pdf2wiki {__version__}")
     ap.add_argument("--config", default=None, help="explicit config TOML path")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -355,13 +372,29 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--vault", default=None, help="final placement root (e.g. an Obsidian vault)")
     p.set_defaults(fn=_cmd_batch)
 
+    p = sub.add_parser("doctor", help="check this machine and the remote host (read-only)")
+    p.add_argument("--remote", default=None, help="ssh host to check (default: [remote].host)")
+    p.add_argument("--json", action="store_true", help="print the checks as JSON")
+    p.set_defaults(fn=_cmd_doctor)
+
     a = ap.parse_args(argv)
-    cfg = load_config(a.config)
+    if a.cmd == "doctor":
+        cfg = Config()  # unused: _cmd_doctor loads leniently itself, so a bad config cannot stop it
+    else:
+        try:
+            cfg = load_config(a.config)
+        except ConfigError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
     original = sys.stdout
     guard = _StdoutSurvivesItsReader(original)
     sys.stdout = cast(TextIO, guard)
     try:
-        exit_code: int = a.fn(a, cfg)  # each _cmd_* returns an int exit code
+        try:
+            exit_code: int = a.fn(a, cfg)  # each _cmd_* returns an int exit code
+        except InvalidHostError as e:  # a bad [remote].host / --remote: stop before any ssh runs
+            print(f"error: {e}", file=sys.stderr)
+            exit_code = 2
     finally:
         # A pipe is block-buffered, so a short run can end with every print still in the buffer
         # and no write ever reaching the dead pipe. The interpreter flushes that buffer at exit,

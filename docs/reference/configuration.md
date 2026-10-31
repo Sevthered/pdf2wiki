@@ -12,7 +12,10 @@ pdf2wiki layers configuration from lowest to highest precedence:
 3. Project config: `./pdf2wiki.toml` (current directory) — overrides the user config.
 4. `--config PATH` — when given, it is the *only* file read (skips 2 and 3).
 
-Unknown keys are ignored. Missing files are skipped.
+Unknown keys are ignored. A missing file in the search paths (2 and 3) is skipped. A `--config`
+file that does not exist stops every command with exit code `2`. So does a file that cannot be
+read or parsed, and a value of the wrong type. `doctor` is the exception: it reports the problem
+and goes on.
 
 ## Example
 

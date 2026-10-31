@@ -351,3 +351,24 @@ def test_convert_remote_failure_exits_nonzero(monkeypatch):
     monkeypatch.setattr(executor_mod, "SSHExecutor", FakeSSH)
 
     assert cli.main(["convert", "b.pdf", "--name", "slug", "--remote", "gpu-box"]) == 1
+
+
+def test_version_flag_prints_package_version(capsys):
+    import pytest
+
+    from pdf2wiki import __version__
+
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--version"])
+    assert e.value.code == 0
+    assert capsys.readouterr().out.strip() == f"pdf2wiki {__version__}"
+
+
+def test_doctor_is_registered_and_read_only(monkeypatch, capsys):
+    import pdf2wiki.doctor as doctor_mod
+
+    monkeypatch.setattr(
+        doctor_mod, "run_checks", lambda *a, **k: [doctor_mod.Check("core", "x", "ok", "fine")]
+    )
+    assert cli.main(["doctor"]) == 0
+    assert "pdf2wiki doctor" in capsys.readouterr().out

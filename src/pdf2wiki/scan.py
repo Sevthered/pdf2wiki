@@ -13,8 +13,9 @@ import os
 import re
 from typing import Any
 
-YEAR_RE = re.compile(r"(?:19|20)\d{2}")
-COPYRIGHT_RE = re.compile(r"copyright\s*(?:\xa9|\(c\)|©)?\s*(?:19|20)\d{2}", re.I)
+from .bookmeta import YEAR, find_year  # one year pattern and one copyright parser
+
+YEAR_RE = re.compile(YEAR)  # the same year pattern as the copyright parser
 
 
 def guess_title(pages_text: list[str], filename: str) -> tuple[str, str]:
@@ -40,12 +41,7 @@ def guess_title(pages_text: list[str], filename: str) -> tuple[str, str]:
 
 
 def guess_year(pages_text: list[str]) -> tuple[int | None, str]:
-    years = []
-    for pg in pages_text:
-        for m in COPYRIGHT_RE.finditer(pg):
-            y = YEAR_RE.search(m.group(0))
-            if y:
-                years.append(int(y.group(0)))
+    years = [y for y in (find_year(pg) for pg in pages_text) if y]
     if years:
         return max(years), "copyright-line"  # most recent copyright/reprint year on the page
     # fallback: any 4-digit year on the first 3 pages

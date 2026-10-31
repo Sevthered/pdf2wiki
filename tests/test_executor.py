@@ -226,8 +226,9 @@ def _fetch_ex(monkeypatch, results, dest_md=None):
 
     def fake_run(cmd, timeout=None):
         calls.append({"cmd": cmd, "timeout": timeout})
-        rc, err = seq.pop(0)
-        if rc == 0 and dest_md and cmd[0] == "scp" and "-r" not in cmd:
+        # a call past the scripted ones is an optional sidecar (blocks.json, book.json): absent
+        rc, err = seq.pop(0) if seq else (1, "scp: No such file or directory")
+        if rc == 0 and dest_md and cmd[0] == "scp" and cmd[-1].endswith(".md"):
             with open(cmd[-1], "w") as f:
                 f.write("# fetched")
         return R(rc, err)
@@ -245,6 +246,69 @@ def test_ssh_fetch_pulls_markdown_and_images(tmp_path, monkeypatch):
     assert md_cmd[-2] == "gpu-box:out/slug/slug.md"  # home-relative: a quoted ~ never expands
     assert img_cmd[-2] == "gpu-box:out/slug/images" and "-r" in img_cmd
     assert calls[0]["timeout"] == 42 and calls[1]["timeout"] == 42  # every transfer is bounded
+
+
+def test_ssh_fetch_pulls_both_sidecars_in_one_bounded_call(tmp_path, monkeypatch):
+    from pdf2wiki.executor import SIDECAR_TIMEOUT
+
+    ex, calls = _fetch_ex(monkeypatch, [(0, ""), (0, ""), (0, "")], dest_md=True)
+
+    assert ex.fetch("slug", "~/out", str(tmp_path / "dest"), timeout=600) is True
+    assert len(calls) == 3  # md, images, then ONE call for both sidecars
+    side = calls[2]["cmd"]
+    assert side[-3:-1] == ["gpu-box:out/slug/blocks.json", "gpu-box:out/slug/book.json"]
+    assert side[-1] == str(tmp_path / "dest") + os.sep
+    assert calls[2]["timeout"] == SIDECAR_TIMEOUT and calls[0]["timeout"] == 600
+
+
+def test_ssh_fetch_succeeds_when_one_sidecar_is_absent(tmp_path, monkeypatch, capsys):
+    # an older converter on the host writes no book.json: absent is normal, so no noise
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "book.json").write_text('{"title": "an earlier fetch"}', encoding="utf-8")
+    err = "scp: out/slug/book.json: No such file or directory"
+    ex, _ = _fetch_ex(monkeypatch, [(0, ""), (0, ""), (1, err)], dest_md=True)
+
+    assert ex.fetch("slug", "~/out", str(dest)) is True
+    assert not (dest / "book.json").exists()  # the stale local copy never survives
+    assert capsys.readouterr().err == ""
+
+
+def test_ssh_fetch_drops_both_sidecars_and_says_so_on_a_real_failure(tmp_path, monkeypatch, capsys):
+    dest = tmp_path / "dest"
+    ex, _ = _fetch_ex(monkeypatch, [(0, ""), (0, ""), (1, "Connection closed by host")], True)
+    real_run = ex._run
+
+    def partial(cmd, timeout=None):  # the call dies after a cut-off blocks.json landed
+        r = real_run(cmd, timeout)
+        if len(cmd) > 3 and cmd[-2].endswith("book.json"):
+            (dest / "blocks.json").write_text('[{"type": "te', encoding="utf-8")
+        return r
+
+    monkeypatch.setattr(ex, "_run", partial)
+    assert ex.fetch("slug", "~/out", str(dest)) is True  # the book itself is fetched
+    assert not (dest / "blocks.json").exists() and not (dest / "book.json").exists()
+    assert "slug: blocks.json/book.json not fetched (Connection closed by host)" in (
+        capsys.readouterr().err
+    )
+
+
+def test_ssh_fetch_survives_a_stalled_sidecar_pull(tmp_path, monkeypatch, capsys):
+    import subprocess
+
+    ex, calls = _fetch_ex(monkeypatch, [(0, ""), (0, "")], dest_md=True)
+    inner = ex._run
+
+    def stall_on_sidecars(cmd, timeout=None):
+        if cmd[-2].endswith(".json"):
+            calls.append({"cmd": cmd, "timeout": timeout})
+            raise subprocess.TimeoutExpired(cmd, timeout)
+        return inner(cmd, timeout)
+
+    monkeypatch.setattr(ex, "_run", stall_on_sidecars)
+    assert ex.fetch("slug", "~/out", str(tmp_path / "dest")) is True
+    assert len(calls) == 3
+    assert "timed out after 42s" in capsys.readouterr().err
 
 
 def test_ssh_fetch_fails_loudly_when_the_markdown_is_missing(tmp_path, monkeypatch):

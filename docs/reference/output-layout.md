@@ -9,6 +9,7 @@ What `convert`, `phase5`, and `batch` write to disk, and how to read the fidelit
 ├── <slug>.md          # merged Markdown (the whole book)
 ├── images/            # extracted figures, referenced as images/<name>
 ├── blocks.json        # full merged block list (type, page, bbox, provenance)
+├── book.json          # book metadata from the PDF (title, authors, year, ISBN, publisher)
 ├── base_0_39/         # pipeline pass output (one dir per seg-page chunk)
 │   ├── ...            # MinerU content_list.json etc.
 │   └── (base_0_39.log, base_0_39/.done next to it)
@@ -23,14 +24,17 @@ What `convert`, `phase5`, and `batch` write to disk, and how to read the fidelit
 
 ```
 <md dir>/chapters/
+├── <slug>-index.md    # the entry page: book metadata + one row per chapter
 ├── 00-front-matter.md
 ├── 01-<slug-of-heading>.md
 ├── 02-<slug-of-heading>.md
 └── ...
 ```
 
-Each file carries YAML frontmatter (`title`, `book`, `chapter`, `source`, `tags: [book]`) — see
-[phase5 steps](phase5-steps.md#chapter-frontmatter). In `batch`, images are also copied to
+Each chapter file carries YAML frontmatter (`title`, `book`, `chapter`, `source`, `tags: [book]`).
+When they are known, it also carries the book metadata and the chapter's `pdf_pages`. See
+[phase5 steps](phase5-steps.md#chapter-frontmatter). `<slug>-index.md` links every chapter file. See
+[book index](phase5-steps.md#book-index). In `batch`, images are also copied to
 `chapters/images/` so the chapter files render standalone.
 
 ## Code-verify markers

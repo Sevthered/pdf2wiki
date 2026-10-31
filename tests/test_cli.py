@@ -215,7 +215,7 @@ def test_phase5_dry_run_writes_nothing(tmp_path, capsys):
 
     out = capsys.readouterr().out
     assert rc == 0
-    assert "(dry-run — would write 3 chapter files; pass --apply)" in out
+    assert "(dry-run — would write 3 chapter files and widgets-index.md; pass --apply)" in out
     assert not (tmp_path / "chapters").exists()
     assert (tmp_path / "book.md").read_text(encoding="utf-8") == before  # source untouched
 

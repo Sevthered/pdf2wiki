@@ -71,7 +71,7 @@ chapter, ready to drop into a Markdown knowledge base.
 
 ## What you just did
 
-You ran the whole pipeline: a dual-pass conversion, then a six-step cleanup and chapter split. That's
+You ran the whole pipeline: a dual-pass conversion, then a cleanup chain and a chapter split. That's
 the core loop.
 
 ## Next steps

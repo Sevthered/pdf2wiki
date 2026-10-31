@@ -27,6 +27,7 @@ Relative to the vault root (the path you set in
 │       └── <source>.md
 └── <domain>/                 # optional raw source chapters
     └── <book-slug>/
+        ├── <book-slug>-index.md
         └── NN-chapter.md
 ```
 
@@ -40,6 +41,7 @@ Relative to the vault root (the path you set in
 | `wiki/concepts/<Page-Name>.md`, `wiki/entities/<Page-Name>.md` | Deep reference articles (code, parameters, defaults, trade-offs, gotchas). Filenames are unique, so `Glob`/`Grep` on a topic works. |
 | `wiki/sources/` | Per-source metadata (a book's identity/era). |
 | `<domain>/<book-slug>/NN-chapter.md` | Optional raw book chapters, opened only when a wiki page cites the chapter and the page lacks the needed depth. |
+| `<domain>/<book-slug>/<book-slug>-index.md` | Optional book index page that `pdf2wiki phase5` writes. It holds the book metadata and the chapter list with PDF pages. It is not a chapter. |
 
 Page filenames are unique topic names (kebab- or Pascal-case), so a topic can be found with a glob such
 as `wiki/concepts/*Circuit*`. Cross-page references are `[[Page-Name]]` wikilinks by filename.

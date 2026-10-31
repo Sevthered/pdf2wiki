@@ -31,6 +31,7 @@ import textwrap
 from collections import Counter, defaultdict
 from typing import Any
 
+from .. import bookmeta
 from .block import Block
 
 # ---------- environment ----------
@@ -816,6 +817,7 @@ def convert_book(
         end = end if end is not None else pymupdf.open(pdf_path).page_count - 1
         work = os.path.join(os.path.expanduser(out_root), slug)
         os.makedirs(work, exist_ok=True)
+        bookmeta.clear_sidecars(work)  # never leave an earlier run's sidecars beside the new md
 
         say("pipeline pass (skeleton, chunked):")
         base, _ = run_pipeline_chunks(
@@ -909,6 +911,7 @@ def convert_book(
             f.write(md)
         with open(f"{work}/blocks.json", "w", encoding="utf-8") as f:
             json.dump(final, f, indent=1, default=str)
+        bookmeta.write_for_pdf(pdf_path, work, say)
         say(f"graft stats: {stats}")
         say(f"final types: {dict(Counter(b['type'] for b in final))}")
         say(f"wrote {work}/{slug}.md ({len(md)} chars)")

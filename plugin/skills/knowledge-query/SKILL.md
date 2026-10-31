@@ -50,7 +50,8 @@ stop as soon as you have what you need:
 3. `wiki/domains/<domain>.md` — domain index → links to concept/entity pages. Same trigger as (2).
 4. `wiki/hot.md` — **ONLY** if the question is about recent vault work. It is append-at-top, grows every
    session, and can be the largest file in the wiki; do not read it as a matter of routine.
-5. Raw book chapters (`<domain>/<book>/NN-chapter.md`) ONLY if a wiki page cites the chapter and you
+5. Raw book chapters (`<domain>/<book>/NN-chapter.md`, not `<book>-index.md`, which is the book's index
+   page) ONLY if a wiki page cites the chapter and you
    need more depth than the page carries.
 
 Stop reading when two pages in a row add nothing you needed — the ranked list has gone dry. If you stop

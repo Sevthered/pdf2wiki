@@ -11,6 +11,7 @@ vector store.
 <vault>/wiki/{concepts,entities,sources,domains}/*.md
 <vault>/wiki/{index,overview,hot,log}.md
 <vault>/<domain>/<book-slug>/NN-chapter.md      # optional raw source chapters
+<vault>/<domain>/<book-slug>/<book-slug>-index.md  # optional book index page (written by pdf2wiki phase5)
 ```
 
 Coverage is discovered **from the vault itself** (`wiki/domains/`, `wiki/index.md`) — nothing about your

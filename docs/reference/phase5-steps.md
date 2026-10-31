@@ -46,7 +46,8 @@ CommonMark's fenced-code rules as far as converter output needs:
 | 5 | `dash_normalize` | md | Inside code fences only, converts a typographic en/em-dash used as a long-flag prefix (`–dev`) to `--` and a U+2212 minus to `-`. | md with correct dashes in code |
 | 6 | `mermaid_repair` | md | Sanitizes ```mermaid``` node labels so the diagram parses — literal `\n` → `<br>`, inner quotes → `'`, inner brackets → `()`, closes unclosed labels, drops orphan brackets. | md with parseable Mermaid |
 | 7 | `code_unescape` | md | Inside code fences only, strips MinerU's markdown-punctuation escapes (`\$ \* \~ \_` `` \` `` `\# \@ \% \& \!`) while preserving real string/regex escapes (`\n \t \d \s \" \\`). | md with clean code fences |
-| 8 | `chapter_split` | md file | Splits at fence-aware H1 boundaries (plus mistagged `## Appendix X.` H2s) into per-chapter files with YAML frontmatter. | `00-front-matter.md` + `NN-slug.md` files |
+| 8 | `chapter_split` | md file | Splits at fence-aware H1 boundaries (plus mistagged `## Appendix X.` H2s) into per-chapter files with YAML frontmatter. Adds the book metadata and the PDF page range of each chapter when they are known. See [chapter frontmatter](#chapter-frontmatter). | `00-front-matter.md` + `NN-slug.md` files |
+| 9 | `book_index` | the split | Writes `<slug>-index.md`, the entry page of the book. It holds the book metadata and one table row per chapter file, with a link and the PDF pages. See [book index](#book-index). | `<slug>-index.md` |
 
 ## Chapter frontmatter
 
@@ -54,13 +55,69 @@ CommonMark's fenced-code rules as far as converter output needs:
 
 ```yaml
 ---
-title: 'Chapter 3: Advanced Features'
-book: <slug>            # from --book
-chapter: 3              # integer order; front matter = 0
-source: <pdf-filename>  # from --source-name (else the md path)
+title: "Chapter 3: Using CMake in Popular IDEs"
+book: "modern-cmake-for-cpp"        # from --book
+book_title: "Modern CMake for C++"  # book metadata, only when known
+authors: ["Ann Author"]             # book metadata, only when known
+year: 2024                          # book metadata, only when known
+isbn: "9781805121800"               # book metadata, only when known
+publisher: "Packt Publishing Ltd."  # book metadata, only when known
+chapter: 10                         # integer order; front matter = 0
+pdf_pages: [106, 125]               # only when blocks.json gives both ends
+source: "<pdf-filename>"            # from --source-name (else the md path)
 tags: [book]
 ---
 ```
+
+The five base fields are always there: `title`, `book`, `chapter`, `source` and `tags`. Each other
+field is written only when its value is known. A book with no metadata and no `blocks.json` gets the
+five base fields only, the same as in 0.2.
+
+### Where the book metadata comes from
+
+`phase5` reads the metadata from one of these sources, in this order:
+
+1. The PDF given with `--pdf`.
+2. The `book.json` beside the converted `.md`. `convert` writes this file.
+3. Nothing. The text is then the only source.
+
+The front of the repaired text then fills each field that is still empty. The copyright page is in
+that text, so the ISBN, the year and the publisher are found without the PDF. The title and the
+authors come from the PDF metadata only.
+
+Each field has one rule, and a field without a match stays empty:
+
+| Field | Rule |
+|-------|------|
+| `book_title` | The PDF metadata title. A title that names a file or a template, such as `Microsoft Word - draft.docx`, is dropped. |
+| `authors` | The PDF metadata author, split at `;`, `&` and `and`. A comma splits only when each part has two words or more, so `Richardson, Chris` stays one author. |
+| `year` | The latest year on a copyright line, such as `Copyright © 2023`, `©2021 by` or `Copyright © 2015, 2021`. A "First published" date does not count. A bare `(c)` does not count, because a list item can start with it. A line that starts like a code comment does not count either, such as `// Copyright 2025 Google LLC`. In PDF text a line that starts with `#` or `*` is a comment too. In Markdown such a line is a heading, emphasis or a list item, so it counts. The year can be on the line below the copyright sign. |
+| `isbn` | The first ISBN that passes its checksum, written as digits. A 13-digit ISBN must start with 978 or 979. The label can be `ISBN`, `ISBN-13`, `ISBN 13:`, `eISBN` or `ISBN (ebook)`. Hyphens can be ASCII or the Unicode hyphens and dashes from `U+2010` to `U+2015`. |
+| `publisher` | The first of two kinds of line in the text. One kind is a `Published by` line, cut at the street address. A name with a year in it is prose, not a publisher. The other kind is a line that is not a heading and holds only a company name, such as `Manning Publications Co.`. The name must end in Publications, Publishing, Press or Media and then Co, Inc, Ltd or LLC. |
+
+Only the first 40,000 characters of the text are read. The back pages of a book often list other
+books, and their ISBNs are not this book's. Code fences are skipped, because a license header in a
+code sample, such as `// Copyright 2025 Google LLC`, is not the copyright of the book. Only the
+first copyright statement counts, with any other copyright line in the 15 lines below it.
+
+**Limit.** A license header that the converter wrote as a heading outside a fence, such as
+`# Copyright 2024 The Kubernetes Authors`, looks like a copyright heading. It gives the year only
+when no copyright statement comes before it.
+
+### Where the page ranges come from
+
+`pdf_pages` comes from the `blocks.json` beside the converted `.md`. Each heading block there
+records the PDF page it is on. A chapter starts on the page of its heading and ends on the page
+before the next chapter starts. The numbers are 1-based PDF pages, as a PDF viewer counts them. They
+are not the page numbers that the book prints.
+
+**Limit.** A chapter that runs on to the page where the next chapter starts does not get that page.
+Four converted books were measured. On each first page of a chapter, every block belonged to that
+chapter. This was true also when the converter put the block before the heading. Examples are a
+large chapter number, an image, and the first paragraphs.
+
+A chapter whose heading is not found gets no `pdf_pages`. The chapter before it gets none either,
+because its end is not known.
 
 Files are named `00-front-matter.md` (all content before the first boundary) then `NN-slug.md`, where
 `NN` is the two-digit order and the slug is the lowercased, hyphenated, 60-char-truncated heading.
@@ -69,6 +126,42 @@ references stay correct.
 
 If the Markdown has no detectable boundary, `chapter_split` raises an error rather than emit a single
 undivided file — fix the headings and re-run.
+
+## Book index
+
+`book_index` writes `<slug>-index.md` beside the chapter files, for example
+`modern-cmake-for-cpp-index.md`:
+
+```markdown
+---
+title: "Modern CMake for C++"
+book: "modern-cmake-for-cpp"
+year: 2024
+isbn: "9781805121800"
+publisher: "Packt Publishing Ltd."
+source: "modern-cmake-for-cpp.pdf"
+tags: [book-index]
+---
+
+# Modern CMake for C++
+
+Packt Publishing Ltd. · 2024 · ISBN 9781805121800
+
+| # | Chapter | PDF pages |
+|---|---|---|
+| 1 | [Cover](01-cover.md) | 1–1 |
+| 8 | [Chapter 1: First Steps with CMake](08-chapter-1-first-steps-with-cmake.md) | 30–67 |
+```
+
+The example leaves out rows 2 to 7 and the rows after row 8.
+
+The links are CommonMark relative links, so Obsidian, GitHub and static site generators follow them.
+When the title is not known, the page uses the book slug. A chapter title escapes its Markdown
+punctuation, so a `|` or a `<T>` in a title does not break the table.
+
+The name holds the slug so that it is unique in a vault with many books. A plain `index.md` in
+each book folder would make the vault's existing `[[index]]` links ambiguous. A plain `<slug>.md`
+would collide with the source page that an ingest writes for the book.
 
 ## `lang_retag` detection order
 

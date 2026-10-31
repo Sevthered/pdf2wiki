@@ -227,6 +227,8 @@ def run_batch(
         try:
             for line in residue_lines(report):
                 print(f"  {slug}: {line}")
+            if report["book_index"]["error"]:
+                print(f"  {slug}: ⚠ index page not written ({report['book_index']['error']})")
         except Exception as e:  # reporting must never fail a book that converted
             # ASCII only, and no exception text: the failure this catches is an encoding error on
             # the warning sign, so re-emitting the offending characters would raise again.

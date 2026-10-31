@@ -37,6 +37,8 @@ from types import ModuleType
 from typing import Any
 from urllib.parse import urlparse
 
+from .. import bookmeta
+
 
 class CloudError(RuntimeError):
     """A mineru.net Cloud request failed. Raised loud (fail-fast) — never silently degraded.
@@ -377,6 +379,8 @@ def convert_book_cloud(
         token = _resolve_token(cfg)
         pages = _check_pages(pdf_path, c.max_pages)
         work = os.path.join(os.path.expanduser(out_root), slug)
+        if os.path.isdir(work):
+            bookmeta.clear_sidecars(work)  # never leave an earlier run's sidecars beside the new md
         say(f"single cloud pass ({pages}p, model_version={model_version})")
         pass_dir = _run_cloud_pass(
             pdf_path, model_version, token, cfg, os.path.join(work, "_cloud"), say, timeout=timeout
@@ -401,6 +405,7 @@ def convert_book_cloud(
                 with open(dest, "wb") as out, open(img, "rb") as src:
                     out.write(src.read())
                 n_img += 1
+        bookmeta.write_for_pdf(pdf_path, work, say)
         say(f"wrote {work}/{slug}.md ({len(md_text)} chars), {n_img} images")
         return True, "\n".join(lines)
     except CloudError as e:
@@ -461,6 +466,8 @@ def convert_book_cloud_merge(
         token = _resolve_token(cfg)
         pages = _check_pages(pdf_path, c.max_pages)
         work = os.path.join(os.path.expanduser(out_root), slug)
+        if os.path.isdir(work):
+            bookmeta.clear_sidecars(work)  # never leave an earlier run's sidecars beside the new md
         say(f"cloud dual-pass merge ({pages}p): 2 API calls (pipeline + vlm) + local merge")
 
         # Two cloud passes, kept in separate extraction dirs (distinct image hashes, distinct content_list).
@@ -501,6 +508,7 @@ def convert_book_cloud_merge(
             f.write(md)
         with open(os.path.join(work, "blocks.json"), "w", encoding="utf-8") as f:
             json.dump(final, f, indent=1, default=str)
+        bookmeta.write_for_pdf(pdf_path, work, say)
         say(f"graft stats: {stats}")
         say(f"wrote {work}/{slug}.md ({len(md)} chars)")
         return True, "\n".join(lines)

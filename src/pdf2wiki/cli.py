@@ -144,9 +144,15 @@ def _cmd_convert(a: argparse.Namespace, cfg: Any) -> int:
 
 
 def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
-    from .phase5 import residue_lines, run_chain
+    from .phase5 import BookMetaError, residue_lines, run_chain
 
-    report = run_chain(a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply)
+    try:
+        report = run_chain(
+            a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply, pdf_path=a.pdf
+        )
+    except BookMetaError as e:
+        print(f"error: {e}. Check the path, or leave out --pdf.", file=sys.stderr)
+        return 2
     ic = report["illegal_codepoints"]
     print(f"illegal_codepoints: {ic['removed']} removed {ic['counts'] or ''}".rstrip())
     if ic["word_joins"]:
@@ -184,10 +190,34 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
     print(f"chapter_split: {cs['boundaries']} boundaries")
     for i, t in enumerate(cs["titles"], 1):
         print(f"  {i:2d}. {t}")
-    if a.apply:
-        print(f"\nAPPLIED — wrote {len(cs['files'])} chapter files")
+    bi = report["book_index"]
+    meta, how = bi["meta"], bi["meta"]["sources"]
+    found = [
+        f"{k} ({how.get(k, '?')})"
+        for k in ("title", "authors", "year", "isbn", "publisher")
+        if meta.get(k)
+    ]
+    print(f"book_index: metadata from {bi['meta_from']}: {', '.join(found) or 'no fields found'}")
+    why = {
+        "absent": "no blocks.json beside the md",
+        "unreadable": "blocks.json beside the md is cut off or not a block list",
+        "empty": "blocks.json beside the md holds no blocks",
+    }
+    if bi["blocks"] == "ok":
+        print(
+            f"  pdf_pages: {bi['pages_matched']}/{bi['chapters']} chapters matched in blocks.json"
+        )
     else:
-        print(f"\n(dry-run — would write {len(cs['files'])} chapter files; pass --apply)")
+        print(f"  pdf_pages: {why[bi['blocks']]} — chapters carry no page range")
+    if bi["error"]:
+        print(f"  ⚠ the index page was not written ({bi['error']}); the chapters are complete")
+    what = f"{len(cs['files'])} chapter files"
+    if bi["file"]:
+        what += f" and {os.path.basename(bi['file'])}"
+    if a.apply:
+        print(f"\nAPPLIED — wrote {what}")
+    else:
+        print(f"\n(dry-run — would write {what}; pass --apply)")
     return 0
 
 
@@ -313,6 +343,11 @@ def main(argv: list[str] | None = None) -> int:
         "--source-name",
         default=None,
         help="original PDF filename for frontmatter `source:` (avoids leaking a staging path)",
+    )
+    p.add_argument(
+        "--pdf",
+        default=None,
+        help="read the book metadata from this PDF (default: book.json beside the md, if any)",
     )
     p.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
     p.set_defaults(fn=_cmd_phase5)

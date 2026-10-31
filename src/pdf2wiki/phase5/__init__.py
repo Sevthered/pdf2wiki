@@ -5,7 +5,7 @@
 """Phase 5 post-processing chain — fixed order, each step sees the previous step's output:
 
     illegal_codepoints -> symbol_pua -> caption_unbleed -> lang_retag -> dash_normalize
-                       -> mermaid_repair -> code_unescape -> chapter_split
+                       -> mermaid_repair -> code_unescape -> chapter_split -> book_index
 
 Order matters: illegal_codepoints runs FIRST because a raw NUL makes the file binary to grep-based
 tooling and is a byte no fence lexer, language detector or splitter below is written to expect — it
@@ -21,9 +21,12 @@ escapes inside code fences last (both merge paths). Re-run whenever the converte
 upstream — do not reuse stale artifacts.
 """
 
+import os
 from typing import Any
 
+from .. import bookmeta
 from . import (
+    book_index,
     caption_unbleed,
     chapter_split,
     code_unescape,
@@ -124,6 +127,7 @@ def run_chain(
     out_dir: str | None = None,
     source_name: str | None = None,
     apply: bool = False,
+    pdf_path: str | None = None,
 ) -> dict[str, Any]:
     """Run the full chain on md_path. With apply=False (dry-run), computes and reports every
     step in memory and writes NOTHING (the split step reports planned files only).
@@ -134,7 +138,7 @@ def run_chain(
     converter's output in place BEFORE the split ran -- a split that refused (no chapter boundary)
     still left the source edited. The CLI's stated convention is that no command modifies an
     existing file in place, and nothing downstream reads the whole-book file after the chain:
-    `batch` copies `chapters/`. The repaired text is handed to `chapter_split.split` directly,
+    `batch` copies `chapters/`. The repaired text is handed to `chapter_split.plan` directly,
     in both modes, so a dry run now plans the split on the text the chain produced rather than on
     the unrepaired file (see bug-phase5-apply-rewrites-the-source-in-place).
 
@@ -146,6 +150,12 @@ def run_chain(
     `symbol_pua.remap()` additionally carries its own CRLF guard for callers that hand it text
     directly rather than through this function; that guard cannot fire on anything read via
     `run_chain`, by construction (see bug-pdf2wiki-crlf-guard-unreachable).
+
+    Book metadata: from `pdf_path` when it is given, else from the `book.json` that `convert`
+    writes beside `md_path`. The front of the repaired text then fills any field still empty
+    (ISBN, year, publisher). Chapter page ranges come from the `blocks.json` beside `md_path`.
+    Both files are optional: without them the frontmatter has only its five base fields, and
+    the index page (`<slug>-index.md`) still lists every chapter.
     """
     with open(md_path, encoding="utf-8") as f:
         md = f.read()
@@ -183,13 +193,60 @@ def run_chain(
     md, unescapes = code_unescape.unescape(md)
     report["code_unescape"] = {"fixes": len(unescapes)}
 
-    written, bounds = chapter_split.split(
-        md_path, book, out_dir=out_dir, source_name=source_name, dry_run=not apply, text=md
+    md_dir = os.path.dirname(md_path) or "."
+    meta, meta_from = _book_meta(md_dir, pdf_path)
+    if not (meta.isbn and meta.year and meta.publisher):  # the text can fill only these three
+        meta = meta.fill(bookmeta.from_text(md))
+    blocks, blocks_state = bookmeta.load_blocks(os.path.join(md_dir, "blocks.json"))
+
+    # Plan every file first, write after: a split that refuses must leave nothing behind.
+    files, bounds = chapter_split.plan(
+        md_path, book, out_dir=out_dir, source_name=source_name, text=md, meta=meta, blocks=blocks
     )
+    index = book_index.build(files, book, source_name or md_path, meta)
+    index_error = None
+    if apply:
+        chapter_split.write(files)
+        if index is not None:
+            # The index is an enrichment. Once the chapters are on disk, a failure here must not
+            # fail the book: `batch` would mark it phase5_failed and convert it again on resume.
+            try:
+                with open(index[0], "w", encoding="utf-8") as f:
+                    f.write(index[1])
+            except OSError as e:
+                index_error = f"{type(e).__name__}: {e}"
     report["chapter_split"] = {
         "boundaries": len(bounds),
         "titles": [t for _, t in bounds],
-        "files": written,
+        "files": [f.path for f in files],
+    }
+    report["book_index"] = {
+        "file": index[0] if index and index_error is None else None,
+        "error": index_error,
+        "meta_from": meta_from,
+        "meta": meta.to_dict(),
+        "blocks": blocks_state,
+        "pages_matched": sum(1 for f in files if f.order > 0 and f.pages is not None),
+        "chapters": len(bounds),
     }
     report["applied"] = apply
     return report
+
+
+class BookMetaError(RuntimeError):
+    """The PDF given for the book metadata cannot be read."""
+
+
+def _book_meta(md_dir: str, pdf_path: str | None) -> tuple[bookmeta.BookMeta, str]:
+    """(metadata, where it came from). An explicit PDF wins over a `book.json`. A PDF that cannot
+    be read stops the run with a clear message: the operator named it, so a silent fallback would
+    hide a typo in the path. It stops before any file is written."""
+    if pdf_path:
+        try:
+            return bookmeta.from_pdf(pdf_path), "pdf"
+        except Exception as e:  # pymupdf raises its own types for a missing or broken file
+            raise BookMetaError(f"cannot read --pdf {pdf_path}: {type(e).__name__}: {e}") from e
+    loaded = bookmeta.load(os.path.join(md_dir, "book.json"))
+    if loaded is not None:
+        return loaded, "book.json"
+    return bookmeta.BookMeta(), "text"

@@ -17,7 +17,7 @@ Built on [MinerU](https://github.com/opendatalab/MinerU) with a **dual-pass stra
 (`-m txt`) takes byte-perfect code and text from the PDF's embedded text layer. A hybrid/VLM pass
 (`--effort high`) reconstructs table grids and transcribes diagrams to Mermaid. A base-driven merge then
 grafts the good parts together, and token-verifies the code so that a VLM which hallucinates never
-corrupts a listing. A six-step post-processing chain cleans the result and splits it into per-chapter files.
+corrupts a listing. A post-processing chain cleans the result and splits it into per-chapter files.
 
 Why two backends instead of one: [why a dual-backend pipeline](docs/explanation/why-dual-backend.md).
 

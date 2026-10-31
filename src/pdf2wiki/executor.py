@@ -12,10 +12,15 @@ installed, key-based auth (no password prompts mid-batch).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import subprocess
+import sys
 from typing import Any
+
+# Seconds for each optional sidecar pull (blocks.json, book.json). A few MB at most.
+SIDECAR_TIMEOUT = 120
 
 
 class ExecutionError(RuntimeError):
@@ -186,6 +191,41 @@ class SSHExecutor:
         # a book with zero figures legitimately has no images dir — only the md is mandatory
         if r2.returncode != 0 and "No such file" not in (r2.stderr or ""):
             return False
+        # The sidecars feed phase5 the book metadata (book.json) and the chapter page ranges
+        # (blocks.json). Both are optional: a converter older than book.json, or a single-pass
+        # cloud book with no blocks.json, still has a complete Markdown. A failed pull leaves no
+        # file or a cut-off one, and phase5 treats either as absent. It never fails the book.
+        # Both come in ONE scp call, so a host that idles out costs one connection, not two, and
+        # the call has its own short bound: a stalled host must not add the full fetch timeout for
+        # files that may be absent. A local copy from an earlier fetch is removed first, so a file
+        # the host no longer has is never read again. A failure for any reason but "No such file"
+        # is said on stderr, because the book then gets no title, authors or page ranges and is
+        # still marked done.
+        st = min(t, SIDECAR_TIMEOUT)
+        names = ("blocks.json", "book.json")
+        for n in names:
+            with contextlib.suppress(OSError):
+                os.remove(os.path.join(dest_dir, n))
+        srcs = [f"{self.host}:{shlex.quote(f'{out_root}/{slug}/{n}')}" for n in names]
+        try:
+            r = self._run(["scp", "-q", *opts, *srcs, dest_dir + os.sep], timeout=st)
+            rc, err = r.returncode, r.stderr or ""
+        except subprocess.TimeoutExpired:
+            rc, err = -1, f"timed out after {st}s"
+        if rc:
+            lines = [ln.strip() for ln in err.splitlines() if ln.strip()]
+            other = [ln for ln in lines if "No such file" not in ln] or (
+                [] if lines else [f"scp exit {rc}"]
+            )
+            if other:  # after a real error no sidecar can be trusted as complete
+                for n in names:
+                    with contextlib.suppress(OSError):
+                        os.remove(os.path.join(dest_dir, n))
+                print(
+                    f"  {slug}: blocks.json/book.json not fetched ({other[0]}) -- phase5 runs "
+                    "without them, so the chapters may lack book metadata or page ranges",
+                    file=sys.stderr,
+                )
         return os.path.exists(os.path.join(dest_dir, f"{slug}.md"))
 
     def artifacts_dir(self, slug: str, out_root: str) -> str:

@@ -7,12 +7,37 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **Book metadata in every chapter, and a book index page.** `convert` writes `book.json` beside
+  `blocks.json`. It holds the title and the authors from the PDF metadata, and the year, the ISBN and
+  the publisher from the first pages. `phase5` adds the known fields to each chapter's frontmatter:
+  `book_title`, `authors`, `year`, `isbn` and `publisher`. It also adds `pdf_pages: [first, last]`,
+  the 1-based PDF pages of the chapter, from `blocks.json`. A field with no value is left out, so a
+  book with no metadata keeps the five base fields. `phase5` also writes `<slug>-index.md`, the entry page
+  of the book, with one linked table row per chapter file. A new `phase5 --pdf PDF` reads the
+  metadata of a book that an older pdf2wiki converted. Without `book.json` or `--pdf`, the ISBN, the
+  year and the publisher still come from the copyright page in the text. Remote `batch` and `fetch`
+  pull `blocks.json` and `book.json` too, and a missing one does not fail a book.
+  **Rules.** Each value comes from one strong source or stays empty. The year comes from a copyright
+  line only. An ISBN must pass its checksum. Code fences are never read. Measured on eight
+  converted books (four Packt, three Manning, one O'Reilly): every year, ISBN and publisher was
+  found, and each one matches the copyright page. On the four books with a `blocks.json`, 97 of 97
+  chapter files got a page range. 58 chapters have a printed page in the converted table of
+  contents. For all 58, the PDF page minus the printed page is one number per book: 37, 29, 25
+  and 27.
 - **`pdf2wiki doctor [--remote HOST] [--json]` checks the environment (read-only).** It checks
   Python, PyMuPDF, the config files, MinerU, CUDA, the GPU, and the C compiler. It also checks the
   workdir for files that have stdlib names, free disk space, the hybrid server, the SSH host, and the
   mineru.net token. When SSH fails, it tells you if this machine is on another network. It prints a
   fix for each failed check. It exits with 1 when a check fails. It never prints a token.
   **`pdf2wiki --version`** prints the version.
+
+### Changed
+- **Frontmatter writes printable characters as they are.** `title`, `book` and `source` were written
+  with `json.dumps`, so `O’Reilly` became `O\u2019Reilly`. A character outside the Basic Multilingual
+  Plane, such as an emoji, became two surrogate escapes, and PyYAML loads those as two broken
+  halves. A printable character is now written raw. A control character, an invisible space and a
+  Private Use Area glyph stay escaped. The value that a YAML parser reads does not change, except
+  that the emoji case is now correct.
 
 ### Fixed
 - **A config value of the wrong type now stops every command with a clear error.** Before, a

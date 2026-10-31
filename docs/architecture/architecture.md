@@ -46,7 +46,7 @@ graph TD
     config["config.py<br/>layered TOML config"]
     executor["executor.py<br/>Local / SSH execution"]
     convert["convert/merge.py<br/>dual-pass convert + merge"]
-    phase5["phase5/*<br/>6-step post-process chain"]
+    phase5["phase5/*<br/>post-process chain"]
     batch["batch.py<br/>manifest-driven orchestration"]
     qa["qa/*<br/>sample + review"]
     scan["scan.py<br/>PDF triage"]
@@ -68,7 +68,7 @@ graph TD
 - **`config.py`** — layered TOML configuration (see [configuration](../reference/configuration.md)).
 - **`executor.py`** — `LocalExecutor` and `SSHExecutor`; decides where MinerU runs.
 - **`convert/merge.py`** — the [dual-pass convert and merge](../explanation/how-the-merge-works.md).
-- **`phase5/`** — the six-step [post-processing chain](../reference/phase5-steps.md).
+- **`phase5/`** — the [post-processing chain](../reference/phase5-steps.md).
 - **`batch.py`** — resumable multi-book [orchestration](../reference/pipeline-stages.md#stage-3--batch-orchestration-pdf2wiki-batch).
 - **`qa/`** and **`scan.py`** — sampling/review and PDF triage.
 

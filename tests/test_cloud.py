@@ -109,9 +109,16 @@ def test_convert_cloud_happy_path(tmp_path, monkeypatch):
     monkeypatch.setattr(cloud, "_put_file", fake_put)
     monkeypatch.setattr(cloud, "_requests", lambda: FakeRequests)
 
+    # a block list from an earlier merge run of this slug would hand phase5 foreign page ranges
+    stale = tmp_path / "out" / "book" / "blocks.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("[]", encoding="utf-8")
+
     ok, log = cloud.convert_book_cloud(str(pdf), "book", str(tmp_path / "out"), cfg=cfg)
     assert ok is True
     assert calls["put"] == 1
+    assert not stale.exists()
+    assert (tmp_path / "out" / "book" / "book.json").exists()
     md = tmp_path / "out" / "book" / "book.md"
     img = tmp_path / "out" / "book" / "images" / "a.jpg"
     assert md.exists() and "int x = 1;" in md.read_text()

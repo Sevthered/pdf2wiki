@@ -36,7 +36,7 @@ pdf2wiki convert my-book.pdf --name my-book --remote gpu-box
 
 pdf2wiki checks the SSH connection once, runs the conversion on the host (logging to
 `<workdir>/logs/<slug>.log`), and reports success from the remote command's exit code. For a batch,
-add `--remote` to `pdf2wiki batch`. It fetches each book's `.md` and `images/` back to the stage dir.
+add `--remote` to `pdf2wiki batch`. It fetches each book's `.md`, `images/`, `blocks.json` and `book.json` back to the stage dir.
 
 ## How success is judged
 

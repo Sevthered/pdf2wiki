@@ -222,3 +222,33 @@ def test_watermark_is_scrubbed_from_the_written_markdown(tmp_path, monkeypatch):
     assert ok is True
     assert "watermark(s) auto-detected" in log
     assert wm not in (tmp_path / "out" / "slug" / "slug.md").read_text(encoding="utf-8")
+
+
+def test_convert_book_writes_book_json_beside_blocks(tmp_path, monkeypatch):
+    pdf = _pdf(tmp_path, pages=3)
+    _fake_passes(monkeypatch, [_blk(0), _blk(1), _blk(2)])
+
+    ok, log = convert_book(pdf, "slug", str(tmp_path / "out"), cfg=_cfg(tmp_path))
+
+    assert ok is True
+    meta = json.loads((tmp_path / "out" / "slug" / "book.json").read_text(encoding="utf-8"))
+    assert meta["page_count"] == 3 and meta["sources"]["page_count"] == "pdf"
+    assert "book metadata: " in log
+
+
+def test_book_metadata_failure_never_fails_the_conversion(tmp_path, monkeypatch):
+    from pdf2wiki import bookmeta
+
+    pdf = _pdf(tmp_path, pages=3)
+    _fake_passes(monkeypatch, [_blk(0), _blk(1), _blk(2)])
+
+    def boom(path):
+        raise ValueError("unreadable info dictionary")
+
+    monkeypatch.setattr(bookmeta, "from_pdf", boom)
+    ok, log = convert_book(pdf, "slug", str(tmp_path / "out"), cfg=_cfg(tmp_path))
+
+    assert ok is True
+    assert (tmp_path / "out" / "slug" / "slug.md").exists()
+    assert not (tmp_path / "out" / "slug" / "book.json").exists()
+    assert "book metadata: not written (ValueError: unreadable info dictionary)" in log

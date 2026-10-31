@@ -41,18 +41,19 @@ pdf2wiki convert <pdf> --name <slug> [--out DIR]
 If you pass more than one, the command exits with code `2` and a message that names the conflict.
 It does not choose one silently.
 
-Writes `<out>/<slug>/<slug>.md`, `images/`, and `blocks.json` — see [output layout](output-layout.md).
+Writes `<out>/<slug>/<slug>.md`, `images/`, `blocks.json`, and `book.json` — see
+[output layout](output-layout.md).
 Exit code `0` on success. Exit code `1` on failure: a MinerU or cloud pass failed, or the
 [coverage gate](../explanation/how-the-merge-works.md#the-coverage-gate) hard-stopped. Exit code `2`
 on a mutually-exclusive-flag misuse.
 
 ## `phase5`
 
-Run the six-step [post-processing chain](phase5-steps.md) on a converted `.md` and split it into
+Run the [post-processing chain](phase5-steps.md) on a converted `.md` and split it into
 per-chapter files. **Dry-run by default** — pass `--apply` to write.
 
 ```
-pdf2wiki phase5 <md> --book <slug> [--out DIR] [--source-name PDF] [--apply]
+pdf2wiki phase5 <md> --book <slug> [--out DIR] [--source-name PDF] [--pdf PDF] [--apply]
 ```
 
 | Argument | Required | Default | Description |
@@ -61,10 +62,13 @@ pdf2wiki phase5 <md> --book <slug> [--out DIR] [--source-name PDF] [--apply]
 | `--book` | yes | — | Book slug written into each chapter's frontmatter. |
 | `--out` | no | `<md dir>/chapters` | Directory for the split chapter files. |
 | `--source-name` | no | the `md` path | Original PDF filename for the frontmatter `source:` field (keeps staging paths out of frontmatter). |
+| `--pdf` | no | `book.json` beside the `md` | Read the book metadata (title, authors, year, ISBN, publisher) from this PDF. Use it for a book that an older pdf2wiki converted, which has no `book.json`. A path that cannot be read stops the command with exit code `2` before it writes a file. See [where the book metadata comes from](phase5-steps.md#where-the-book-metadata-comes-from). |
 | `--apply` | no | off (dry-run) | Write the chapter files. The source `.md` is not changed. Without it, pdf2wiki reports what it would do and writes nothing. |
 
 Prints a per-step report (unwrapped captions, retag count, dash/mermaid/unescape fixes, chapter
-boundaries). Exit code `0`.
+boundaries). The `book_index` line names the metadata source and each field found, with its rule. The
+`pdf_pages` line says how many chapters got a page range. With `--apply`, `phase5` also writes
+`<slug>-index.md` beside the chapter files. Exit code `0`.
 
 ## `qa sample`
 

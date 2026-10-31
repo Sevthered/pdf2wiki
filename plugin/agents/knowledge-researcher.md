@@ -33,6 +33,7 @@ All `wiki/...` paths below are relative to that root.
    trade-offs, gotchas). Extract the specifics that answer the question. Obey the stop rule below.
 5. Only open raw book chapters (`<domain>/<book>/NN-*.md`) if a wiki page cites a chapter and lacks the
    needed depth. Chapter reads count against the same budget.
+   `<book>-index.md` is not a chapter. It is the book's index page: a chapter list with PDF pages.
 
 ## Read budget — a stop rule, not a page count
 

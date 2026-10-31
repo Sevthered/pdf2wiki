@@ -20,7 +20,7 @@ Input: one PDF. Output root: `<out_root>/<slug>/`.
 4. **Merge** — base-driven graft by page + bounding-box overlap (see
    [how the merge works](../explanation/how-the-merge-works.md)).
 5. **Chapter normalize** — the PDF's level-1 bookmarks (ToC) correct chapter boundaries.
-6. **Render + write** — one `.md`, an `images/` folder, and `blocks.json`.
+6. **Render + write** — one `.md`, an `images/` folder, `blocks.json`, and `book.json`.
 
 Artifacts under `<out_root>/<slug>/`:
 
@@ -29,6 +29,7 @@ Artifacts under `<out_root>/<slug>/`:
 | `<slug>.md` | The merged Markdown. |
 | `images/` | Extracted figures. Referenced as `images/<name>` from the Markdown. |
 | `blocks.json` | The full merged block list (every block with type, page, bbox, provenance). |
+| `book.json` | The book metadata from the PDF: title, authors, year, ISBN, publisher, page count. A PDF whose metadata cannot be read gets no `book.json`, and the conversion still succeeds. |
 | `base_<a>_<b>/`, `hy_<a>_<b>/` | Per-pass MinerU output dirs, each with a `.log` and a `.done` cache sentinel. |
 
 The `.done` sentinels make convert resumable: a completed pass is reused, so a fixed re-run continues
@@ -37,15 +38,16 @@ code-verify markers.
 
 ## Stage 2 — phase5 (`pdf2wiki phase5`)
 
-Input: the `<slug>.md` from stage 1. Runs the [six-step chain](phase5-steps.md) and writes chapter
+Input: the `<slug>.md` from stage 1. Runs the [post-processing chain](phase5-steps.md) and writes chapter
 files to `<md dir>/chapters/` (or `--out`). Dry-run by default. `--apply` writes.
 
 ## Stage 3 — batch orchestration (`pdf2wiki batch`)
 
 `batch` runs, per book, `convert → fetch → phase5 (--apply) → optional vault placement`, sequentially
-(single GPU). `fetch` is a no-op locally. In remote mode it `scp`s the `.md` and `images/` back. After
-phase5, images are linked into `chapters/images/` so relative refs resolve, and — if `--vault` (or
-`[output] vault`) is set — the chapters are copied to `<vault>/<domain>/<slug>/`.
+(single GPU). `fetch` is a no-op locally. In remote mode it `scp`s the `.md` and `images/` back. It
+also pulls `blocks.json` and `book.json` when they exist, because `phase5` reads them for the chapter
+metadata. After phase5, images are linked into `chapters/images/` so relative refs resolve, and — if
+`--vault` (or `[output] vault`) is set — the chapters are copied to `<vault>/<domain>/<slug>/`.
 
 ### Batch manifest states
 

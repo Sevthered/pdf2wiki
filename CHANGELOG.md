@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A contact address in the PDF author field no longer becomes part of an author name.** Before,
+  the author field `Changkun Ou <hi[at]changkun.de>` gave the author
+  `Changkun Ou <hi[at]changkun.de>`. That value went into the `authors` frontmatter field of each
+  chapter and into the book index page. Now the address is removed before the field is split, so
+  the author is `Changkun Ou`. An address is a word that holds `@` or `[at]`. A group in angle
+  brackets or parentheses that holds an address is removed as a whole, such as
+  `(email: jane@example.com)`. A group without an address stays, such as `(Editor)`. A `book.json`
+  that pdf2wiki 0.3.0 wrote can hold the address. `phase5` removes it when it reads the file, and
+  checks each author in the file as it checks the PDF field. If the address held `&`, `;` or
+  `and`, 0.3.0 split it into parts that are not an address. For such a book, run `phase5 --pdf PDF`
+  to read the metadata from the PDF again.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added

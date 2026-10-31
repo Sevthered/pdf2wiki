@@ -30,6 +30,7 @@ import json
 import os
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, fields, replace
 from typing import Any
 
@@ -71,7 +72,8 @@ class BookMeta:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> BookMeta:
         """Read a `book.json` dict. A value of the wrong type is dropped, not trusted: the file
-        crosses machines and a hand edit can break it."""
+        crosses machines and a hand edit can break it. A contact address in an author is removed,
+        because pdf2wiki 0.3.0 wrote one into `book.json` and phase5 reads that file again."""
 
         def text(v: Any) -> str | None:
             return v.strip() if isinstance(v, str) and v.strip() else None
@@ -79,20 +81,24 @@ class BookMeta:
         def num(v: Any) -> int | None:
             return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
 
-        authors = d.get("authors")
+        raw = d.get("authors")
+        authors = _names(a for a in raw if isinstance(a, str)) if isinstance(raw, list) else []
         sources = d.get("sources")
+        sources = (
+            {k: v for k, v in sources.items() if isinstance(v, str)}
+            if isinstance(sources, dict)
+            else {}
+        )
+        if not authors:  # the address was the whole author, so no source gave one
+            sources.pop("authors", None)
         return cls(
             title=text(d.get("title")),
-            authors=[a.strip() for a in authors if isinstance(a, str) and a.strip()]
-            if isinstance(authors, list)
-            else [],
+            authors=authors,
             year=num(d.get("year")),
             isbn=text(d.get("isbn")),
             publisher=text(d.get("publisher")),
             page_count=num(d.get("page_count")),
-            sources={k: v for k, v in sources.items() if isinstance(v, str)}
-            if isinstance(sources, dict)
-            else {},
+            sources=sources,
         )
 
 
@@ -257,6 +263,34 @@ _JUNK_TITLE_RE = re.compile(
     r"^(?:untitled|microsoft word\b.*|.*\.(?:pdf|indd|docx?|tex|qxd))$", re.I
 )
 _JUNK_AUTHORS = {"unknown", "administrator", "admin", "user", "author", "owner"}
+# A contact address in an author field is not part of a name. An address holds `@` or `[at]`.
+# A group in angle brackets or parentheses that holds an address goes as a whole. A group without
+# one, such as "(Editor)", stays. A bare word that holds an address goes too. It ends at a space,
+# a comma or a semicolon, so "Ann Lee a@x.org, Bob Ray" keeps both names. A bracket at its edge
+# goes with it, for a field that was cut off inside the group: "Jane Doe <jane@x.com".
+_AT = r"(?:@|\[at\])"
+_ADDRESS_RE = re.compile(
+    rf"<[^<>]*{_AT}[^<>]*>"  # <hi[at]changkun.de>
+    rf"|\([^()]*{_AT}[^()]*\)"  # (email: jane@example.com)
+    rf"|[<(]?[^\s,;<>()]*{_AT}[^\s,;<>()]*[>)]?",  # jane@example.com, ann&andy@x.org, <jane@x.com
+    re.I,
+)
+
+
+def _drop_address(text: str) -> str:
+    """`text` without a contact address, with its runs of spaces made one space."""
+    return " ".join(_ADDRESS_RE.sub(" ", text).split())
+
+
+def _names(candidates: Iterable[str]) -> list[str]:
+    """The author names in `candidates`, in order. Each loses its contact address. A name shorter
+    than two characters, a placeholder such as "Unknown" and a second copy are left out."""
+    out: list[str] = []
+    for c in candidates:
+        name = _drop_address(c)
+        if len(name) >= 2 and name.lower() not in _JUNK_AUTHORS and name not in out:
+            out.append(name)
+    return out
 
 
 def clean_title(raw: str | None) -> str | None:
@@ -270,10 +304,10 @@ def clean_title(raw: str | None) -> str | None:
 def split_authors(raw: str | None) -> list[str]:
     """Authors from the PDF metadata `author` field: separated by `;`, `&` or "and", and by `,`
     only when every part between the commas has two words or more. So "Heather Adkins, Betsy
-    Beyer" is two authors, and "Richardson, Chris" or "John Smith, Jr." stays one."""
-    out: list[str] = []
+    Beyer" is two authors, and "Richardson, Chris" or "John Smith, Jr." stays one. A contact
+    address is not part of a name, so it is removed before the split."""
     parts: list[str] = []
-    for chunk in re.split(r"\s*(?:;|&|\band\b)\s*", raw or ""):
+    for chunk in re.split(r"\s*(?:;|&|\band\b)\s*", _drop_address(raw or "")):
         # "A, B, and C": the chunk before "and" ends in a comma, so drop the empty piece
         pieces = [p.strip() for p in chunk.split(",") if p.strip()]
         chunk = ", ".join(pieces)
@@ -281,11 +315,7 @@ def split_authors(raw: str | None) -> list[str]:
             parts += pieces
         else:
             parts.append(chunk)
-    for part in parts:
-        name = " ".join(part.split())
-        if len(name) >= 2 and name.lower() not in _JUNK_AUTHORS and name not in out:
-            out.append(name)
-    return out
+    return _names(parts)
 
 
 # ---------- entry points ----------

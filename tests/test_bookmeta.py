@@ -187,6 +187,57 @@ def test_split_authors():
     assert bookmeta.split_authors("Chris Richardson and Chris Richardson") == ["Chris Richardson"]
 
 
+@pytest.mark.parametrize(
+    ("raw", "authors"),
+    [
+        # the author field of modern-cpp-tutorial-en-us.pdf
+        ("Changkun Ou <hi[at]changkun.de>", ["Changkun Ou"]),
+        ("Changkun Ou hi[at]changkun.de", ["Changkun Ou"]),
+        ("Changkun Ou (hi[AT]changkun.de)", ["Changkun Ou"]),
+        ("Jane Doe jane@example.com", ["Jane Doe"]),
+        ("Jane Doe (jane@example.com)", ["Jane Doe"]),
+        ("Jane Doe (email: jane@x.com, bob@x.com)", ["Jane Doe"]),
+        ("Jane Doe (@janedoe)", ["Jane Doe"]),
+        ("Ann Lee <a@x.org>, Bob Ray <b@x.org>", ["Ann Lee", "Bob Ray"]),
+        # a bare address ends at a comma, so the next name stays
+        ("Ann Lee a@x.org, Bob Ray", ["Ann Lee", "Bob Ray"]),
+        # a separator inside the address does not split the name
+        ("Ann Lee <ann&andy@x.org>", ["Ann Lee"]),
+        ("Ann Lee ann&andy@x.org", ["Ann Lee"]),
+        # a group without an address is part of the name
+        ("Jane Doe (Editor)", ["Jane Doe (Editor)"]),
+        ("Jane Doe <Editor>", ["Jane Doe <Editor>"]),
+        ("<hi@example.com>", []),
+        ("jane@example.com", []),
+        # a field cut off inside the group
+        ("Jane Doe <jane@x.com", ["Jane Doe"]),
+        ("Jane Doe <jane@x.com, Bob Ray", ["Jane Doe", "Bob Ray"]),
+    ],
+)
+def test_split_authors_drops_a_contact_address(raw, authors):
+    assert bookmeta.split_authors(raw) == authors
+
+
+def test_load_drops_a_contact_address_from_an_older_book_json(tmp_path):
+    # pdf2wiki 0.3.0 wrote the address into book.json, and phase5 reads that file again
+    path = tmp_path / "book.json"
+    path.write_text(
+        json.dumps({"authors": ["Changkun Ou <hi[at]changkun.de>", "<a@x.org>", "Jane  Doe"]}),
+        encoding="utf-8",
+    )
+    assert bookmeta.load(str(path)).authors == ["Changkun Ou", "Jane Doe"]
+
+
+def test_from_dict_checks_each_author_as_split_authors_does():
+    d = {"authors": ["Jane Doe <a@x.org>", "Jane Doe", "unknown <a@x.org>", "x"]}
+    assert BookMeta.from_dict(d).authors == ["Jane Doe"]
+
+
+def test_from_dict_names_no_source_for_authors_it_removed():
+    meta = BookMeta.from_dict({"authors": ["<a@x.org>"], "sources": {"authors": "pdf-metadata"}})
+    assert meta.authors == [] and "authors" not in meta.sources
+
+
 # ---------- from_text, from_pdf, book.json ----------
 
 
@@ -479,6 +530,18 @@ def test_run_chain_writes_enriched_chapters_and_an_index(tmp_path):
     bi = report["book_index"]
     assert bi["meta_from"] == "book.json" and bi["pages_matched"] == 2 and bi["chapters"] == 2
     assert bi["file"] == str(d / "chapters" / "slug-index.md")
+
+
+def test_run_chain_keeps_an_address_in_an_older_book_json_out_of_the_pages(tmp_path):
+    d = _book_dir(tmp_path)
+    old = json.loads((d / "book.json").read_text(encoding="utf-8"))
+    old["authors"] = ["Changkun Ou <hi[at]changkun.de>"]  # as pdf2wiki 0.3.0 wrote it
+    (d / "book.json").write_text(json.dumps(old), encoding="utf-8")
+    report = run_chain(str(d / "slug.md"), "slug", source_name="b.pdf", apply=True)
+
+    assert 'authors: ["Changkun Ou"]' in _frontmatter(report["chapter_split"]["files"][1])
+    index = (d / "chapters" / "slug-index.md").read_text(encoding="utf-8")
+    assert "Changkun Ou" in index and "changkun.de" not in index
 
 
 def test_run_chain_without_sidecars_keeps_the_old_frontmatter_shape(tmp_path):

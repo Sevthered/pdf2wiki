@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
 ### Added
 - **Book metadata in every chapter, and a book index page.** `convert` writes `book.json` beside
   `blocks.json`. It holds the title and the authors from the PDF metadata, and the year, the ISBN and
@@ -1003,7 +1005,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...v0.3.0
 [0.2.11]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.8...v0.2.9

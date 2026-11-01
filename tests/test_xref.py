@@ -693,7 +693,8 @@ def test_no_target_in_indented_code_or_an_html_block():
     body = (
         "# A\n\nCode:\n\n    ![](a.jpg)\n    Figure 1.1 The thing\n\n"
         "<pre>\n![](b.jpg)\n\n*Figure 1.2 Inside*\n\nsee figure 1.1\n</pre>\n\n"
-        "<!-- a note\n\nsee figure 1.2\n-->\n\nSee figure 1.1 and figure 1.2.\n"
+        "<!-- a note\n\nsee figure 1.2\n-->\n\n<!-- another\n\nsee figure 1.1\n--!>\n\n"
+        "See figure 1.1 and figure 1.2.\n"
     )
     out, rep = run({"01-a.md": chap(1, "A", body)}, style="markdown")
     assert out["01-a.md"] == chap(1, "A", body)

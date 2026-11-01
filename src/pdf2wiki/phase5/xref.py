@@ -105,7 +105,7 @@ _HTML_UNTIL = (
         re.compile(r"^[ \t]{0,3}<(?:pre|script|style|textarea)(?:[ \t>]|$)", re.I),
         re.compile(r"</(?:pre|script|style|textarea)>", re.I),
     ),
-    (re.compile(r"^[ \t]{0,3}<!--"), re.compile(r"-->")),
+    (re.compile(r"^[ \t]{0,3}<!--"), re.compile(r"--!?>")),  # a browser also ends one at --!>
     (re.compile(r"^[ \t]{0,3}<\?"), re.compile(r"\?>")),
     (re.compile(r"^[ \t]{0,3}<![A-Za-z]"), re.compile(r">")),
     (re.compile(r"^[ \t]{0,3}<!\[CDATA\["), re.compile(r"\]\]>")),

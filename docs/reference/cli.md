@@ -53,7 +53,8 @@ Run the [post-processing chain](phase5-steps.md) on a converted `.md` and split 
 per-chapter files. **Dry-run by default** — pass `--apply` to write.
 
 ```
-pdf2wiki phase5 <md> --book <slug> [--out DIR] [--source-name PDF] [--pdf PDF] [--apply]
+pdf2wiki phase5 <md> --book <slug> [--out DIR] [--source-name PDF] [--pdf PDF]
+                     [--links off|obsidian|markdown] [--apply]
 ```
 
 | Argument | Required | Default | Description |
@@ -63,12 +64,44 @@ pdf2wiki phase5 <md> --book <slug> [--out DIR] [--source-name PDF] [--pdf PDF] [
 | `--out` | no | `<md dir>/chapters` | Directory for the split chapter files. |
 | `--source-name` | no | the `md` path | Original PDF filename for the frontmatter `source:` field (keeps staging paths out of frontmatter). |
 | `--pdf` | no | `book.json` beside the `md` | Read the book metadata (title, authors, year, ISBN, publisher) from this PDF. Use it for a book that an older pdf2wiki converted, which has no `book.json`. A path that cannot be read stops the command with exit code `2` before it writes a file. See [where the book metadata comes from](phase5-steps.md#where-the-book-metadata-comes-from). |
+| `--links` | no | `off` | Link the cross-references across the chapter files: `obsidian` (block ids) or `markdown` (HTML anchors). See [cross-references](phase5-steps.md#cross-references). |
 | `--apply` | no | off (dry-run) | Write the chapter files. The source `.md` is not changed. Without it, pdf2wiki reports what it would do and writes nothing. |
 
 Prints a per-step report (unwrapped captions, retag count, dash/mermaid/unescape fixes, chapter
 boundaries). The `book_index` line names the metadata source and each field found, with its rule. The
 `pdf_pages` line says how many chapters got a page range. With `--apply`, `phase5` also writes
 `<slug>-index.md` beside the chapter files. Exit code `0`.
+
+## `link`
+
+Link the cross-references in a folder of chapter files that exists, such as a book in a vault. It is
+the `xref` step of `phase5`, without the rest of the chain. **Dry-run by default.** Pass `--apply` to
+write.
+
+```
+pdf2wiki link <dir> [--style obsidian|markdown] [--apply] [--json]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `dir` | yes | — | The folder that holds the chapter files of one book. |
+| `--style` | no | `obsidian` | `obsidian`: block ids on captions. `markdown`: HTML anchors, which Obsidian does not follow. Both write relative links. See [cross-references](phase5-steps.md#cross-references). |
+| `--apply` | no | off (dry-run) | Write the chapter files that change. The command writes these files in place. Without it, pdf2wiki reports what it would do and writes nothing. |
+| `--json` | no | off | Print the report as JSON. The report also lists the files that change. |
+
+A chapter file is a `.md` file whose frontmatter holds `book:` and `chapter:`, as `phase5` writes it.
+The command does not change other files, such as `<slug>-index.md`. It stops with exit code `2` when
+the folder holds no chapter file. It also stops when the folder holds chapter files of more than one
+book, because a link must not point into another book.
+
+With `--apply`, the command writes each changed file to a temporary file first, then replaces the
+chapter files. If a temporary file cannot be written, no chapter file changes, and the command stops
+with exit code `2`. If a replace fails, the error names how many files were written. A second run
+with `--apply` writes no file.
+
+A file with only CRLF line ends keeps them. Other files get LF line ends. A file keeps its mode.
+For a symlink, the command writes the file that the link points to.
+Exit code `0`.
 
 ## `qa sample`
 

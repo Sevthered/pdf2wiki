@@ -47,7 +47,8 @@ CommonMark's fenced-code rules as far as converter output needs:
 | 6 | `mermaid_repair` | md | Sanitizes ```mermaid``` node labels so the diagram parses — literal `\n` → `<br>`, inner quotes → `'`, inner brackets → `()`, closes unclosed labels, drops orphan brackets. | md with parseable Mermaid |
 | 7 | `code_unescape` | md | Inside code fences only, strips MinerU's markdown-punctuation escapes (`\$ \* \~ \_` `` \` `` `\# \@ \% \& \!`) while preserving real string/regex escapes (`\n \t \d \s \" \\`). | md with clean code fences |
 | 8 | `chapter_split` | md file | Splits at fence-aware H1 boundaries (plus mistagged `## Appendix X.` H2s) into per-chapter files with YAML frontmatter. Adds the book metadata and the PDF page range of each chapter when they are known. See [chapter frontmatter](#chapter-frontmatter). | `00-front-matter.md` + `NN-slug.md` files |
-| 9 | `book_index` | the split | Writes `<slug>-index.md`, the entry page of the book. It holds the book metadata and one table row per chapter file, with a link and the PDF pages. See [book index](#book-index). | `<slug>-index.md` |
+| 9 | `xref` (opt-in) | the split | Runs only with `--links obsidian` or `--links markdown`. Links "figure 6.2", "listing 4.1", "table 1.3", "section 2.3" and "chapter 5" in the prose to their target in its chapter file, and adds an anchor to each caption. See [cross-references](#cross-references). | linked chapter files |
+| 10 | `book_index` | the split | Writes `<slug>-index.md`, the entry page of the book. It holds the book metadata and one table row per chapter file, with a link and the PDF pages. See [book index](#book-index). | `<slug>-index.md` |
 
 ## Chapter frontmatter
 
@@ -162,6 +163,106 @@ punctuation, so a `|` or a `<T>` in a title does not break the table.
 The name holds the slug so that it is unique in a vault with many books. A plain `index.md` in
 each book folder would make the vault's existing `[[index]]` links ambiguous. A plain `<slug>.md`
 would collide with the source page that an ingest writes for the book.
+
+## Cross-references
+
+`xref` runs only when you ask for it: `phase5 --links obsidian` or `phase5 --links markdown`. The
+[`link`](cli.md#link) command runs the same step on a folder of chapter files that exists, such as a
+book that is already in a vault.
+
+The step reads all chapter files of one book together, because a reference and its target are often
+in different files.
+
+**Targets:**
+
+| Kind | Target | Example |
+|---|---|---|
+| figure, table, listing | A caption: a line that starts with `Figure`, `Fig.`, `Table` or `Listing` and a number | `*Figure 6.2 Liveness check*`, `**Listing 3.4** Start`, `Figure 2-1. The architecture`, `## Listing 6.1 The class` |
+| section | A heading that starts with a number of two parts or more | `## 6.3 Getting started` |
+| chapter | A chapter file | `# Chapter 5 Data`, `# 5 Data` |
+
+A line that starts like a caption can be prose, such as "Listing 6.1 shows the class". So a line is a
+caption only in two cases. It is a heading, or it starts a paragraph and an image, a code fence or
+a table is within two non-blank lines of it. A line right under an image or a fence also starts a
+paragraph.
+
+The word after the number must also not be a lower-case verb or link word such as "shows" or "in". A
+line with no emphasis, and no `.`, `:` or dash after the number, must go on with a capital letter.
+On 24 books, "Figure 1.1 The internal representation" and "Figure 7.2 With the cache" are captions,
+and "Figure 3.6 tries to answer" is prose.
+
+The number of a chapter comes from its first H1. The number must end at a space or a punctuation
+mark, so `# 3D Graphics` gives no number. The frontmatter `chapter:` is not used, because it counts
+files, and the cover, part and preface pages change that count.
+
+When the H1 has no number, the step reads the captions and the numbered sections of the file. Only
+numbers with two parts count, so `Figure 1` in a preface gives no chapter number. There must be two
+or more, and they must all start with one number. A file with Figure 6.1, Listing 6.2 and `## 6.3`
+is chapter 6.
+
+**Links.** Each link is a CommonMark relative link to the target file. A link inside one file also
+names the file. The text of the reference stays the link text. In a list such as "figures 6.1 and
+6.2" or "figures 6.1, 6.2, and 6.3", each number becomes a link. One letter after a number is a
+part of the figure: "figure 9.15B" links to figure 9.15.
+
+A dash in a reference is a range, such as "sections 2-3", and gets no link. The exception is a kind
+that the book numbers with a dash, such as `Figure 2-1.`. An en dash or an em dash after a number,
+or a hyphen with spaces, also starts a range: "chapters 2–5" and "figures 2.1 - 2.3" get no link.
+
+| Style | Anchor on the caption | Link |
+|---|---|---|
+| `obsidian` | A block id at the end of the caption paragraph: `*Figure 6.2 Liveness check* ^fig-6-2`. A heading target gets no anchor. | `[figure 6.2](07-intro.md#^fig-6-2)`, `[section 6.3](07-intro.md#6.3%20Getting%20started)` |
+| `markdown` | An HTML anchor at the start of the caption: `<a id="fig-6-2"></a>`. A heading gets the anchor on its own line above it, then an empty line, so the heading text does not change. | `[figure 6.2](07-intro.md#fig-6-2)`, `[section 6.3](07-intro.md#sec-6-3)` |
+
+A chapter link names only the file: `[chapter 5](05-data.md)`. The anchor ids are `fig-`, `tbl-`,
+`lst-` and `sec-`, then the number with each `.` or `-` as `-`. Numbers compare without leading
+zeros, so "Chapter 05" is chapter 5. An anchor counts only in the style that wrote it. A run in the
+other style adds its own anchor, and the links of the earlier run stay valid.
+
+Obsidian does not follow a link to an `<a id>` anchor. Use the `obsidian` style for an Obsidian
+vault. Use the `markdown` style for a viewer that follows HTML anchors.
+
+The style does not use an Obsidian wikilink such as `[[07-intro#^fig-6-2]]`. Obsidian finds a
+wikilink target by its file name in the whole vault. A vault with many books has many files with the
+same name, such as `01-introduction.md`. So a wikilink can open a page in a different book.
+
+**Rules:**
+
+- The step links a reference only when its target is unique in the book. Two captions with the same
+  number, or two files that give the same chapter number, give no link. The exception: of two
+  targets with a two-part number, the one in the file of that chapter wins. So "section 1.2" links
+  to chapter 1, not to a table of contents that the converter set as headings.
+- Some books start "Figure 1" again in each chapter. So a caption number with one part links only
+  inside its own file. A number with two parts, such as 6.2, links across the book.
+- A paragraph has one caption. A second caption line in the same paragraph is not a target, because
+  Obsidian reads only one block id at the end of a paragraph.
+- A `$` before a digit is a price, not math. So "$5 and figure 2.1 or $6" gets a link.
+- The step does not link in the frontmatter, fenced code, indented code or display math between
+  `$$` lines. It also does not link in inline code, existing links, reference links, link
+  definitions or other text in square brackets. HTML, inline math, headings and caption paragraphs
+  get no link either. An indented
+  paragraph in a list item looks like indented code, so it gets no link either.
+- An HTML block ends where CommonMark ends it. A `<pre>`, `<script>`, `<style>` or `<!--` block
+  ends at its closing tag, and other blocks end at an empty line. No link and no anchor goes into
+  an HTML block or into indented code.
+- "Chapter 3 of Kubernetes in Action" refers to a different book. The step counts it as external and
+  does not change it. The rule is a reference followed by "of" and a capital letter or a quote.
+  "of Chapter 4", "of Part II" and "of Appendix A" are in this book.
+- In the `obsidian` style, a heading that holds `[`, `]`, `|` or `^` cannot be a link
+  target. The step reports a reference to such a heading as unlinkable.
+- In the `obsidian` style, a link to a heading does not include `;`, `/`, `?`, `:`, `@`, `&`,
+  `=`, `+`, `$`, `,` or `#`. Obsidian decodes a link with `decodeURI`, which keeps the code
+  of these characters, such as `%3A`. Obsidian ignores punctuation when it compares a link with a
+  heading, so `#6.3%20Setup%20the%20basics` opens the heading `6.3 Setup: the basics`.
+- A second run finds the anchors and links of the first run, and changes nothing.
+
+**Report.** The step counts the links by kind and the anchors that it adds. It also counts the
+references that it did not link: no target in the book, two targets or more, another book, and
+unlinkable. On 24 converted books, the step linked 4,406 references and added 2,143 block ids. Each
+link opened a target that exists. 221 figure and 404 listing references have no caption in the text,
+because the converter did not extract it.
+
+`batch` does not run this step. Run [`link`](cli.md#link) on the chapter folder of each book.
 
 ## `lang_retag` detection order
 

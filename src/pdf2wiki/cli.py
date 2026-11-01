@@ -13,7 +13,9 @@ import argparse
 import contextlib
 import json
 import os
+import shutil
 import sys
+import tempfile
 from typing import Any, TextIO, cast
 
 from . import __version__
@@ -150,7 +152,13 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
 
     try:
         report = run_chain(
-            a.md, a.book, out_dir=a.out, source_name=a.source_name, apply=a.apply, pdf_path=a.pdf
+            a.md,
+            a.book,
+            out_dir=a.out,
+            source_name=a.source_name,
+            apply=a.apply,
+            pdf_path=a.pdf,
+            links=a.links,
         )
     except BookMetaError as e:
         print(f"error: {e}. Check the path, or leave out --pdf.", file=sys.stderr)
@@ -213,6 +221,11 @@ def _cmd_phase5(a: argparse.Namespace, cfg: Any) -> int:
         print(f"  pdf_pages: {why[bi['blocks']]} — chapters carry no page range")
     if bi["error"]:
         print(f"  ⚠ the index page was not written ({bi['error']}); the chapters are complete")
+    if report["xref"] is not None:
+        from .phase5 import xref
+
+        for line in xref.summary_lines(report["xref"]):
+            print(line)
     what = f"{len(cs['files'])} chapter files"
     if bi["file"]:
         what += f" and {os.path.basename(bi['file'])}"
@@ -314,6 +327,64 @@ def _cmd_doctor(a: argparse.Namespace, cfg: Any) -> int:
     return 1 if counts(checks)[0] else 0
 
 
+def _cmd_link(a: argparse.Namespace, cfg: Any) -> int:
+    from .phase5 import xref
+
+    try:
+        files = xref.read_book_dir(a.dir)
+    except (OSError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    out, report = xref.link(files, a.style)
+    changed = report["changed"]
+    if a.apply:
+        # Every file goes to a temporary file first, and only then replaces its chapter file. A
+        # failed write to a temporary file then leaves the book as it was, not half linked: a link
+        # in one file must not point at an anchor that never reached another. The write goes to
+        # the real file behind a symlink, with the mode of the file it replaces. A file with only
+        # CRLF line ends keeps them. A new temporary file never follows or replaces a file there.
+        real = {name: os.path.realpath(os.path.join(a.dir, name)) for name in changed}
+        tmp: dict[str, str] = {}
+        done = 0
+        try:
+            for name in changed:
+                with open(real[name], "rb") as fh:
+                    data = fh.read()
+                crlf = b"\n" in data and data.count(b"\r\n") == data.count(b"\n")
+                fd, tmp[name] = tempfile.mkstemp(
+                    prefix=f".{os.path.basename(real[name])}.",
+                    suffix=".xref-tmp",
+                    dir=os.path.dirname(real[name]),
+                )
+                with os.fdopen(fd, "w", encoding="utf-8", newline="\r\n" if crlf else "\n") as fh:
+                    fh.write(out[name])
+                shutil.copymode(real[name], tmp[name])
+            for name in changed:
+                os.replace(tmp[name], real[name])
+                done += 1
+        except (OSError, ValueError) as e:
+            print(
+                f"error: {e}. {done} of {len(changed)} chapter files were written", file=sys.stderr
+            )
+            return 2
+        finally:
+            for path in tmp.values():
+                with contextlib.suppress(OSError):
+                    os.remove(path)
+    if a.json:
+        print(json.dumps({**report, "applied": a.apply}, indent=2))
+        return 0
+    for line in xref.summary_lines(report):
+        print(line)
+    if a.apply:
+        print(f"\nAPPLIED — wrote {len(changed)} of {len(files)} chapter files")
+    else:
+        print(
+            f"\n(dry-run — would write {len(changed)} of {len(files)} chapter files; pass --apply)"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="pdf2wiki",
@@ -366,8 +437,29 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="read the book metadata from this PDF (default: book.json beside the md, if any)",
     )
+    p.add_argument(
+        "--links",
+        default="off",
+        choices=["off", "obsidian", "markdown"],
+        help="link figure/table/listing/section/chapter references across the chapter files "
+        "(default: off)",
+    )
     p.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
     p.set_defaults(fn=_cmd_phase5)
+
+    p = sub.add_parser(
+        "link", help="link cross-references in a folder of chapter files (dry-run by default)"
+    )
+    p.add_argument("dir", help="the folder that holds ONE book's chapter files")
+    p.add_argument(
+        "--style",
+        default="obsidian",
+        choices=["obsidian", "markdown"],
+        help="obsidian: block ids + relative links (default); markdown: <a id> + relative links",
+    )
+    p.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
+    p.add_argument("--json", action="store_true", help="print the report as JSON")
+    p.set_defaults(fn=_cmd_link)
 
     pqa = sub.add_parser("qa", help="conversion QA tools")
     qsub = pqa.add_subparsers(dest="qa_cmd", required=True)

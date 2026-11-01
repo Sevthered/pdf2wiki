@@ -5,7 +5,8 @@
 """Phase 5 post-processing chain — fixed order, each step sees the previous step's output:
 
     illegal_codepoints -> symbol_pua -> caption_unbleed -> lang_retag -> dash_normalize
-                       -> mermaid_repair -> code_unescape -> chapter_split -> book_index
+                       -> mermaid_repair -> code_unescape -> chapter_split -> xref (opt-in)
+                       -> book_index
 
 Order matters: illegal_codepoints runs FIRST because a raw NUL makes the file binary to grep-based
 tooling and is a byte no fence lexer, language detector or splitter below is written to expect — it
@@ -17,7 +18,8 @@ chapter_split as a fake heading, and a dropped symbol silently corrupts prose no
 detect; caption_unbleed removes caption-only junk fences and lifts leading captions so lang_retag
 detects on clean code; lang tags before dash-normalize scopes to code fences; dash/mermaid fixes
 must land before the md is split into chapters; code_unescape strips leftover markdown-punct
-escapes inside code fences last (both merge paths). Re-run whenever the converter output changes
+escapes inside code fences last (both merge paths). xref runs on the split files, because a reference and its
+target are often in different chapters; it runs only when `links` is not "off". Re-run whenever the converter output changes
 upstream — do not reuse stale artifacts.
 """
 
@@ -35,6 +37,7 @@ from . import (
     lang_retag,
     mermaid_repair,
     symbol_pua,
+    xref,
 )
 
 
@@ -128,6 +131,7 @@ def run_chain(
     source_name: str | None = None,
     apply: bool = False,
     pdf_path: str | None = None,
+    links: str = "off",
 ) -> dict[str, Any]:
     """Run the full chain on md_path. With apply=False (dry-run), computes and reports every
     step in memory and writes NOTHING (the split step reports planned files only).
@@ -156,6 +160,10 @@ def run_chain(
     (ISBN, year, publisher). Chapter page ranges come from the `blocks.json` beside `md_path`.
     Both files are optional: without them the frontmatter has only its five base fields, and
     the index page (`<slug>-index.md`) still lists every chapter.
+
+    Cross-references: with `links` set to "obsidian" or "markdown", `xref` links "figure 6.2",
+    "listing 4.1", "table 1.3", "section 2.3" and "chapter 5" across the planned chapter files
+    before they are written. The default "off" leaves the text as it was.
     """
     with open(md_path, encoding="utf-8") as f:
         md = f.read()
@@ -203,6 +211,13 @@ def run_chain(
     files, bounds = chapter_split.plan(
         md_path, book, out_dir=out_dir, source_name=source_name, text=md, meta=meta, blocks=blocks
     )
+    report["xref"] = None
+    if links != "off":
+        linked, report["xref"] = xref.link(
+            {os.path.basename(pf.path): pf.content for pf in files}, links
+        )
+        for pf in files:
+            pf.content = linked[os.path.basename(pf.path)]
     index = book_index.build(files, book, source_name or md_path, meta)
     index_error = None
     if apply:

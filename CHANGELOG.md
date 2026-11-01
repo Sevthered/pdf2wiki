@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Cross-reference links between the chapters of a book.** "figure 6.2", "listing 4.1", "table
+  1.3", "section 2.3" and "chapter 5" in the prose become links to their target in its chapter file.
+  Each caption gets an anchor. `phase5 --links obsidian|markdown` does this for a new book. The
+  default is `off`, so the output does not change unless you ask. The new `pdf2wiki link <dir>`
+  command does it for a folder of chapter files that exists, such as a book in a vault. It is a
+  dry-run unless you pass `--apply`. The `obsidian` style puts a block id on the caption, such as
+  `^fig-6-2`. The `markdown` style puts an `<a id>` on it, which Obsidian does not follow. Both
+  styles write relative links. Obsidian
+  finds a wikilink target by its file name in the whole vault, and a vault with many books repeats
+  file names. A reference is linked only when its target is unique in the book. Code,
+  headings, captions and existing links do not change. A second run changes nothing. When a chapter
+  title has no number, the number comes from the captions and numbered sections in the file. On 24
+  converted books, 4,406 references became links, and each link opens a target that exists.
+  `batch` does not link yet.
+
 ### Fixed
 - **A contact address in the PDF author field no longer becomes part of an author name.** Before,
   the author field `Changkun Ou <hi[at]changkun.de>` gave the author

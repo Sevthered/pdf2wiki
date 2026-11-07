@@ -385,6 +385,22 @@ def _cmd_link(a: argparse.Namespace, cfg: Any) -> int:
     return 0
 
 
+def _cmd_compare(a: argparse.Namespace, cfg: Any) -> int:
+    from .compare import EXIT_ERROR, compare_dirs, render_human
+
+    if a.diff < 0:
+        print("error: --diff must be 0 or more", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        report = compare_dirs(a.old, a.new, [] if a.no_ignore else a.ignore_key, a.diff)
+    except (OSError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    print(json.dumps(report, indent=2) if a.json else render_human(report))
+    exit_code: int = report["exit_code"]
+    return exit_code
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="pdf2wiki",
@@ -461,6 +477,34 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the report as JSON")
     p.set_defaults(fn=_cmd_link)
 
+    p = sub.add_parser(
+        "compare",
+        help="compare the .md files of two output folders, such as two phase5 runs (read-only)",
+    )
+    p.add_argument("old", help="the folder of the old output")
+    p.add_argument("new", help="the folder of the new output")
+    ignore = p.add_mutually_exclusive_group()
+    ignore.add_argument(
+        "--ignore-key",
+        action="append",
+        default=None,
+        metavar="KEY",
+        help="remove this top-level frontmatter key before the compare (repeatable; "
+        "default: source)",
+    )
+    ignore.add_argument(
+        "--no-ignore", action="store_true", help="compare every frontmatter key, also source"
+    )
+    p.add_argument(
+        "--diff",
+        type=int,
+        default=0,
+        metavar="N",
+        help="print the first N lines of the unified diff of each different file (default: 0)",
+    )
+    p.add_argument("--json", action="store_true", help="print the report as JSON")
+    p.set_defaults(fn=_cmd_compare)
+
     pqa = sub.add_parser("qa", help="conversion QA tools")
     qsub = pqa.add_subparsers(dest="qa_cmd", required=True)
     p = qsub.add_parser("sample", help="sample N random pages -> sample PDF + PNGs")
@@ -505,8 +549,10 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=_cmd_doctor)
 
     a = ap.parse_args(argv)
-    if a.cmd == "doctor":
-        cfg = Config()  # unused: _cmd_doctor loads leniently itself, so a bad config cannot stop it
+    if a.cmd in ("doctor", "compare"):
+        # unused: _cmd_doctor loads leniently itself, and compare only reads two folders, so a
+        # bad config file cannot stop either
+        cfg = Config()
     else:
         try:
             cfg = load_config(a.config)

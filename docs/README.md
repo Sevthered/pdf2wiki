@@ -21,6 +21,7 @@ For when you already know the tool and need to accomplish something.
 - [Post-process and split into chapters](how-to/post-process-and-split.md)
 - [Run a batch](how-to/run-a-batch.md)
 - [QA a conversion](how-to/qa-a-conversion.md)
+- [Compare the output of two versions](how-to/compare-two-versions.md) — the release check
 - [Configure a remote GPU host](how-to/set-up-remote-gpu.md) *(experimental)*
 - [Offload the hybrid pass to a server](how-to/offload-hybrid-to-a-server.md) — no local GPU
 - [Convert in the cloud](how-to/convert-in-the-cloud.md) — no GPU, no MinerU

@@ -100,9 +100,21 @@ class MineruCloudConfig:
     poll_max_transient: int = 5  # consecutive transient poll errors tolerated before giving up
 
 
+# The values `[output] links` takes: "off" plus the styles of `phase5.xref` (a test keeps the two
+# in step). Spelled out here, because importing the phase5 package would load every step for
+# every command.
+LINK_STYLES = ("off", "obsidian", "markdown")
+
+
 @dataclass
 class OutputConfig:
     vault: str = ""  # optional: final placement root (e.g. an Obsidian vault)
+    links: str = "off"  # batch: link cross-references (off | obsidian | markdown); --links wins
+
+
+# Keys whose value must be one of a fixed set. The type check alone let `links = "obsidain"`
+# through, and every book of a batch then failed in phase 5 with the same ValueError.
+_CHOICES: dict[tuple[str, str], tuple[str, ...]] = {("output", "links"): LINK_STYLES}
 
 
 @dataclass
@@ -129,19 +141,21 @@ def config_candidates(explicit_path: str | None = None) -> list[str]:
 @dataclass
 class ConfigProblem:
     path: str
-    # "read" (OSError) | "parse" (bad TOML or encoding) | "type" (wrong section or value)
+    # "read" (OSError) | "parse" (bad TOML or encoding) | "type" (wrong section or value type)
+    # | "value" (right type, a value the key does not take)
     # | "missing" (an explicit --config path that does not exist)
     kind: str
     message: str
-    section: str = ""  # kind "type" only
-    key: str = ""  # kind "type" only; empty when the whole section is the wrong type
-    expected: str = ""  # kind "type" only
+    section: str = ""  # kind "type" and "value" only
+    key: str = ""  # kind "type" and "value"; empty when the whole section is the wrong type
+    expected: str = ""  # kind "type" and "value" only
 
 
 class ConfigError(ValueError):
     """A config file cannot be used. The message names the file and says what failed: a missing
-    explicit file, a read or parse error, or a value or section of the wrong type (then it names
-    the key, the expected type and the actual type)."""
+    explicit file, a read or parse error, a value or section of the wrong type (then it names
+    the key, the expected type and the actual type), or a value the key does not take (then it
+    names the key, the values it takes and the actual value)."""
 
     def __init__(self, problem: ConfigProblem) -> None:
         what = {"read": "cannot read: ", "parse": "cannot parse: ", "missing": ""}.get(
@@ -237,6 +251,12 @@ def load_config_report(explicit_path: str | None = None, strict: bool = False) -
                     exp = _type_name(template)
                     msg = f"[{section}] {key} must be {exp}, not {type(value).__name__}"
                     problem(ConfigProblem(path, "type", msg, section, key, exp))
+                    continue
+                choices = _CHOICES.get((section, key))
+                if choices is not None and value not in choices:
+                    exp = f"one of {', '.join(choices)}"
+                    msg = f"[{section}] {key} must be {exp}, not {value!r}"
+                    problem(ConfigProblem(path, "value", msg, section, key, exp))
                     continue
                 if isinstance(template, float) and isinstance(value, int):
                     value = float(value)

@@ -230,6 +230,7 @@ Convert many books from a manifest, resumably. See [run a batch](../how-to/run-a
 
 ```
 pdf2wiki batch <books.toml> [--stage DIR] [--remote HOST] [--max-books N] [--only SLUG] [--vault DIR]
+               [--links off|obsidian|markdown]
 ```
 
 | Argument | Required | Default | Description |
@@ -240,7 +241,12 @@ pdf2wiki batch <books.toml> [--stage DIR] [--remote HOST] [--max-books N] [--onl
 | `--max-books` | no | unlimited | Stop after this many books *attempted* this run. |
 | `--only` | no | — | Run only this slug. |
 | `--vault` | no | `output.vault` from config | Final placement root. Chapters copy to `<vault>/<domain>/<slug>/`. |
+| `--links` | no | `output.links` from config, else `off` | Link the cross-references in each book, as `phase5 --links`. See [cross-references](phase5-steps.md#cross-references). |
 
 Runs `convert → fetch → phase5 → optional vault placement` per book, sequentially. Resumable: only a
 book with status `done` is skipped on re-run. Any failed book retries. Drop a file named `STOP` in the
 stage dir to halt cleanly between books. See [manifest states](pipeline-stages.md#batch-manifest-states).
+
+With `--links`, the manifest entry of a book records the style in `links`.
+A book with the status `done` is not linked again when you change the style.
+To link it, run [`pdf2wiki link`](#link) on its chapter folder.

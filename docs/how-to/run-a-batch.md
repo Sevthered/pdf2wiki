@@ -38,6 +38,31 @@ pdf2wiki batch books.toml --vault ~/Obsidian/MyVault
 
 Chapters land in `<vault>/<domain>/<slug>/`.
 
+## Link the cross-references
+
+To link "figure 6.2", "listing 4.1" and "chapter 5" to their targets, add `--links`:
+
+```bash
+pdf2wiki batch books.toml --vault ~/Obsidian/MyVault --links obsidian
+```
+
+You can also set `[output] links` in the [config](../reference/configuration.md).
+The `obsidian` style puts a block id on each caption.
+The `markdown` style puts an HTML anchor on it.
+See [cross-references](../reference/phase5-steps.md#cross-references) for the rules.
+
+The batch skips a book with the status `done`, also when you change the style.
+For each such book, the batch prints a note with the `pdf2wiki link` command for its chapter folder.
+The folder is the vault copy when the book has one, else the staged chapters.
+A book without a `domain` is in `<vault>/<slug>`.
+
+```bash
+pdf2wiki link ~/Obsidian/MyVault/<domain>/<slug> --style obsidian --apply
+```
+
+The manifest does not record a link that `pdf2wiki link` makes.
+Thus the note comes back on each later run with that style.
+
 ## Resume, filter, limit
 
 The batch records a `manifest.json` in the stage dir (`--stage`, default `~/pdf2wiki/stage`). On

@@ -19,7 +19,7 @@ import tempfile
 from typing import Any, TextIO, cast
 
 from . import __version__
-from .config import Config, ConfigError, load_config
+from .config import LINK_STYLES, Config, ConfigError, load_config
 from .executor import InvalidHostError
 
 
@@ -300,6 +300,7 @@ def _cmd_batch(a: argparse.Namespace, cfg: Any) -> int:
         max_books=a.max_books,
         only=a.only,
         vault=a.vault or (cfg.output.vault or None),
+        links=a.links or cfg.output.links,
     )
     failed = [(s, e) for s, e in manifest.items() if e.get("status") != "done"]
     if failed:  # non-zero exit so CI/automation can detect a partial batch
@@ -456,7 +457,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--links",
         default="off",
-        choices=["off", "obsidian", "markdown"],
+        choices=LINK_STYLES,
         help="link figure/table/listing/section/chapter references across the chapter files "
         "(default: off)",
     )
@@ -541,6 +542,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--only", default=None, help="run only this slug")
     p.add_argument("--vault", default=None, help="final placement root (e.g. an Obsidian vault)")
+    p.add_argument(
+        "--links",
+        default=None,
+        choices=LINK_STYLES,
+        help="link cross-references in each book, as phase5 --links "
+        "(default: [output] links, else off)",
+    )
     p.set_defaults(fn=_cmd_batch)
 
     p = sub.add_parser("doctor", help="check this machine and the remote host (read-only)")

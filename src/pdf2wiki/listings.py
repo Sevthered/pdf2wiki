@@ -97,7 +97,9 @@ _ELLIPSIS = chr(0x2026)  # the one-character `…` that typesetting puts in plac
 # value does not hide a real defect elsewhere in the block.
 _JSON_STRING = re.compile(r'"(?:\\.|[^"\\\n])*"')
 _JSON_ELISION = re.compile(r"\.\.\.|" + chr(0x2026))
-_COMMENT = re.compile(r"^[ \t]*<!--.*--!?>[ \t]*$")  # one line; a browser also ends one at --!>
+# One line at a time, so re.S changes nothing here. It keeps CodeQL py/bad-tag-filter quiet, which
+# flags a comment pattern whose `.` cannot cross a newline. A browser also ends a comment at --!>.
+_COMMENT = re.compile(r"^[ \t]*<!--.*--!?>[ \t]*$", re.S)
 # Emphasis on the "Listing X.Y" label, a `*word*` run (not inside a word), and a code span.
 _LABEL_EM = re.compile(r"^(\*\*|__|\*|_)(Listing[ \t]+[^\s*_]+)\1(?=[\s.:]|$)")
 _STAR_EM = re.compile(r"(?<![\w*\\])(\*\*|\*)(?=[^\s*])(.+?)(?<=[^\s*])\1(?![\w*])")

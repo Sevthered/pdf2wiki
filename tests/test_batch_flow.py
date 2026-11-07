@@ -566,3 +566,130 @@ def test_batch_piped_into_head_exits_zero_and_writes_the_manifest(tmp_path):
     assert "Exception ignored" not in proc.stderr and "Traceback" not in proc.stderr, proc.stderr
     on_disk = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
     assert on_disk["book-0"]["status"] == "done"
+
+
+# ---------- batch --links ----------
+
+LINKED_MD = """Front matter line.
+
+# Chapter 1. Beginnings
+
+The end is in figure 2.1.
+
+# Chapter 2. Endings
+
+![fig](images/fig.png)
+
+*Figure 2.1 The last page*
+"""
+
+
+class FakeLinkedLocal(FakeLocal):
+    """A converter whose book has a figure reference in one chapter and its caption in the next."""
+
+    def convert(self, pdf_path, slug, out_root, timeout, cfg=None):
+        ok, log = super().convert(pdf_path, slug, out_root, timeout, cfg)
+        d = os.path.join(os.path.expanduser(out_root), slug)
+        with open(os.path.join(d, f"{slug}.md"), "w", encoding="utf-8") as f:
+            f.write(LINKED_MD)
+        return ok, log
+
+
+def _chapter(tmp_path, slug, name):
+    path = os.path.join(str(tmp_path / "out"), slug, "chapters", name)
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_batch_links_the_cross_references_of_each_book(tmp_path, monkeypatch, capsys):
+    """`batch` is how a whole vault gets built. Before 0.4.0 it could not link, so a reader had to
+    run `pdf2wiki link` on each book folder after the batch."""
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLinkedLocal)
+    vault = tmp_path / "vault"
+
+    manifest = batch.run_batch(
+        _books_toml(tmp_path, 1),
+        _cfg(tmp_path),
+        str(tmp_path / "stage"),
+        vault=str(vault),
+        links="obsidian",
+    )
+
+    first = _chapter(tmp_path, "book-0", "01-chapter-1-beginnings.md")
+    second = _chapter(tmp_path, "book-0", "02-chapter-2-endings.md")
+    assert "[figure 2.1](02-chapter-2-endings.md#^fig-2-1)" in first
+    assert "*Figure 2.1 The last page* ^fig-2-1" in second
+    # the copy in the vault is the linked text, and the manifest says which style it carries
+    placed = (vault / "d" / "book-0" / "01-chapter-1-beginnings.md").read_text(encoding="utf-8")
+    assert placed == first
+    assert manifest["book-0"]["links"] == "obsidian"
+    assert "book-0: xref (obsidian): 1 links (figure 1)" in capsys.readouterr().out
+
+
+def test_batch_does_not_link_by_default(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLinkedLocal)
+
+    manifest = batch.run_batch(_books_toml(tmp_path, 1), _cfg(tmp_path), str(tmp_path / "stage"))
+
+    first = _chapter(tmp_path, "book-0", "01-chapter-1-beginnings.md")
+    assert "The end is in figure 2.1." in first and "](" not in first
+    assert "links" not in manifest["book-0"]  # no key: the manifest of an unlinked run is unchanged
+    assert "xref" not in capsys.readouterr().out
+
+
+def test_a_failure_while_printing_the_link_report_does_not_fail_the_book(
+    tmp_path, monkeypatch, capsys
+):
+    """The link report is printed after the chapters are written, so it is a print, not a book."""
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLinkedLocal)
+
+    def boom(_report):
+        raise UnicodeEncodeError("ascii", "⚠", 0, 1, "ordinal not in range(128)")
+
+    monkeypatch.setattr(batch.xref, "summary_lines", boom)
+
+    manifest = batch.run_batch(
+        _books_toml(tmp_path, 2), _cfg(tmp_path), str(tmp_path / "stage"), links="markdown"
+    )
+
+    assert manifest["book-0"]["status"] == "done" and manifest["book-1"]["status"] == "done"
+    assert '<a id="fig-2-1"></a>' in _chapter(tmp_path, "book-0", "02-chapter-2-endings.md")
+    assert "book-0: PHASE5 REPORT UNPRINTABLE (UnicodeEncodeError)" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("vault", [False, True])
+def test_a_done_book_says_when_a_new_link_style_does_not_reach_it(
+    tmp_path, monkeypatch, capsys, vault
+):
+    """Review finding: a re-run with a new style printed only "[skip]" for each done book, exit 0,
+    and linked nothing. The note names the folder to link: the vault copy, else the chapters."""
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLinkedLocal)
+    cfg, stage, books = _cfg(tmp_path), str(tmp_path / "stage"), _books_toml(tmp_path, 1)
+    where = {"vault": str(tmp_path / "vault")} if vault else {}
+    batch.run_batch(books, cfg, stage, **where)
+    capsys.readouterr()
+
+    batch.run_batch(books, cfg, stage, links="obsidian", **where)
+    out = capsys.readouterr().out
+    folder = (
+        os.path.join(str(tmp_path / "vault"), "d", "book-0")
+        if vault
+        else os.path.join(str(tmp_path / "out"), "book-0", "chapters")
+    )
+    assert "[skip] book-0 already done" in out
+    assert f"pdf2wiki link {folder} --style obsidian --apply" in out
+    assert os.path.isdir(folder)  # the command names a folder that exists
+
+    batch.run_batch(books, cfg, stage)  # the same style as the done book: nothing to say
+    assert "pdf2wiki link" not in capsys.readouterr().out
+
+
+def test_a_done_linked_book_keeps_its_links_when_the_style_is_off(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(batch, "LocalExecutor", FakeLinkedLocal)
+    cfg, stage, books = _cfg(tmp_path), str(tmp_path / "stage"), _books_toml(tmp_path, 1)
+    batch.run_batch(books, cfg, stage, links="markdown")
+    capsys.readouterr()
+
+    batch.run_batch(books, cfg, stage)
+
+    assert "book-0: links are 'markdown' -- a done book keeps its links" in capsys.readouterr().out

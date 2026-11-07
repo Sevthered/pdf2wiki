@@ -59,7 +59,7 @@ metadata. After phase5, images are linked into `chapters/images/` so relative re
 | `convert_failed` | The conversion returned non-zero (a MinerU pass failed or the coverage gate hard-stopped). |
 | `fetch_failed` | The converted `.md` could not be pulled back (remote scp failure). |
 | `phase5_failed` | Post-processing raised. |
-| `done` | Converted, post-processed, and (if configured) placed. Carries `domain`, `minutes`, and optionally `vault_path`. |
+| `done` | Converted, post-processed, and (if configured) placed. Carries `domain`, `minutes`, and optionally `vault_path` and `links`. A book without `links` was not linked by the batch. |
 
 A single book's failure never aborts the run — the batch continues to the next book. See
 [run a batch](../how-to/run-a-batch.md).

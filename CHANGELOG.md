@@ -23,6 +23,15 @@ All notable changes to this project are documented here. The format is based on
   `batch --links` and the config key `[output] links` do this for each book of a batch. The
   manifest entry records the style. A config value that is not a style stops the command with
   exit code 2, and `pdf2wiki doctor` reports it.
+- **`pdf2wiki compare OLD NEW` compares the Markdown files of two folders.** Use it to check that a
+  new version gives the same chapter files as an older version. Before, this check used
+  `diff -r -I '^source: '`. That pattern also hides a body line that starts with `source:`. The
+  command pairs all files by their path and compares the text of the Markdown files. A file in one
+  folder only is a difference, also an image. It removes the frontmatter `source:` line before the
+  compare. `--ignore-key` names other keys, and `--no-ignore` compares all keys. `--diff N` shows
+  the first lines of each diff, and `--json` prints the report. The exit code is the same as
+  for `diff`: `0` same, `1` different, `2` error. On the output of 8 books from 0.3.0 and from
+  `main`, the command found 232 of 232 files the same. The command only reads the two folders.
 
 ### Fixed
 - **A contact address in the PDF author field no longer becomes part of an author name.** Before,

@@ -164,3 +164,39 @@ def test_cmd_batch_rolls_up_error_class(monkeypatch, capsys):
     assert "3 book(s) not done" in err
     assert "permanent×2" in err and "TimeoutExpired×1" in err
     assert "not done:" in err  # slug detail retained
+
+
+def _capture_run_batch(monkeypatch):
+    seen = {}
+
+    def fake(*a, **k):
+        seen.update(k)
+        return {"book-a": {"status": "done"}}
+
+    monkeypatch.setattr(batch, "run_batch", fake)
+    return seen
+
+
+def test_cmd_batch_passes_the_link_style(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # no project pdf2wiki.toml
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))  # and no user config file
+    seen = _capture_run_batch(monkeypatch)
+    assert cli.main(["batch", "books.toml", "--links", "markdown"]) == 0
+    assert seen["links"] == "markdown"
+
+
+def test_cmd_batch_link_style_comes_from_the_config_and_the_flag_wins(monkeypatch, tmp_path):
+    """A batch is mostly driven by its config file, so `[output] links` sets the default style.
+    The flag wins over it, also when the flag turns linking off."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    conf = tmp_path / "c.toml"
+    conf.write_text('[output]\nlinks = "obsidian"\n')
+    seen = _capture_run_batch(monkeypatch)
+
+    assert cli.main(["--config", str(conf), "batch", "books.toml"]) == 0
+    assert seen["links"] == "obsidian"
+    assert cli.main(["--config", str(conf), "batch", "books.toml", "--links", "off"]) == 0
+    assert seen["links"] == "off"
+    assert cli.main(["batch", "books.toml"]) == 0  # no config file: the default is off
+    assert seen["links"] == "off"

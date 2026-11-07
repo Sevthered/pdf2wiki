@@ -103,6 +103,43 @@ A file with only CRLF line ends keeps them. Other files get LF line ends. A file
 For a symlink, the command writes the file that the link points to.
 Exit code `0`.
 
+## `compare`
+
+Compare the `.md` files of two folders, such as the output of two `phase5` runs. The command only
+reads the folders. See [compare the output of two versions](../how-to/compare-two-versions.md).
+
+```
+pdf2wiki compare <old> <new> [--ignore-key KEY... | --no-ignore] [--diff N] [--json]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `old` | yes | — | The folder of the old output. It can hold one book or a folder for each book. |
+| `new` | yes | — | The folder of the new output. |
+| `--ignore-key` | no | `source` | Remove this top-level frontmatter key before the compare. Give the flag one time for each key. The keys you give replace the default. |
+| `--no-ignore` | no | off | Compare all frontmatter keys, also `source`. You cannot use it with `--ignore-key`. |
+| `--diff` | no | `0` | Print the first N lines of the unified diff of each different file. `0` prints no diff. The `@@` line numbers are the line numbers of the real files. The text output shows a carriage return as `␍`. |
+| `--json` | no | off | Print the report as JSON. The JSON report also lists the files that are the same. |
+
+The command pairs the files by their path in the folder. It compares the text of Markdown files only:
+`.md` and `.markdown`, in uppercase or lowercase. It pairs the other files too, but it does not read
+them. A file of any type in one folder only is a difference.
+
+The command follows a symlink to a file. It does not go into a symlink to a folder (`os.walk` with
+`followlinks=False`). It pairs that symlink like a file that it does not read.
+
+An ignored key is removed only from the frontmatter at the start of the file. The lines below the key
+that start with a space, a tab or `- ` are removed too, because they hold the rest of its value. A
+blank line in the value is removed when the value continues after it. A body line is never removed.
+
+A CRLF file is different from the same LF file. A file that is not valid UTF-8 is compared as bytes,
+with no line counts and no diff.
+
+Exit code `0` when all Markdown files are the same and no file is in one folder only. Exit code `1`
+when a Markdown file is different or a file is in one folder only. Exit code `2` on an error. For
+example, a folder does not exist, OLD and NEW are the same folder, or one folder is in the other. A
+file that cannot be read also gives exit code `2`.
+
 ## `listings`
 
 Count, export and check the code blocks in a folder of chapter files. The command does not change
@@ -246,6 +283,7 @@ Convert many books from a manifest, resumably. See [run a batch](../how-to/run-a
 
 ```
 pdf2wiki batch <books.toml> [--stage DIR] [--remote HOST] [--max-books N] [--only SLUG] [--vault DIR]
+               [--links off|obsidian|markdown]
 ```
 
 | Argument | Required | Default | Description |
@@ -256,7 +294,12 @@ pdf2wiki batch <books.toml> [--stage DIR] [--remote HOST] [--max-books N] [--onl
 | `--max-books` | no | unlimited | Stop after this many books *attempted* this run. |
 | `--only` | no | — | Run only this slug. |
 | `--vault` | no | `output.vault` from config | Final placement root. Chapters copy to `<vault>/<domain>/<slug>/`. |
+| `--links` | no | `output.links` from config, else `off` | Link the cross-references in each book, as `phase5 --links`. See [cross-references](phase5-steps.md#cross-references). |
 
 Runs `convert → fetch → phase5 → optional vault placement` per book, sequentially. Resumable: only a
 book with status `done` is skipped on re-run. Any failed book retries. Drop a file named `STOP` in the
 stage dir to halt cleanly between books. See [manifest states](pipeline-stages.md#batch-manifest-states).
+
+With `--links`, the manifest entry of a book records the style in `links`.
+A book with the status `done` is not linked again when you change the style.
+To link it, run [`pdf2wiki link`](#link) on its chapter folder.

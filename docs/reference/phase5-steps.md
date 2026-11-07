@@ -262,7 +262,8 @@ unlinkable. On 24 converted books, the step linked 4,406 references and added 2,
 link opened a target that exists. 221 figure and 404 listing references have no caption in the text,
 because the converter did not extract it.
 
-`batch` does not run this step. Run [`link`](cli.md#link) on the chapter folder of each book.
+`batch --links` runs this step for each book that it converts. For a book that is already
+converted, run [`link`](cli.md#link) on its chapter folder.
 
 ## `lang_retag` detection order
 

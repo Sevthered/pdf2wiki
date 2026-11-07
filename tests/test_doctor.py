@@ -1327,3 +1327,31 @@ def test_wrong_type_message_says_other_commands_stop(tmp_path):
     checks = run_checks(config_path=str(p))
     c = next(c for c in checks if c.name == "config" and c.status == FAIL)
     assert "every other command stops on this value" in c.detail
+
+
+def test_a_link_style_the_linker_does_not_know_is_a_config_problem(tmp_path, capsys):
+    """A wrong `[output] links` value has the right type, so the type check let it through. Every
+    book of a batch then failed in phase 5 with the same ValueError. Stop it at load time."""
+    from pdf2wiki.config import ConfigError, load_config, load_config_report
+
+    p = tmp_path / "t.toml"
+    p.write_text('[output]\nlinks = "obsidain"\n')
+    with pytest.raises(ConfigError) as e:
+        load_config(str(p))
+    assert "[output] links must be one of off, obsidian, markdown, not 'obsidain'" in str(e.value)
+
+    rep = load_config_report(str(p))
+    assert rep.config.output.links == "off"  # lenient: the key keeps its default
+    assert [(x.kind, x.section, x.key) for x in rep.problems] == [("value", "output", "links")]
+    (c,) = [c for c in doctor.check_config(rep) if c.status == FAIL]
+    assert c.name == "config" and c.detail.startswith(f"wrong value in {p}: [output] links")
+    assert c.fix == "set links in [output] to one of off, obsidian, markdown"
+    assert cli.main(["--config", str(p), "doctor"]) == 1
+    assert "wrong value" in capsys.readouterr().out
+
+
+def test_the_config_link_styles_are_the_linker_styles():
+    from pdf2wiki.config import LINK_STYLES
+    from pdf2wiki.phase5 import xref
+
+    assert ("off", *xref.STYLES) == LINK_STYLES

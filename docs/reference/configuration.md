@@ -14,8 +14,8 @@ pdf2wiki layers configuration from lowest to highest precedence:
 
 Unknown keys are ignored. A missing file in the search paths (2 and 3) is skipped. A `--config`
 file that does not exist stops every command with exit code `2`. So does a file that cannot be
-read or parsed, and a value of the wrong type. `doctor` is the exception: it reports the problem
-and goes on.
+read or parsed, and a value of the wrong type. A value that the key does not take also stops it,
+such as `links = "obsidain"`. `doctor` is the exception: it reports the problem and goes on.
 
 ## Example
 
@@ -40,6 +40,7 @@ books_dir = "/mnt/d/Books"
 
 [output]
 vault = "~/Obsidian/MyVault"
+links = "obsidian"
 ```
 
 ## `[mineru]`
@@ -106,6 +107,7 @@ cannot send offsite.** See [convert in the cloud](../how-to/convert-in-the-cloud
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `vault` | string | `""` | Optional final placement root (e.g. an Obsidian vault). When set, `batch` copies each book's chapters to `<vault>/<domain>/<slug>/`. |
+| `links` | string | `"off"` | The cross-reference style of `batch`: `off`, `obsidian` or `markdown`. `--links` wins over it. Another value stops the command with exit code 2. |
 
 ## Environment
 

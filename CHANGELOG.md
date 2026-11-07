@@ -21,6 +21,15 @@ All notable changes to this project are documented here. The format is based on
   title has no number, the number comes from the captions and numbered sections in the file. On 24
   converted books, 4,406 references became links, and each link opens a target that exists.
   `batch` does not link yet.
+- **`pdf2wiki listings` counts, exports and checks the code blocks of a book.** The command reads a
+  folder of chapter files and never changes them. It counts the code blocks for each language and
+  chapter file. `--out NEW_DIR` writes each block to its own file, with an `index.json`. A block with
+  a "Listing 4.1" caption gets a name such as `02-listing-4-1.java`. `--check` parses each block
+  with the Python standard library: Python, JSON, TOML, XML, and a bracket check for brace
+  languages. Each failure goes in one class: `fragment`, `wrong-language?` or `error`. Books show
+  code in parts, so `--check` always exits with code `0`. On 24 converted books, the check found 354
+  blocks with a wrong language tag and 409 blocks that do not parse. In samples, 20 of 20
+  `wrong-language?` blocks and 10 of 10 `error` blocks were real defects.
 
 ### Fixed
 - **A contact address in the PDF author field no longer becomes part of an author name.** Before,

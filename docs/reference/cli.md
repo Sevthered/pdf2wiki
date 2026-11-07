@@ -103,6 +103,59 @@ A file with only CRLF line ends keeps them. Other files get LF line ends. A file
 For a symlink, the command writes the file that the link points to.
 Exit code `0`.
 
+## `listings`
+
+Count, export and check the code blocks in a folder of chapter files. The command does not change
+the chapter files.
+
+```
+pdf2wiki listings <dir> [--out NEW_DIR] [--check] [--json]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `dir` | yes | — | The folder that holds the chapter files of one book. |
+| `--out` | no | — | Write each code block to its own file in `NEW_DIR`, and write `index.json`. `NEW_DIR` must not exist or must be empty. See [exported listings](output-layout.md#exported-listings). |
+| `--check` | no | off | Parse each code block, and put each failure in one class. |
+| `--json` | no | off | Print the report as JSON. |
+
+The command reads the same chapter files as `link`. A code block starts with a backtick fence and
+ends with a closing fence. A fence with no closing fence is not a block. Without options, the
+command prints the number of blocks for each language and for each chapter file.
+
+With `--out`, the command stops with exit code `2` when `NEW_DIR` holds a file. The command never
+writes over a file. Each file holds the text of one block, with LF line ends.
+
+`--check` uses only the Python standard library:
+
+| Language tag | Check |
+|--------------|-------|
+| `python`, `py`, `python3` | `ast.parse` |
+| `json` | `json.loads` |
+| `toml` | `tomllib.loads`. The result depends on the Python version. |
+| `xml` | `xml.etree.ElementTree.fromstring`. Use it only on files that you trust, such as your own books. |
+| `go`, `c`, `cpp`, `java`, `javascript`, `typescript`, `rust`, `csharp`, `kotlin`, `swift`, `scala`, `php`, `dart`, `groovy` | The brackets `()[]{}` must balance outside strings and comments. |
+| other tags, or no tag | Not checked. |
+
+The check puts each block in one class:
+
+| Class | Meaning |
+|-------|---------|
+| `ok` | The block parses. |
+| `fragment` | The block is a part of a program. Python: a REPL session, an elision (`…`), or an indented excerpt. Brace languages and JSON: the brackets open before the block or close after it. JSON can also be an elision, a member list, or several documents. XML can have several top-level elements. |
+| `wrong-language?` | The block fails for its tag. The language detector of `phase5` names a different language, and the block passes the check of that language. A block of pseudocode, HTML or HTTP under a checked tag is also in this class. |
+| `error` | Any other failure. The report shows the message of the parser. |
+
+`--check` always exits with code `0`. A book often shows code in parts, so a failed parse is not a
+failure of the command.
+
+The report counts the classes for each language. It lists each `error` and `wrong-language?` block
+as `file:line lang class: message`. The line is the line of the opening fence. A line number in a
+message counts from the first line of the block.
+
+The command stops with exit code `2` when the folder holds no chapter file, or chapter files of more
+than one book. Otherwise the exit code is `0`.
+
 ## `qa sample`
 
 Sample random pages into a small PDF plus rendered PNGs, so you can convert just the sample and

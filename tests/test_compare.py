@@ -479,3 +479,15 @@ def test_cli_compare_exit_2_when_a_file_cannot_be_read(tmp_path, capsys):
     write(new / "broken.md", "x\n")
     assert cli.main(["compare", str(old), str(new)]) == 2
     assert "broken.md" in capsys.readouterr().err
+
+
+def test_a_directory_symlink_named_like_a_markdown_file_is_paired_not_read(tmp_path):
+    """Review round 2: the `.md` branch looked at the name only, so `open` raised
+    IsADirectoryError on a directory symlink called `notes.md` and the whole compare stopped."""
+    for side in ("old", "new"):
+        (tmp_path / side / "target").mkdir(parents=True)
+        (tmp_path / side / "notes.md").symlink_to(tmp_path / side / "target")
+    report = compare_dirs(str(tmp_path / "old"), str(tmp_path / "new"))
+    by_path = {f["path"]: f["status"] for f in report["files"]}
+    assert by_path["notes.md"] == "not_compared"
+    assert report["exit_code"] == 0

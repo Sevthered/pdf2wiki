@@ -249,7 +249,9 @@ def compare_dirs(
             files.append({"path": rel, "status": "only_in_old"})
         elif rel not in old_set:
             files.append({"path": rel, "status": "only_in_new"})
-        elif _is_markdown(rel):
+        elif _is_markdown(rel) and not (
+            os.path.isdir(os.path.join(old, rel)) or os.path.isdir(os.path.join(new, rel))
+        ):  # a directory symlink named "x.md" is paired like any other directory symlink
             files.append(
                 _compare_file(os.path.join(old, rel), os.path.join(new, rel), rel, keys, diff_lines)
             )

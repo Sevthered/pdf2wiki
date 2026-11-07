@@ -20,7 +20,9 @@ All notable changes to this project are documented here. The format is based on
   headings, captions and existing links do not change. A second run changes nothing. When a chapter
   title has no number, the number comes from the captions and numbered sections in the file. On 24
   converted books, 4,406 references became links, and each link opens a target that exists.
-  `batch` does not link yet.
+  `batch --links` and the config key `[output] links` do this for each book of a batch. The
+  manifest entry records the style. A config value that is not a style stops the command with
+  exit code 2, and `pdf2wiki doctor` reports it.
 
 ### Fixed
 - **A contact address in the PDF author field no longer becomes part of an author name.** Before,

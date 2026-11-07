@@ -119,7 +119,7 @@ def check_config(report: Any, explicit: bool | None = None) -> list[Check]:
                     "fix the TOML syntax, and save the file as UTF-8",
                 )
             )
-        else:
+        elif p.kind in ("type", "value"):  # lenient mode never lists "missing": strict raises it
             fix = (
                 f"make [{p.section}] a table"
                 if not p.key
@@ -130,8 +130,8 @@ def check_config(report: Any, explicit: bool | None = None) -> list[Check]:
                     "core",
                     "config",
                     FAIL,
-                    f"wrong type in {p.path}: {p.message}; every other command stops on this value "
-                    "(doctor goes on with the default)",
+                    f"wrong {p.kind} in {p.path}: {p.message}; every other command stops on "
+                    "this value (doctor goes on with the default)",
                     fix,
                 )
             )

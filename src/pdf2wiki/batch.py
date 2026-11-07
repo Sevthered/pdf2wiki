@@ -31,7 +31,7 @@ import tomllib
 from typing import Any
 
 from .executor import LocalExecutor, SSHExecutor
-from .phase5 import residue_lines, run_chain
+from .phase5 import residue_lines, run_chain, xref
 
 
 def _breaker_trips(ex: LocalExecutor | SSHExecutor, consec: int, threshold: int) -> bool:
@@ -55,6 +55,14 @@ def _breaker_trips(ex: LocalExecutor | SSHExecutor, consec: int, threshold: int)
     return False
 
 
+def _work_dir(ex: LocalExecutor | SSHExecutor, stage: str, slug: str, cfg: Any) -> str:
+    """The folder that holds a book's converted `.md` and its `chapters/`: the stage folder for a
+    remote book, the converter's own output folder for a local one."""
+    if isinstance(ex, LocalExecutor):
+        return ex.artifacts_dir(slug, cfg.convert.out_root)
+    return os.path.join(stage, slug)
+
+
 def load_books(books_toml: str) -> list[dict[str, Any]]:
     with open(books_toml, "rb") as f:
         data = tomllib.load(f)
@@ -73,8 +81,12 @@ def run_batch(
     max_books: int | None = None,
     only: str | None = None,
     vault: str | None = None,
+    links: str = "off",
 ) -> dict[str, Any]:
-    """Run the batch. Returns the final status manifest."""
+    """Run the batch. Returns the final status manifest.
+
+    `links` is the `phase5 --links` style for every book. A book already `done` is skipped as
+    always, so a new style does not link it again: `pdf2wiki link` does that for a book folder."""
     stage = os.path.expanduser(stage_dir)
     os.makedirs(stage, exist_ok=True)
     manifest_path = os.path.join(stage, "manifest.json")
@@ -132,6 +144,20 @@ def run_batch(
             break
         if manifest.get(slug, {}).get("status") == "done":
             print(f"[skip] {slug} already done")
+            # A done book is never converted again, so a new style does not reach it. Measured in
+            # review: a batch re-run with a new style printed only "[skip]" for every book, exit 0,
+            # and linked nothing. Say so, and name the command that links the book.
+            had = manifest[slug].get("links", "off")
+            if had != links:
+                where = manifest[slug].get("vault_path") or os.path.join(
+                    _work_dir(ex, stage, slug, cfg), "chapters"
+                )
+                print(
+                    f"  {slug}: links are {had!r}, not {links!r} -- a done book is not linked "
+                    f"again. Run: pdf2wiki link {where} --style {links} --apply"
+                    if links != "off"
+                    else f"  {slug}: links are {had!r} -- a done book keeps its links"
+                )
             continue
         attempted += 1
         print(f"=== {slug} ({domain or 'no domain'}) ===", flush=True)
@@ -169,7 +195,7 @@ def run_batch(
                 break
             continue
 
-        work = os.path.join(stage, slug)
+        work = os.path.join(stage, slug)  # where fetch puts a remote book
         try:
             fetched = ex.fetch(slug, cfg.convert.out_root, work, cfg.remote.fetch_timeout)
         except Exception as e:
@@ -192,8 +218,7 @@ def run_batch(
             if _breaker_trips(ex, consec, threshold):
                 break
             continue
-        if isinstance(ex, LocalExecutor):
-            work = ex.artifacts_dir(slug, cfg.convert.out_root)
+        work = _work_dir(ex, stage, slug, cfg)
 
         md = os.path.join(work, f"{slug}.md")
         try:
@@ -203,6 +228,7 @@ def run_batch(
                 out_dir=os.path.join(work, "chapters"),
                 source_name=os.path.basename(b["pdf"]),
                 apply=True,
+                links=links,
             )
         except Exception as e:
             print(f"  PHASE5 FAILED: {slug}: {e}")
@@ -229,6 +255,9 @@ def run_batch(
                 print(f"  {slug}: {line}")
             if report["book_index"]["error"]:
                 print(f"  {slug}: ⚠ index page not written ({report['book_index']['error']})")
+            if report["xref"] is not None:
+                for line in xref.summary_lines(report["xref"]):
+                    print(f"  {slug}: {line}")
         except Exception as e:  # reporting must never fail a book that converted
             # ASCII only, and no exception text: the failure this catches is an encoding error on
             # the warning sign, so re-emitting the offending characters would raise again.
@@ -260,6 +289,8 @@ def run_batch(
             "domain": domain,
             "minutes": round((time.time() - t0) / 60, 1),
         }
+        if links != "off":  # no key for an unlinked book, so the default manifest is unchanged
+            entry["links"] = links
         if vault:
             dest = (
                 os.path.join(os.path.expanduser(vault), domain, slug)

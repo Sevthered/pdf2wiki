@@ -402,6 +402,35 @@ def _cmd_compare(a: argparse.Namespace, cfg: Any) -> int:
     return exit_code
 
 
+def _cmd_listings(a: argparse.Namespace, cfg: Any) -> int:
+    from . import listings
+    from .phase5 import xref
+
+    try:
+        files = xref.read_book_dir(a.dir)
+    except (OSError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    found = listings.scan(files)
+    # A failed parse is normal for a book listing (a REPL session, a cut excerpt), so --check
+    # reports and never fails the command.
+    checks = [listings.check(x.lang, x.body) for x in found] if a.check else None
+    rep = listings.report(found, checks)
+    if a.out is not None:
+        try:
+            rep["written"] = listings.export(found, a.out, checks)
+        except (OSError, listings.OutDirError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        rep["out"] = a.out
+    if a.json:
+        print(json.dumps(rep, indent=2, ensure_ascii=False))
+    else:
+        for line in listings.summary_lines(rep):
+            print(line)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="pdf2wiki",
@@ -505,6 +534,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--json", action="store_true", help="print the report as JSON")
     p.set_defaults(fn=_cmd_compare)
+
+    p = sub.add_parser(
+        "listings", help="count, export and check the code blocks of a folder of chapter files"
+    )
+    p.add_argument("dir", help="the folder that holds ONE book's chapter files")
+    p.add_argument(
+        "--out",
+        default=None,
+        metavar="NEW_DIR",
+        help="write each code block to its own file, and index.json (NEW_DIR: new or empty)",
+    )
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="parse each block (python, json, toml, xml, bracket balance); always exits 0",
+    )
+    p.add_argument("--json", action="store_true", help="print the report as JSON")
+    p.set_defaults(fn=_cmd_listings)
 
     pqa = sub.add_parser("qa", help="conversion QA tools")
     qsub = pqa.add_subparsers(dest="qa_cmd", required=True)

@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **The Mermaid repair keeps labels with `&quot;` delimiters and labels on more than one line
+  (#126).**
+  - The repair now reads a label with `&quot;` delimiters, such as `C[&quot;k&quot;]`, as a quoted
+    label. Before, it closed the label a second time: `C["k')"]`. An arrow inside such a label is
+    label text. Before, the repair cut the label at the arrow.
+  - `&quot;` closes a label only when `&quot;` opened it. In `F["a {&quot;b&quot;}"]`, the
+    `&quot;}` is label text.
+  - A label that `'` opens, such as `A['x']` or `A['x"]`, becomes `A["x"]`. Before, it became
+    `A["x')"]`.
+  - Mermaid accepts a newline in a quoted label. The repair now keeps a label that continues on
+    the next line, such as `A["foo` and `bar"] --> B`. Before, it closed the label on the first
+    line. The repair joins the lines only when each line between them looks like label text: no
+    arrow, no bracket, no quote and no keyword. The same is true for the text before the closing
+    `"`. Such a label must have `"` delimiters. The parse-breaker score also counts the quotes of
+    such a label as one label.
+
 ## [0.4.1] - 2026-11-12
 
 ### Fixed

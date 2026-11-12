@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-12
+
 ### Added
 - **Cross-reference links between the chapters of a book.** "figure 6.2", "listing 4.1", "table
   1.3", "section 2.3" and "chapter 5" in the prose become links to their target in its chapter file.
@@ -1054,7 +1056,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...v0.3.0
 [0.2.11]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.9...v0.2.10

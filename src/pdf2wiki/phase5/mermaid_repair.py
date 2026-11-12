@@ -14,7 +14,8 @@ text (the searchable value):
   - close an unclosed `["...` label at segment end
 Lines are split on arrow ops first so each node is isolated (greedy inner-label match is then safe
 even when a label contains stray quotes/brackets). An arrow inside a complete quoted label is label
-text, not a split point, unless a node with a quoted shape follows it. A label delimited by
+text, not a split point, unless a node with a quoted shape follows it. A ` & ` right after a
+complete quoted label, before a node with a shape, chains two nodes and is a split point also. A label delimited by
 `&quot;` is a quoted label also. A quoted label can continue on the next lines, as mermaid allows:
 those lines are one logical line for the repair and for the score. Never changes non-mermaid
 fences. Validation is a parse-breaker score (proxy), not a real mermaid parse: a line or a block
@@ -52,6 +53,8 @@ QUOTED_LABEL = re.compile(r'[\[\{\(](?:"[^"]*"|&quot;(?:(?!&quot;)[^"])*(?:&quot
 # 34 arrows to a quoted node in a label went to `[`.
 NODE_AHEAD = re.compile(r'(?:\|[^|]*\|\s*)?\w+\s*(?:[\[\{][\[\{\(]?|\(\()(?:"|&quot;)')
 TAIL_FILL = re.compile(r"(?:\s|<br>)+$")
+AMP = re.compile(r"[ \t]+&[ \t]+")  # `A & B`: a node chain. `&quot;` and `R&D` have no spaces.
+AMP_RIGHT = re.compile(r"\w+\s*[\[\{\(]")  # the right side of a chain `&`: a node with a shape
 
 
 BR_EDGE = re.compile(r"^(?:\s*<br>)+|(?:<br>\s*)+$")
@@ -131,10 +134,30 @@ def _drop_orphan_tail(ln: str, node: str) -> str:
     return head + TAIL_FILL.sub("", "".join(reversed(kept)))
 
 
+def _split_amps(seg: str) -> list[str]:
+    """Split a node segment at each `&` that chains two nodes, as `_split_arrows` does: nodes at
+    even indices, separators at odd ones. `A["a"] & B["b"]` is two nodes, and the greedy `NODE`
+    took them as one label. Only that shape splits: the `&` comes right after a complete quoted
+    label (the rule of `_split_arrows`), and a node with a shape follows it. A `&` in label text,
+    such as `["R & D"]`, `A(R & D(x))` or `A['x & y(z)`, stays text."""
+    ends = {m.end() for m in QUOTED_LABEL.finditer(seg)}
+    parts, last = [], 0
+    for m in AMP.finditer(seg):
+        if m.start() in ends and AMP_RIGHT.match(seg, m.end()):
+            parts += [seg[last : m.start()], m.group(0)]
+            last = m.end()
+    parts.append(seg[last:])
+    return parts
+
+
 def _fix_line(ln: str) -> str:
-    parts = _split_arrows(ln)  # before the `&quot;` step, so NODE_AHEAD can tell `&quot;` from `'`
-    for i in range(0, len(parts), 2):  # even indices = node segments
-        parts[i] = _fix_segment(parts[i].replace("\\n", "<br>"))
+    # before the `&quot;` step, so NODE_AHEAD can tell `&quot;` from `'`
+    parts = _split_arrows(ln)
+    for i in range(0, len(parts), 2):  # even indices = node segments, each maybe a `&` chain
+        pieces = _split_amps(parts[i].replace("\\n", "<br>"))
+        for j in range(0, len(pieces), 2):
+            pieces[j] = _fix_segment(pieces[j])
+        parts[i] = "".join(pieces)
     return _drop_orphan_tail("".join(parts), parts[-1])
 
 

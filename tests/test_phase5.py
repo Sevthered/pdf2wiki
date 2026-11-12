@@ -790,6 +790,54 @@ def test_mermaid_single_quoted_label_gets_one_closer(line):
     assert '\nA["x"] --> B\n' in out
 
 
+# A `&` between two nodes chains them (`A & B --> C`). The greedy `NODE` match took both labeled
+# nodes as one label: `A["a"] & B["b"]` became `A["a') & B('b"]`.
+@pytest.mark.parametrize(
+    ("line", "fixed"),
+    [
+        ('A["a"] & B["b"]', 'A["a"] & B["b"]'),
+        ("A[&quot;a&quot;] & B[&quot;b&quot;] --> C", 'A["a"] & B["b"] --> C'),
+        ('A["a"] & B["b\\nc"] --> C', 'A["a"] & B["b<br>c"] --> C'),
+    ],
+)
+def test_mermaid_ampersand_chain_keeps_each_node(line, fixed):
+    out, _ = mermaid_repair.repair(f"```mermaid\ngraph TD\n{line}\n```\n")
+    assert f"\n{fixed}\n" in out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'M["Check terms & conditions"] --> N',  # `&` in label text (secureapis)
+        "PCON & TH0 & TL0 --> X",  # bare ids (hands-on-embedded-cpp17)
+        'A["R & D --> x"]',  # `&` and an arrow in label text
+        # review: an unquoted round label and a `'` label with `& id(` inside
+        "A(R & D(x))",
+        "X --> A(cache & B(x))",
+        "A((R & D(x)))",
+        "A[Terms & Conditions(v2)]",
+    ],
+)
+def test_mermaid_ampersand_in_label_text_or_between_ids_stays(line):
+    md = f"```mermaid\ngraph TD\n{line}\n```\n"
+    out, stats = mermaid_repair.repair(md)
+    assert out == md and stats["blocks_changed"] == 0
+
+
+@pytest.mark.parametrize(
+    ("line", "fixed"),
+    [("A['x & y(z)", 'A["x & y(z)"]'), ("A['x & y(z)']", 'A["x & y(z)"]')],
+)
+def test_mermaid_ampersand_in_a_single_quoted_label_is_text(line, fixed):
+    out, _ = mermaid_repair.repair(f"```mermaid\ngraph TD\n{line}\n```\n")
+    assert f"\n{fixed}\n" in out
+
+
+def test_mermaid_ampersand_in_an_unclosed_label_is_text():
+    out, _ = mermaid_repair.repair('```mermaid\ngraph TD\nA["x & y\n```\n')
+    assert '\nA["x & y"]\n' in out
+
+
 def test_clean_mermaid_block_reports_no_change():
     md = '```mermaid\ngraph TD\nA["ok"] --> B\n```\n'
     out, stats = mermaid_repair.repair(md)

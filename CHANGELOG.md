@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **The Mermaid repair keeps each node of a `&` chain.** Before, `A["a"] & B["b"]` became one label,
+  `A["a') & B('b"]`. Now the repair splits a line at a `&` with spaces around it, when a complete
+  quoted label comes before it and a node with a shape comes after it. A `&` in label text, such as
+  `["R & D"]` or `A(R & D(x))`, stays text.
 - **phase 5 replaces a wrong language tag that MinerU gave, when another language verifies.**
   Before, `lang_retag` always kept a specific MinerU tag. MinerU tags Go, Java, C++, JavaScript and
   pseudocode as `python`: 323 blocks in a vault of 24 books. Now a block that fails the check of its

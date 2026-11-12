@@ -19,7 +19,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from pdf2wiki import cli, listings
-from pdf2wiki.phase5 import xref
+from pdf2wiki.phase5 import codecheck, xref
 
 FM = '---\ntitle: "{t}"\nbook: "b"\nchapter: {n}\n---\n'
 RSQUO = chr(0x2019)  # a curly apostrophe, as typeset in a book
@@ -260,7 +260,7 @@ def test_a_parser_value_error_is_an_error(monkeypatch):
     def boom(_src):
         raise ValueError("")
 
-    monkeypatch.setattr(listings.ast, "parse", boom)
+    monkeypatch.setattr(codecheck.ast, "parse", boom)
     assert _cls("python", "x\n") == ("error", "ValueError")
 
 

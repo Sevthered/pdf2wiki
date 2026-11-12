@@ -36,6 +36,11 @@ def _fix_body(body: str) -> tuple[str, list[tuple[str, str]]]:
     return "\n".join(out_lines), changes
 
 
+def unescaped(body: str) -> str:
+    """The text of one code block as `unescape` leaves it."""
+    return _fix_body(body)[0]
+
+
 def unescape(md: str) -> tuple[str, list[tuple[str, str, str]]]:
     """Return (new_md, list of (fence_tag, old_line, new_line))."""
     allchanges: list[tuple[str, str, str]] = []

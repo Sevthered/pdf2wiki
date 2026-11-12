@@ -24,7 +24,7 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
 from pdf2wiki.phase5 import (
@@ -195,6 +195,7 @@ def test_no_fence_input_is_untouched(prose: str) -> None:
 
 @settings(max_examples=300)
 @given(_doc())
+@example("```mermaid\n[)]\n```")  # #123: the tail pass dropped the `]` that closes the `[`
 def test_mermaid_repair_never_worsens_score(md: str) -> None:
     # repair's validation proxy is a parse-breaker score; sanitizing a label must never raise it.
     _, stats = mermaid_repair.repair(md)

@@ -14,7 +14,9 @@ text (the searchable value):
   - close an unclosed `["...` label at segment end
 Lines are split on arrow ops first so each node is isolated (greedy inner-label match is then safe
 even when a label contains stray quotes/brackets). An arrow inside a complete quoted label is label
-text, not a split point, unless a node with a quoted shape follows it. Never changes non-mermaid
+text, not a split point, unless a node with a quoted shape follows it. A label delimited by
+`&quot;` is a quoted label also. A quoted label can continue on the next lines, as mermaid allows:
+those lines are one logical line for the repair and for the score. Never changes non-mermaid
 fences. Validation is a parse-breaker score (proxy), not a real mermaid parse: a line or a block
 whose score a repair raises stays as it was. The score does not count `(` and `)`, so this guard
 cannot see a lost parenthesis.
@@ -26,8 +28,15 @@ from . import fences
 
 ARROW = re.compile(r"(\s*(?:-\.->|--[>x]|==>|===|-\.-|---|~~~)\s*)")  # keep arrows as separators
 # id (or `subgraph name`) + shape-open + "label" + close. Prefix allows a `subgraph name ` lead-in.
-NODE = re.compile(r'^([\w&;\s]*?)([\[\{\(])"(.*)"([\]\}\)])(.*)$')
-OPEN_ONLY = re.compile(r'^([\w&;\s]*?)([\[\{\(])["\'](.*)$')  # unclosed / mismatched-quote label
+# A label delimiter is `"` or `&quot;` (#126): `C[&quot;k&quot;]` is the label `k`. Only a label
+# that `&quot;` opens can close with `&quot;`: in `F["a {&quot;b&quot;}"]`, `&quot;}` is text. A
+# label that `'` opens closes with `'` or `"`: `A['x']` and `A['x"]` are the label `x`.
+NODE = re.compile(
+    r"^(?P<pre>[\w&;\s]*?)(?P<op>[\[\{\(])"
+    r'(?:"(?P<q>.*)"|&quot;(?P<e>.*)(?:"|&quot;)|\'(?P<s>.*)["\'])[\]\}\)](?P<post>.*)$'
+)
+# An unclosed label, or one with a mismatched quote.
+OPEN_ONLY = re.compile(r'^([\w&;\s]*?)([\[\{\(])(?:["\']|&quot;)(.*)$')
 CLOSE = {"[": "]", "{": "}", "(": ")"}
 ORPHAN_TAIL = re.compile(
     r"([\]\}\)])[\s\}\]\)]*(?:<br>[\s\}\]\)]*)*$"
@@ -35,7 +44,7 @@ ORPHAN_TAIL = re.compile(
 OPENER = {c: o for o, c in CLOSE.items()}
 # A complete quoted label: an opener, a quoted text without `"`, and a closer. An arrow inside
 # one is label text, such as `G["If valid --> vote"]`, and is not an edge.
-QUOTED_LABEL = re.compile(r'[\[\{\(]"[^"]*"[\]\}\)]')
+QUOTED_LABEL = re.compile(r'[\[\{\(](?:"[^"]*"|&quot;(?:(?!&quot;)[^"])*(?:&quot;|"))[\]\}\)]')
 # But an arrow to a node with a quoted shape is an edge also inside such a label: the VLM joins two
 # lines into one label, such as `F["PATCH /orders<br>  F --> G[&quot;API server"]`. The quote
 # (`"` or `&quot;`, before the `&quot;` -> `'` step) keeps `x --> next(it)` and `x --> f('a')` in
@@ -46,10 +55,23 @@ TAIL_FILL = re.compile(r"(?:\s|<br>)+$")
 
 
 BR_EDGE = re.compile(r"^(?:\s*<br>)+|(?:<br>\s*)+$")
+# A text whose last `"` opens a label, and a line whose first `"` closes one with only label text
+# before it (#126): no bracket here, and no arrow (checked in `_logical_lines`). A line between
+# them must look like label text, not like a statement.
+OPENS_LABEL = re.compile(r'[\[\{\(]"[^"]*$')
+CLOSES_LABEL = re.compile(r'^[^"\[\]\{\}\(\)]*"[\]\}\)]')
+STATEMENT = re.compile(
+    r'[\[\]\{\}\(\)"]|^\s*(?:%%|(?:end|subgraph|style|classDef|class|click|linkStyle|direction)\b)'
+)
+SEP = "\x00"  # stands for a newline inside a logical line while `_fix_line` runs
+
+
+def _quot(s: str) -> str:
+    return s.replace("&quot;", "'")
 
 
 def _san_inner(s: str) -> str:
-    s = s.replace("\\", "")  # drop stray backslashes (\' escape noise)
+    s = _quot(s).replace("\\", "")  # drop stray backslashes (\' escape noise)
     s = s.replace('"', "'").replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
     s = re.sub(r"(<br>\s*)+", "<br>", s)
     # Strip a leading/trailing <br> TOKEN. `str.strip("<br> ")` was a character set: it ate the
@@ -61,13 +83,15 @@ def _san_inner(s: str) -> str:
 def _fix_segment(seg: str) -> str:
     m = NODE.match(seg)
     if m:
-        pre, op, inner, _cl, post = m.groups()
-        return f'{pre}{op}"{_san_inner(inner)}"{CLOSE[op]}{post}'  # emit close MATCHING the opener
+        pre, op, post = m["pre"], m["op"], m["post"]
+        inner = next(m[g] for g in "qes" if m[g] is not None)
+        # emit close MATCHING the opener
+        return f'{_quot(pre)}{op}"{_san_inner(inner)}"{CLOSE[op]}{_quot(post)}'
     m = OPEN_ONLY.match(seg)  # unclosed label -> close it with a matching bracket
     if m:
         pre, op, inner = m.groups()
-        return f'{pre}{op}"{_san_inner(inner)}"{CLOSE[op]}'
-    return seg
+        return f'{_quot(pre)}{op}"{_san_inner(inner)}"{CLOSE[op]}'
+    return _quot(seg)
 
 
 def _split_arrows(ln: str) -> list[str]:
@@ -110,26 +134,58 @@ def _drop_orphan_tail(ln: str, node: str) -> str:
 def _fix_line(ln: str) -> str:
     parts = _split_arrows(ln)  # before the `&quot;` step, so NODE_AHEAD can tell `&quot;` from `'`
     for i in range(0, len(parts), 2):  # even indices = node segments
-        parts[i] = _fix_segment(parts[i].replace("&quot;", "'").replace("\\n", "<br>"))
+        parts[i] = _fix_segment(parts[i].replace("\\n", "<br>"))
     return _drop_orphan_tail("".join(parts), parts[-1])
 
 
 def _fix_line_or_keep(ln: str) -> str:
     """A line whose own score the repair raises stays as it was. The block guard in `repair` alone
-    let one line get worse when another line of the block got better."""
-    new = _fix_line(ln)
+    let one line get worse when another line of the block got better. `ln` is a logical line: a
+    newline in it is part of a quoted label."""
+    if "\n" not in ln:
+        new = _fix_line(ln)
+    elif SEP in ln:
+        return ln
+    else:
+        new = _fix_line(ln.replace("\n", SEP)).replace(SEP, "\n")
     return ln if issues(new) > issues(ln) else new
 
 
+def _logical_lines(body: str) -> list[str]:
+    """Split `body` into lines, but keep a quoted label that continues on the next lines in one
+    logical line (#126): `A["foo` and `bar"] --> B` are one label. A line between them must have no
+    arrow, no bracket, no `"` and no keyword, and the last line must close the label at its first
+    `"`, with no arrow and no bracket before it. Then the logical line can open the next label, as `two"] --> B["three` does. Otherwise,
+    each line stays alone, and the repair closes the label on its own line. A wrong join puts
+    nodes into a label, so the rule joins only what is clearly label text."""
+    lines = body.split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        end, quotes = i, lines[i].count('"')
+        while quotes % 2 and OPENS_LABEL.search(lines[end]):
+            k = end + 1
+            while k < len(lines) and not ARROW.search(lines[k]) and not STATEMENT.search(lines[k]):
+                k += 1
+            if k == len(lines):
+                break
+            close = CLOSES_LABEL.match(lines[k])
+            if not close or ARROW.search(close.group(0)):
+                break
+            end, quotes = k, quotes + lines[k].count('"')
+        out.append("\n".join(lines[i : end + 1]))
+        i = end + 1
+    return out
+
+
 def _fix_block(body: str) -> str:
-    return "\n".join(_fix_line_or_keep(l) for l in body.split("\n"))
+    return "\n".join(_fix_line_or_keep(l) for l in _logical_lines(body))
 
 
 def issues(body: str) -> int:
     """Count parse-breakers in a block (validation proxy)."""
     n = 0
     n += body.count("\\n") + body.count("&quot;")
-    n += sum(l.count('"') % 2 for l in body.split("\n"))
+    n += sum(l.count('"') % 2 for l in _logical_lines(body))
     n += abs(body.count("[") - body.count("]")) + abs(body.count("{") - body.count("}"))
     return n
 

@@ -12,10 +12,12 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from pdf2wiki import listings
 from pdf2wiki.phase5 import (
     caption_unbleed,
     chapter_split,
     code_unescape,
+    codecheck,
     dash_normalize,
     illegal_codepoints,
     lang_retag,
@@ -82,6 +84,146 @@ def test_specific_tag_kept():
     out, changes, stats = lang_retag.retag(md)
     assert "```ruby" in out
     assert stats["kept"] == 1
+
+
+# A specific tag that MinerU gave is replaced only when the block fails the check of its tag AND
+# passes as the language the detector names. Each body is from a converted book in the vault, where
+# MinerU tagged it `python` (323 such blocks in 24 books).
+@pytest.mark.parametrize(
+    ("body", "lang"),
+    [
+        (  # building-microservices-with-go, chapter 4
+            'import _ "net/http/pprof"\n\ngo func() {\n'
+            '    log.Println(http.ListenAndServe("localhost:6060", nil))\n}()',
+            "go",
+        ),
+        (  # kubernetes-native-microservices, chapter 2
+            "@NativeImageTest\npublic class NativeGreetingResourceIT\nextends GreetingResourceTest {\n"
+            "// Execute the same tests but in native mode.\n}",
+            "java",
+        ),
+        (  # advanced-algorithms-and-data-structures, chapter 2
+            "class DHeap\n  #type Array[Pair]\n  pairs\n  function DHeap(pairs=[])",
+            "pseudocode",
+        ),
+    ],
+)
+def test_wrong_specific_tag_is_replaced_when_verified(body, lang):
+    md = f"```python\n{body}\n```\n"
+    out, changes, stats = lang_retag.retag(md)
+    assert out.startswith(f"```{lang}\n")
+    assert stats["verified"] == 1 and changes[0][:3] == ("python", lang, "verified")
+    assert lang_retag.retag(out)[0] == out
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        'print "hello"',  # Python 2: an error, but the detector names no other language
+        ">>> x = 1\n>>> x + 1\n2",  # a REPL session is a fragment, not an error
+        "model.fit(x,\n    epochs=10,\n",  # cut inside a call: an error, still Python
+        "def f():\n    return {\n",  # a brace language would accept this cut, but it is Python
+    ],
+)
+def test_python_tag_kept_when_no_other_language_is_verified(body):
+    md = f"```python\n{body}\n```\n"
+    out, _, stats = lang_retag.retag(md)
+    assert out == md and stats["kept"] == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # secureapis, chapter 4: the indent is lost, and the detector names javascript.
+        '@server.post(\n"/payments",\nstatus_code=201,\nasync def make_payment(request: Request):\n'
+        'payload = await request.body()\nreturn {\n"id": 1,\n}',
+        # deep-learning-with-python, chapter 12: callout text inside the code, detector says java.
+        "import tensorflow as tf\nclass Sampler(layers.Layer):\nDraw a batch of\n"
+        "def call(self, z_mean, z_log_var): random normal\n"
+        "batch_size = tf.shape(z_mean)[0] vectors.",
+    ],
+)
+def test_python_tag_kept_when_the_block_has_a_python_only_statement(body):
+    md = f"```python\n{body}\n```\n"
+    out, _, stats = lang_retag.retag(md)
+    assert out == md and stats["kept"] == 1
+
+
+def test_a_comment_above_an_assignment_is_not_a_java_typed_variable():
+    # 50-algorithms, chapter 11: `# Example Query` + newline + `K = np.array(` was a Java
+    # `Type name = call(` across the line break, so a Python block with a dedent defect became java.
+    body = (
+        "# Apply the softmax\n    probs = np.exp(w)\n\n    return probs\n\n"
+        "# Example\nQ = np.array([[1, 0]])  # Example Query\nK = np.array([[1, 0]])\n"
+    )
+    assert lang_retag.heuristic(body) != "java"
+    assert lang_retag.detect("python", body) == ("python", "kept")
+
+
+def test_a_java_assignment_that_continues_on_the_next_line_is_still_java():
+    # hands-on-restful-api: the line break comes after the `=`.
+    body = "Investor investor =\n    service.fetchInvestorById(id);"
+    assert lang_retag.heuristic(body) == "java"
+
+
+# Review of the verified override. lang_retag runs before code_unescape, so MinerU's escapes are
+# still in the body: `my\_count` is not Python, and the block must not verify as another language.
+@pytest.mark.parametrize(
+    ("tag", "body"),
+    [
+        ("python", "response = await client.get(url)\nmy\\_count = len(items)"),
+        ("python", "console = Console()\ntotal = a \\* b\nconsole.log(total)"),
+        ("python", "x = 0  # x ← 0\nwhile x < 10\n    x += 1"),  # `←` is in a comment
+        ("javascript", "function add(a, b)\n{\n  return (a + b];\n}"),  # Allman style, crossed
+        ("xml", '<link rel="x" href="http://a?x=1&y=2"/>'),  # Atom, an unescaped `&`
+        ("toml", "x = " + "[" * 5000 + "]" * 4999),  # deep nesting: no RecursionError
+        # Review round 2: dash_normalize also runs after lang_retag, and no step fixes quotes.
+        (
+            "python",
+            "status = HTTPStatus.NOT_FOUND\nlimit = n " + chr(0x2212) + " 1\nreturn x, status",
+        ),
+        ("python", "status = HTTPStatus.NOT_FOUND\nmsg = " + chr(0x201C) + "missing" + chr(0x201D)),
+        # A `←` in a docstring, with a lost indent, is not pseudocode.
+        ("python", '"""Update rule: w \u2190 w - lr * g"""\nfor p in params:\np -= lr * p.grad'),
+    ],
+)
+def test_review_cases_keep_their_tag(tag, body):
+    assert lang_retag.detect(tag, body) == (tag, "kept")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "import UIKit",  # Swift
+        "import kotlin.math.PI",  # Kotlin
+        "  def add(a: Int, b: Int): Int = a + b",  # Scala
+        "class ViewController: UIViewController {",  # Swift
+        "class Derived :",  # C++, the base list on the next line
+    ],
+)
+def test_python_only_lines_do_not_match_other_languages(line):
+    assert codecheck.PY_ONLY.search(line) is None
+
+
+def test_pseudocode_with_a_hash_in_a_string_is_still_pseudocode():
+    body = "function f(s)\n  s \u2190 '#' + s\n  return s +"
+    assert lang_retag.detect("python", body) == ("pseudocode", "verified")
+
+
+def test_listings_check_agrees_with_the_python_veto():
+    body = (
+        '@server.post(\n"/payments",\nstatus_code=201,\nasync def make_payment(request: Request):\n'
+        'payload = await request.body()\nreturn {\n"id": 1,\n}'
+    )
+    assert listings.check("python", body).cls == "error"
+
+
+def test_a_failing_block_whose_guess_has_the_same_check_is_kept():
+    # Crossed brackets fail the brace check of `go`. `java` runs the same check, so a Java guess
+    # proves nothing.
+    md = "```go\npublic class A { void f() ) }\n```\n"
+    out, _, stats = lang_retag.retag(md)
+    assert out == md and stats["kept"] == 1
 
 
 def test_java_detected_not_python():
@@ -557,6 +699,95 @@ def test_mermaid_repair_keeps_a_block_it_would_make_worse():
     out, stats = mermaid_repair.repair(md)
     assert out == md
     assert stats == {"blocks_changed": 0, "score_before": 0, "score_after": 0}
+
+
+# #126. A label with `&quot;` delimiters is a quoted label, as one with `"` is.
+def test_mermaid_quot_delimited_label_gets_one_closer():
+    md = "```mermaid\ngraph TD\n  C[&quot;k&quot;]\n```\n"
+    out, stats = mermaid_repair.repair(md)
+    assert '  C["k"]\n' in out
+    assert stats["score_after"] == 0 < stats["score_before"]
+
+
+def test_mermaid_arrow_inside_a_quot_delimited_label_is_not_an_edge():
+    md = "```mermaid\ngraph TD\n  A[&quot;a --> b&quot;]\n```\n"
+    out, stats = mermaid_repair.repair(md)
+    assert '  A["a --> b"]\n' in out
+    assert stats["score_after"] == 0
+
+
+def test_mermaid_quot_closes_only_a_label_that_quot_opened():
+    # `&quot;}` is label text when `"` opened the label: it must not end the label early.
+    md = '```mermaid\ngraph TD\n  F["a {&quot;b&quot;} c"] --> G\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert "  F[\"a ('b') c\"] --> G\n" in out
+
+
+def test_mermaid_label_that_continues_on_the_next_line_stays():
+    # Mermaid accepts a newline in a quoted label. The label is complete across the two lines.
+    md = '```mermaid\ngraph TD\n  A["foo\n  bar"] --> B\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md
+    assert stats == {"blocks_changed": 0, "score_before": 0, "score_after": 0}
+
+
+def test_mermaid_label_across_lines_is_still_sanitized():
+    md = '```mermaid\ngraph TD\n  A["say &quot;hi&quot;\n  x\\ny"] --> B\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert "  A[\"say 'hi'\n  x<br>y\"] --> B\n" in out
+
+
+def test_mermaid_two_unclosed_labels_on_two_lines_are_not_joined():
+    # The second line does not close the first label: each line gets its own closer.
+    md = '```mermaid\ngraph TD\nA["one\nB["two\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\nB["two"]\n' in out
+
+
+def test_mermaid_an_edge_line_does_not_continue_a_label():
+    md = '```mermaid\ngraph TD\nA["one\nC --> D\nE"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\nC --> D\n' in out
+
+
+def test_mermaid_a_node_line_does_not_continue_a_label():
+    # Review of #126: a join across `B[plain]` and `subgraph S` put two nodes into the label of A.
+    md = '```mermaid\ngraph TD\nA["one\nB[plain]\nsubgraph S\nC[\'bar"] --> D\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\nB[plain]\nsubgraph S\nC["bar"] --> D\n' in out
+
+
+def test_mermaid_a_closing_line_with_an_arrow_does_not_continue_a_label():
+    # Review round 2 of #126: `C --> D` before the `"` is an edge, not label text.
+    md = '```mermaid\ngraph TD\nA["one\nC --> D"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\n' in out
+
+
+def test_mermaid_a_nul_in_a_one_line_label_stays_a_nul():
+    # The newline placeholder must not turn a real NUL into a newline.
+    md = '```mermaid\ngraph TD\nA["a\x00b"]\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md and stats["blocks_changed"] == 0
+
+
+def test_mermaid_a_line_that_closes_a_label_and_opens_the_next_one():
+    md = '```mermaid\ngraph TD\nA["one\ntwo"] --> B["three\nfour"]\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md
+    assert stats["score_before"] == 0
+
+
+def test_mermaid_arrow_inside_a_mixed_delimiter_label_is_not_an_edge():
+    md = '```mermaid\ngraph TD\n  A[&quot;a --> b"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '  A["a --> b"]\n' in out
+
+
+@pytest.mark.parametrize("line", ["A['x'] --> B", "A['x\"] --> B"])
+def test_mermaid_single_quoted_label_gets_one_closer(line):
+    out, _ = mermaid_repair.repair(f"```mermaid\ngraph TD\n{line}\n```\n")
+    assert '\nA["x"] --> B\n' in out
 
 
 def test_clean_mermaid_block_reports_no_change():

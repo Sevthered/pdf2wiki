@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **phase 5 replaces a wrong language tag that MinerU gave, when another language verifies.**
+  Before, `lang_retag` always kept a specific MinerU tag. MinerU tags Go, Java, C++, JavaScript and
+  pseudocode as `python`: 323 blocks in a vault of 24 books. Now a block that fails the check of its
+  tag, and passes the check of the language that the keyword heuristic names, gets that language.
+  The checks are those of `listings --check`, which now live in `phase5/codecheck.py`. They run on
+  the code as `code_unescape` leaves it. A `python` block with a line that only Python writes, such
+  as `def f():` or `from os import path`, keeps its tag. `listings --check` uses the same rule. A
+  guess with no parser check (pseudocode, html, http) can replace only a `python` tag. The report
+  counts the change as `verified`. On the vault, 317 blocks change, and no block of real Python
+  changes.
+- **A deeply nested TOML or XML block no longer stops `listings --check`.** The check now reports
+  `RecursionError` as an error.
+- **The heuristic no longer reads a Java typed variable across a line break.** `# Example Query`
+  above `K = np.array(` was `Query K = np.array(`. The type and the name must now be on one line.
+- **The Mermaid repair keeps labels with `&quot;` delimiters and labels on more than one line
+  (#126).**
+  - The repair now reads a label with `&quot;` delimiters, such as `C[&quot;k&quot;]`, as a quoted
+    label. Before, it closed the label a second time: `C["k')"]`. An arrow inside such a label is
+    label text. Before, the repair cut the label at the arrow.
+  - `&quot;` closes a label only when `&quot;` opened it. In `F["a {&quot;b&quot;}"]`, the
+    `&quot;}` is label text.
+  - A label that `'` opens, such as `A['x']` or `A['x"]`, becomes `A["x"]`. Before, it became
+    `A["x')"]`.
+  - Mermaid accepts a newline in a quoted label. The repair now keeps a label that continues on
+    the next line, such as `A["foo` and `bar"] --> B`. Before, it closed the label on the first
+    line. The repair joins the lines only when each line between them looks like label text: no
+    arrow, no bracket, no quote and no keyword. The same is true for the text before the closing
+    `"`. Such a label must have `"` delimiters. The parse-breaker score also counts the quotes of
+    such a label as one label.
+
 ## [0.4.1] - 2026-11-12
 
 ### Fixed

@@ -8,7 +8,11 @@ MinerU's fence language ID is unreliable (Java->swift/erlang, many bare ```code)
 guess_lexer and guesslang both fail on short snippets. So we use a precision-first precedence
 tuned to technical-book corpora (JVM, Python, Go, C/C++, Rust, JS/TS, shell, infra configs):
   1. `# file: x.ext` comment  -> extension is near-certain (strongest)
-  2. an existing SPECIFIC, valid MinerU tag -> keep it (it is mostly right: ruby, yaml, json, shell)
+  2. an existing SPECIFIC, valid MinerU tag -> keep it (it is mostly right: ruby, yaml, json, shell),
+     unless the block fails the check of that tag (`codecheck`) and passes as the language that the
+     keyword heuristic names. MinerU tags Go, Java, C++ and pseudocode as `python`: 323 blocks in a
+     vault of 24 books. The check makes this precision-first too: a block that fails for its tag but
+     does not pass as the guess keeps its tag.
   3. keyword heuristic -> use when confident (http/cmake/c/cpp/rust/go/javascript/typescript/ruby/
      yaml/dockerfile/xml/json/java/python/sql/bash/ini/properties). Precision-first: the
      curly-brace/compiled families are decided BEFORE the loose keyword branches, because each of
@@ -21,7 +25,7 @@ Never touches ```mermaid. Idempotent.
 import collections
 import re
 
-from . import fences
+from . import code_unescape, codecheck, dash_normalize, fences
 
 EXT = {
     "py": "python",
@@ -378,8 +382,9 @@ def heuristic(body: str) -> str:
             b,
         )
         or re.search(
-            r'\b[A-Z]\w+(<[\w,<>\[\] ]+>)?\s+\w+\s*=\s*(new\s+[A-Z]|[\w.]+\(|["\'])', b
-        )  # typed var: Account a = new/method/"..."
+            r'\b[A-Z]\w+(<[\w,<>\[\] ]+>)?[ \t]+\w+[ \t]*=\s*(new\s+[A-Z]|[\w.]+\(|["\'])', b
+        )  # typed var: Account a = new/method/"..." -- the type and the name on ONE line: with
+        # `\s+`, `# Example Query` above `K = np.array(` read as `Query K = np.array(`.
         or re.search(r"\b[A-Z]\w+\.[A-Z][A-Z0-9_]{2,}\b", b)
     ):  # enum/constant access: AccountStatus.OVERDRAWN
         return "java"
@@ -430,6 +435,14 @@ def heuristic(body: str) -> str:
     return "text"
 
 
+_QUOTES = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
+
+
+def _for_check(body: str) -> str:
+    """`body` as `dash_normalize` and `code_unescape` leave it, with straight quotes."""
+    return code_unescape.unescaped(dash_normalize.normalized(body)).translate(_QUOTES)
+
+
 def detect(cur_tag: str, body: str) -> tuple[str, str]:
     m = re.search(r"#\s*file:\s*\S+\.([A-Za-z0-9]+)", body)  # 1. file-ext hint
     if m and m.group(1).lower() in EXT:
@@ -438,6 +451,18 @@ def detect(cur_tag: str, body: str) -> tuple[str, str]:
     # very often just the extension: `py`, `rs`, `kt`, `js`, `proto`).
     canon_cur = CANON.get(cur_tag, EXT.get(cur_tag, cur_tag))
     if canon_cur not in GENERIC and canon_cur in VALID:  # 2. trust specific MinerU tag
+        # ... unless another language verifies. Check the code as the later steps leave it
+        # (`my\_count`, `n − 1`), and with straight quotes, which no step makes: `“x”` in Python
+        # code is a typesetting defect, not another language.
+        if codecheck.checker(canon_cur) is None:
+            return canon_cur, "kept"
+        clean = _for_check(body)
+        if codecheck.judge(canon_cur, clean)[0] == "error":
+            other = codecheck.other_language(canon_cur, clean, heuristic)
+            # A guess with no parser check (pseudocode, html, http) can replace only `python`:
+            # an Allman-style JS function or an Atom `<link>` would read as one.
+            if other and (canon_cur == "python" or codecheck.checker(other[0])):
+                return other[0], "verified"
         return canon_cur, "kept"
     return heuristic(body), "kw"  # 3. heuristic (4. -> text)
 

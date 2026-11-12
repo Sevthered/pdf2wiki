@@ -464,6 +464,101 @@ def test_mermaid_unclosed_label_repair_is_idempotent():
     assert s1["blocks_changed"] == 1 and s2["blocks_changed"] == 0
 
 
+# #123. Each line below is from a real book. Before the fix, the repair broke each one, and two
+# vault chapters shipped the broken lines.
+def test_mermaid_subgraph_title_keeps_its_closing_bracket():
+    # k8s.md: the tail pass took the `]` after `(AS A)` for an orphan of a JSON label.
+    md = (
+        "```mermaid\ngraph TD\n  subgraph Application_A [Application server A (AS A)]\n  end\n```\n"
+    )
+    out, stats = mermaid_repair.repair(md)
+    assert out == md
+    assert stats["blocks_changed"] == 0
+
+
+def test_mermaid_arrow_inside_a_quoted_label_is_not_an_edge():
+    # mastering-blockchain.md: the split at `-->` cut the label in two.
+    md = '```mermaid\ngraph TD\n  F --> G["If valid --> pre-vote proposal\\nIf timeout --> nil"]\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert '  F --> G["If valid --> pre-vote proposal<br>If timeout --> nil"]\n' in out
+    assert stats["score_after"] == 0 < stats["score_before"]
+
+
+def test_mermaid_arrow_to_a_shaped_node_inside_a_label_stays_an_edge():
+    # secureapis.md: the VLM joined two lines into one label. `F --> G[` is a real edge.
+    md = (
+        '```mermaid\ngraph TD\n  E["Tampering"] --> F["PATCH /orders/123\\n'
+        '{&quot;status&quot;: &quot;paid\\&quot;}<br>  F --> G[&quot;API server"]\n```\n'
+    )
+    out, _ = mermaid_repair.repair(md)
+    assert '<br>F"] --> G["' in out
+
+
+def test_mermaid_circle_node_keeps_both_closers():
+    # microservices-patterns.md and secureapis.md: `(( ))` and `(("Node"))` lost their last `)`.
+    md = '```mermaid\ngraph TD\n  P["Domain logic"] --> Q(( ))\n  A --> C(("Node"))\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md and stats["blocks_changed"] == 0
+
+
+def test_mermaid_parens_inside_a_label_do_not_balance_an_orphan():
+    # advanced-algorithms: the `(` in the label text is not an opener for the `))` after `"]`.
+    md = '```mermaid\ngraph TD\n  E --> F["fNN(root, shops(&quot;Cheddar&quot;"]))\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert "  E --> F[\"fNN(root, shops('Cheddar'\"]\n" in out
+
+
+def test_mermaid_arrow_to_unquoted_text_inside_a_label_stays_text():
+    # Review of #123: `next(it)` is not a node with a shape, so the label stays whole.
+    md = '```mermaid\ngraph TD\n  A["return x --> next(it)"]\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md and stats["blocks_changed"] == 0
+
+
+def test_mermaid_arrow_to_a_call_with_a_quoted_argument_stays_text():
+    # Review round 2 of #123: `f('a')` and `print(&quot;hi&quot;)` are calls, not nodes.
+    md = '```mermaid\ngraph TD\n  A["call --> f(\'a\')"]\n  B["x --> print(&quot;hi&quot;)"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert "  A[\"call --> f('a')\"]\n" in out
+    assert "  B[\"x --> print('hi')\"]\n" in out
+
+
+def test_mermaid_an_earlier_node_does_not_change_the_orphan_count():
+    # Review of #123: the `)` in `A[Step 1)]` is not an opener debt of the circle node `B((y))`.
+    md = "```mermaid\ngraph TD\n  A[Step 1)] --> B((y))\n```\n"
+    out, _ = mermaid_repair.repair(md)
+    assert out == md
+
+
+def test_mermaid_tail_pass_keeps_a_closer_that_its_opener_balances():
+    # #123 without the guards: the block guard in `repair` would hide a return of this defect.
+    assert mermaid_repair._fix_block("[)]") == "[)]"
+
+
+def test_mermaid_a_line_made_worse_stays_when_another_line_gets_better():
+    # Review of #123: the first line goes 4 -> 5, the second 1 -> 0. The block total stays at 5,
+    # so only the line guard keeps the first line.
+    md = '```mermaid\ngraph TD\n{"a")[}}b["\nA["p\\nq"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\n{"a")[}}b["\n' in out
+    assert 'A["p<br>q"]' in out
+
+
+def test_mermaid_orphan_after_a_balanced_close_is_dropped():
+    # One `}` more than `{`: the `}` goes, the balanced `]` and `)` stay.
+    md = "```mermaid\ngraph TD\n  subgraph S [a (b)] }\n```\n"
+    out, _ = mermaid_repair.repair(md)
+    assert "  subgraph S [a (b)]\n" in out
+
+
+def test_mermaid_repair_keeps_a_block_it_would_make_worse():
+    # `OPEN_ONLY` closes `['a` on its own line, but the real `]` is on the next line.
+    md = "```mermaid\ngraph TD\n['a\n]\n```\n"
+    out, stats = mermaid_repair.repair(md)
+    assert out == md
+    assert stats == {"blocks_changed": 0, "score_before": 0, "score_after": 0}
+
+
 def test_clean_mermaid_block_reports_no_change():
     md = '```mermaid\ngraph TD\nA["ok"] --> B\n```\n'
     out, stats = mermaid_repair.repair(md)

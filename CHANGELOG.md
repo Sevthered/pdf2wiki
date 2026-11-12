@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **The Mermaid repair no longer breaks correct nodes and labels (#123).** Three defects are fixed:
+  - Before, the repair removed each bracket after the last closing bracket of a line. Now it removes
+    only a bracket that has no opening bracket in the last node of the line, outside the quoted
+    labels. Before, a
+    circle node `Q(( ))` lost its last `)`, and the subgraph title
+    `[Application server A (AS A)]` lost its `]`.
+  - An arrow inside a complete quoted label, such as `G["If valid --> vote"]`, is label text.
+    Before, the repair cut the label at the arrow. An arrow to a node with a quoted shape, such as
+    `F --> G["`, is still an edge, also inside a label.
+  - If a repair makes the parse-breaker score of a line or of a block higher, that line or block
+    stays as it was.
+
+  On the converted Markdown of 25 books, the repair now changes 33 of 1,306 Mermaid blocks
+  differently from 0.4.0. In each block, the change keeps text that 0.4.0 removed or cut. The
+  parse-breaker score after the repair goes down from 120 to 109. Books that were converted with
+  0.4.0 or earlier can have these defects.
+
 ## [0.4.0] - 2026-11-12
 
 ### Added

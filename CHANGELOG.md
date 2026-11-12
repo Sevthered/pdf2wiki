@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-12
+
 ### Fixed
 - **The Mermaid repair no longer breaks correct nodes and labels (#123).** Three defects are fixed:
   - Before, the repair removed each bracket after the last closing bracket of a line. Now it removes
@@ -1074,7 +1076,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...v0.3.0
 [0.2.11]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.10...v0.2.11

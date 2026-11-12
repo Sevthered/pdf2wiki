@@ -559,6 +559,95 @@ def test_mermaid_repair_keeps_a_block_it_would_make_worse():
     assert stats == {"blocks_changed": 0, "score_before": 0, "score_after": 0}
 
 
+# #126. A label with `&quot;` delimiters is a quoted label, as one with `"` is.
+def test_mermaid_quot_delimited_label_gets_one_closer():
+    md = "```mermaid\ngraph TD\n  C[&quot;k&quot;]\n```\n"
+    out, stats = mermaid_repair.repair(md)
+    assert '  C["k"]\n' in out
+    assert stats["score_after"] == 0 < stats["score_before"]
+
+
+def test_mermaid_arrow_inside_a_quot_delimited_label_is_not_an_edge():
+    md = "```mermaid\ngraph TD\n  A[&quot;a --> b&quot;]\n```\n"
+    out, stats = mermaid_repair.repair(md)
+    assert '  A["a --> b"]\n' in out
+    assert stats["score_after"] == 0
+
+
+def test_mermaid_quot_closes_only_a_label_that_quot_opened():
+    # `&quot;}` is label text when `"` opened the label: it must not end the label early.
+    md = '```mermaid\ngraph TD\n  F["a {&quot;b&quot;} c"] --> G\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert "  F[\"a ('b') c\"] --> G\n" in out
+
+
+def test_mermaid_label_that_continues_on_the_next_line_stays():
+    # Mermaid accepts a newline in a quoted label. The label is complete across the two lines.
+    md = '```mermaid\ngraph TD\n  A["foo\n  bar"] --> B\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md
+    assert stats == {"blocks_changed": 0, "score_before": 0, "score_after": 0}
+
+
+def test_mermaid_label_across_lines_is_still_sanitized():
+    md = '```mermaid\ngraph TD\n  A["say &quot;hi&quot;\n  x\\ny"] --> B\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert "  A[\"say 'hi'\n  x<br>y\"] --> B\n" in out
+
+
+def test_mermaid_two_unclosed_labels_on_two_lines_are_not_joined():
+    # The second line does not close the first label: each line gets its own closer.
+    md = '```mermaid\ngraph TD\nA["one\nB["two\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\nB["two"]\n' in out
+
+
+def test_mermaid_an_edge_line_does_not_continue_a_label():
+    md = '```mermaid\ngraph TD\nA["one\nC --> D\nE"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\nC --> D\n' in out
+
+
+def test_mermaid_a_node_line_does_not_continue_a_label():
+    # Review of #126: a join across `B[plain]` and `subgraph S` put two nodes into the label of A.
+    md = '```mermaid\ngraph TD\nA["one\nB[plain]\nsubgraph S\nC[\'bar"] --> D\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\nB[plain]\nsubgraph S\nC["bar"] --> D\n' in out
+
+
+def test_mermaid_a_closing_line_with_an_arrow_does_not_continue_a_label():
+    # Review round 2 of #126: `C --> D` before the `"` is an edge, not label text.
+    md = '```mermaid\ngraph TD\nA["one\nC --> D"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '\nA["one"]\n' in out
+
+
+def test_mermaid_a_nul_in_a_one_line_label_stays_a_nul():
+    # The newline placeholder must not turn a real NUL into a newline.
+    md = '```mermaid\ngraph TD\nA["a\x00b"]\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md and stats["blocks_changed"] == 0
+
+
+def test_mermaid_a_line_that_closes_a_label_and_opens_the_next_one():
+    md = '```mermaid\ngraph TD\nA["one\ntwo"] --> B["three\nfour"]\n```\n'
+    out, stats = mermaid_repair.repair(md)
+    assert out == md
+    assert stats["score_before"] == 0
+
+
+def test_mermaid_arrow_inside_a_mixed_delimiter_label_is_not_an_edge():
+    md = '```mermaid\ngraph TD\n  A[&quot;a --> b"]\n```\n'
+    out, _ = mermaid_repair.repair(md)
+    assert '  A["a --> b"]\n' in out
+
+
+@pytest.mark.parametrize("line", ["A['x'] --> B", "A['x\"] --> B"])
+def test_mermaid_single_quoted_label_gets_one_closer(line):
+    out, _ = mermaid_repair.repair(f"```mermaid\ngraph TD\n{line}\n```\n")
+    assert '\nA["x"] --> B\n' in out
+
+
 def test_clean_mermaid_block_reports_no_change():
     md = '```mermaid\ngraph TD\nA["ok"] --> B\n```\n'
     out, stats = mermaid_repair.repair(md)

@@ -15,7 +15,8 @@ text (the searchable value):
 Lines are split on arrow ops first so each node is isolated (greedy inner-label match is then safe
 even when a label contains stray quotes/brackets). An arrow inside a complete quoted label is label
 text, not a split point, unless a node with a quoted shape follows it. A label delimited by
-`&quot;` is a quoted label also. A quoted label can continue on the next lines, as mermaid allows:
+`&quot;` is a quoted label also. Such a label can close at a `"` only when the end of the line or
+an arrow in `ARROW_OPS` comes after the closer. A quoted label can continue on the next lines, as mermaid allows:
 those lines are one logical line for the repair and for the score. Never changes non-mermaid
 fences. Validation is a parse-breaker score (proxy), not a real mermaid parse: a line or a block
 whose score a repair raises stays as it was. The score does not count `(` and `)`, so this guard
@@ -26,14 +27,23 @@ import re
 
 from . import fences
 
-ARROW = re.compile(r"(\s*(?:-\.->|--[>x]|==>|===|-\.-|---|~~~)\s*)")  # keep arrows as separators
+ARROW_OPS = r"-\.->|--[>x]|==>|===|-\.-|---|~~~"
+ARROW = re.compile(rf"(\s*(?:{ARROW_OPS})\s*)")  # keep arrows as separators
+# The `"` that closes a label that `&quot;` opens, such as `C[&quot;k"]`, as the VLM writes it:
+# valid only at the end of the node, before an arrow or the end of the line. A `"` with other text
+# after its closer is label text, such as the code `children["s[0"]]` in a pseudocode label. The
+# greedy `NODE` closed the label there and left the rest of the label outside it. Such a label is
+# unclosed, as in 0.4.1. One rule for `NODE` and `QUOTED_LABEL`, so the split and the repair agree.
+QUOT_CLOSED_BY_QUOTE = rf'"(?=[\]\}}\)]\s*(?:$|{ARROW_OPS}))'
 # id (or `subgraph name`) + shape-open + "label" + close. Prefix allows a `subgraph name ` lead-in.
 # A label delimiter is `"` or `&quot;` (#126): `C[&quot;k&quot;]` is the label `k`. Only a label
-# that `&quot;` opens can close with `&quot;`: in `F["a {&quot;b&quot;}"]`, `&quot;}` is text. A
+# that `&quot;` opens can close with `&quot;`: in `F["a {&quot;b&quot;}"]`, `&quot;}` is text. It
+# can also close with `"`, see `QUOT_CLOSED_BY_QUOTE`. A
 # label that `'` opens closes with `'` or `"`: `A['x']` and `A['x"]` are the label `x`.
 NODE = re.compile(
     r"^(?P<pre>[\w&;\s]*?)(?P<op>[\[\{\(])"
-    r'(?:"(?P<q>.*)"|&quot;(?P<e>.*)(?:"|&quot;)|\'(?P<s>.*)["\'])[\]\}\)](?P<post>.*)$'
+    r'(?:"(?P<q>.*)"|&quot;(?P<e>.*)(?:&quot;|' + QUOT_CLOSED_BY_QUOTE + r")|'(?P<s>.*)[\"'])"
+    r"[\]\}\)](?P<post>.*)$"
 )
 # An unclosed label, or one with a mismatched quote.
 OPEN_ONLY = re.compile(r'^([\w&;\s]*?)([\[\{\(])(?:["\']|&quot;)(.*)$')
@@ -44,7 +54,9 @@ ORPHAN_TAIL = re.compile(
 OPENER = {c: o for o, c in CLOSE.items()}
 # A complete quoted label: an opener, a quoted text without `"`, and a closer. An arrow inside
 # one is label text, such as `G["If valid --> vote"]`, and is not an edge.
-QUOTED_LABEL = re.compile(r'[\[\{\(](?:"[^"]*"|&quot;(?:(?!&quot;)[^"])*(?:&quot;|"))[\]\}\)]')
+QUOTED_LABEL = re.compile(
+    r'[\[\{\(](?:"[^"]*"|&quot;(?:(?!&quot;)[^"])*(?:&quot;|' + QUOT_CLOSED_BY_QUOTE + r"))[\]\}\)]"
+)
 # But an arrow to a node with a quoted shape is an edge also inside such a label: the VLM joins two
 # lines into one label, such as `F["PATCH /orders<br>  F --> G[&quot;API server"]`. The quote
 # (`"` or `&quot;`, before the `&quot;` -> `'` step) keeps `x --> next(it)` and `x --> f('a')` in

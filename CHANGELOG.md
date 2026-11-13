@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-13
+
 ### Fixed
 - **`convert` and `doctor` refuse a MinerU version that pdf2wiki cannot drive.** MinerU 4.0
   replaced the 3.x CLI with subcommands (`mineru parse`) and replaced the backends with quality
@@ -1126,7 +1128,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.3.0...v0.4.0

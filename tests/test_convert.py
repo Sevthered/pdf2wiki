@@ -238,6 +238,7 @@ def test_run_mineru_timeout_becomes_passfailed(tmp_path, monkeypatch):
                 raise subprocess.TimeoutExpired(cmd="mineru", timeout=7200)
             return -9  # post-kill reap
 
+    monkeypatch.setattr(merge_mod, "require_supported_mineru", lambda *a, **k: None)
     monkeypatch.setattr(merge_mod.subprocess, "Popen", lambda *a, **k: FakeProc())
     monkeypatch.setattr(merge_mod.os, "getpgid", lambda pid: pid)
     monkeypatch.setattr(merge_mod.os, "killpg", lambda pgid, sig: killed.setdefault("pgid", pgid))
@@ -501,6 +502,7 @@ def test_run_mineru_passes_absolute_paths_to_mineru(tmp_path, monkeypatch):
         def wait(self, timeout=None):
             return 0
 
+    monkeypatch.setattr(merge_mod, "require_supported_mineru", lambda *a, **k: None)
     monkeypatch.setattr(merge_mod.subprocess, "Popen", lambda cmd, **k: FakeProc(cmd, k.get("cwd")))
     blocks, _ = run_mineru(
         "mineru",

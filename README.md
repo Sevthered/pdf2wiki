@@ -25,7 +25,7 @@ Why two backends instead of one: [why a dual-backend pipeline](docs/explanation/
 
 - Linux (native or WSL2) with an NVIDIA GPU, **≥ 8 GB VRAM**, CUDA driver installed
 - Python ≥ 3.11
-- [MinerU](https://github.com/opendatalab/MinerU) ≥ 3.4 on `PATH`
+- [MinerU](https://github.com/opendatalab/MinerU) 3.4 or a later 3.x on `PATH` (MinerU 4 has another CLI)
 - A C compiler for vLLM's Triton JIT: `sudo apt install build-essential python3-dev`
 
 Only the conversion needs the GPU — `phase5`, `qa`, and `scan` run anywhere Python runs. No GPU at all?

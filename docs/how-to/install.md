@@ -16,8 +16,9 @@ paths need neither:
 For **local / `--remote`** conversion you also need:
 
 - **Linux or WSL2** with an **NVIDIA GPU, ≥8 GB VRAM** (only conversion needs the GPU).
-- **[MinerU](https://github.com/opendatalab/MinerU) ≥ 3.4** on your `PATH`. pdf2wiki drives the
-  `mineru` CLI as a subprocess.
+- **[MinerU](https://github.com/opendatalab/MinerU) 3.4 or a later 3.x** on your `PATH`. pdf2wiki
+  drives the `mineru` CLI as a subprocess. MinerU 4 has another CLI, and pdf2wiki does not support it
+  yet. Install MinerU with `uv pip install "mineru[all]>=3.4,<4"`.
 - **`build-essential`** (gcc + `python3-dev`). MinerU's vLLM backend JIT-compiles CUDA kernels at
   startup and needs a C compiler:
   ```bash

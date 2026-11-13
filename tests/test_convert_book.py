@@ -20,6 +20,8 @@ import os
 import shutil
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pdf2wiki.convert.merge as merge_mod
@@ -43,7 +45,8 @@ def _pdf(tmp_path, pages=3, blank=()):
 
 def _cfg(tmp_path, **mineru):
     cfg = Config()
-    cfg.mineru.binary = "/bin/true"  # skip PATH discovery; no subprocess is ever run
+    # skip PATH discovery; the passes are faked, and `/bin/true --version` prints no version
+    cfg.mineru.binary = "/bin/true"
     cfg.convert.workdir = str(tmp_path / "run")
     for k, v in mineru.items():
         setattr(cfg.mineru, k, v)
@@ -252,3 +255,126 @@ def test_book_metadata_failure_never_fails_the_conversion(tmp_path, monkeypatch)
     assert (tmp_path / "out" / "slug" / "slug.md").exists()
     assert not (tmp_path / "out" / "slug" / "book.json").exists()
     assert "book metadata: not written (ValueError: unreadable info dictionary)" in log
+
+
+def _fake_mineru_bin(tmp_path, version_line, on_run=""):
+    """A `mineru` that prints `version_line` for `--version`, and runs the sh in `on_run` else."""
+    m = tmp_path / "mineru"
+    m.write_text(
+        f"#!/bin/sh\nif [ \"$1\" = --version ]; then echo '{version_line}'; exit 0; fi\n{on_run}\n"
+    )
+    m.chmod(0o755)
+    return str(m)
+
+
+def _run_pass(tmp_path, binary, outdir=None):
+    outdir = outdir or str(tmp_path / "pass")
+    return merge_mod.run_mineru(
+        binary, _pdf(tmp_path), 0, 1, "pipeline", [], outdir, str(tmp_path), dict(os.environ)
+    )
+
+
+def test_a_pass_refuses_mineru_4_before_it_runs(tmp_path, monkeypatch):
+    # MinerU 4 has another CLI (`mineru parse`, quality tiers): `mineru -p … -b …` fails at once.
+    monkeypatch.setattr(merge_mod, "_VERSIONS", {})
+    binary = _fake_mineru_bin(tmp_path, "MinerU version: 4.2.1")
+
+    with pytest.raises(merge_mod.UnsupportedMinerU) as e:
+        _run_pass(tmp_path, binary)
+
+    assert "MinerU 4.2 has another CLI" in str(e.value)
+    assert 'uv pip install "mineru[all]>=3.4,<4"' in str(e.value)
+    assert not (tmp_path / "pass.log").exists()  # no pass ran
+
+
+def test_a_pass_refuses_mineru_older_than_3_4(tmp_path, monkeypatch):
+    monkeypatch.setattr(merge_mod, "_VERSIONS", {})
+    with pytest.raises(merge_mod.UnsupportedMinerU, match="older than 3.4"):
+        _run_pass(tmp_path, _fake_mineru_bin(tmp_path, "mineru, version 2.6.4"))
+
+
+def test_a_cached_pass_needs_no_supported_mineru(tmp_path, monkeypatch):
+    # all passes done: re-running the merge after an upgrade to MinerU 4 still works
+    monkeypatch.setattr(merge_mod, "_VERSIONS", {})
+    outdir = tmp_path / "pass"
+    (outdir / "book" / "txt").mkdir(parents=True)
+    (outdir / "book" / "txt" / "book_content_list.json").write_text("[]")
+    (outdir / ".done").write_text("ok\n")
+
+    blocks, _ = _run_pass(
+        tmp_path, _fake_mineru_bin(tmp_path, "MinerU version: 4.2.1"), str(outdir)
+    )
+
+    assert blocks == []
+
+
+def test_a_mineru_4_with_no_readable_version_is_caught_by_its_error(tmp_path, monkeypatch):
+    # the safety net: no version line, but a 4.x `mineru` rejects `-p`
+    monkeypatch.setattr(merge_mod, "_VERSIONS", {})
+    binary = _fake_mineru_bin(tmp_path, "", on_run="echo 'Error: No such option: -p' >&2; exit 2")
+
+    with pytest.raises(merge_mod.UnsupportedMinerU, match="rejects the MinerU 3.x options"):
+        _run_pass(tmp_path, binary)
+
+
+def test_a_mineru_3_pass_runs(tmp_path, monkeypatch):
+    monkeypatch.setattr(merge_mod, "_VERSIONS", {})
+    # write an empty content_list under the `-o` directory, wherever `-o` sits in the argv
+    run = (
+        'while [ $# -gt 0 ]; do if [ "$1" = -o ]; then out=$2; fi; shift; done; '
+        'mkdir -p "$out/book/txt"; echo "[]" > "$out/book/txt/book_content_list.json"'
+    )
+    binary = _fake_mineru_bin(tmp_path, "mineru, version 3.4.2", run)
+    blocks, _ = _run_pass(tmp_path, binary)
+    assert blocks == []
+    assert merge_mod._VERSIONS[merge_mod._probe_key(binary)] == (3, 4)
+
+
+def _refuse(*a, **k):
+    raise merge_mod.UnsupportedMinerU("message for a direct caller", "MinerU 4.2 has another CLI")
+
+
+def test_convert_book_reports_an_unsupported_mineru_with_the_exact_fix(tmp_path, monkeypatch):
+    pdf = _pdf(tmp_path, pages=2)
+    monkeypatch.setattr(merge_mod, "run_pipeline_chunks", _refuse)
+
+    ok, log = convert_book(pdf, "slug", str(tmp_path / "out"), cfg=_cfg(tmp_path))
+
+    assert ok is False
+    assert (
+        'FAILED: /bin/true: MinerU 4.2 has another CLI. Install: uv pip install "mineru[all]' in log
+    )
+    assert "mineru[core]" not in log
+
+
+def test_a_hybrid_offload_client_is_told_to_install_mineru_core(tmp_path, monkeypatch):
+    pdf = _pdf(tmp_path, pages=2)
+    monkeypatch.setattr(merge_mod, "run_pipeline_chunks", _refuse)
+    cfg = _cfg(tmp_path, hybrid_server_url="http://gpu:30000")
+
+    ok, log = convert_book(pdf, "slug", str(tmp_path / "out"), cfg=cfg)
+
+    assert ok is False and 'uv pip install "mineru[core]>=3.4,<4"' in log
+
+
+def test_every_mineru_subprocess_has_telemetry_off():
+    assert merge_mod._mineru_env()["MINERU_TELEMETRY_DISABLED"] == "1"
+
+
+def test_require_supported_mineru_lets_an_unreadable_binary_through(tmp_path, monkeypatch):
+    # no version (or no binary): let through, and the pass then reads MinerU's own error. The
+    # result is cached too, so the probe does not run again before each pass.
+    monkeypatch.setattr(merge_mod, "_VERSIONS", {})
+    merge_mod.require_supported_mineru("/bin/true", dict(os.environ), str(tmp_path))
+    merge_mod.require_supported_mineru(str(tmp_path / "absent"), dict(os.environ), str(tmp_path))
+    assert list(merge_mod._VERSIONS.values()) == [None, None]
+
+
+def test_a_reinstalled_binary_is_probed_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(merge_mod, "_VERSIONS", {})
+    binary = _fake_mineru_bin(tmp_path, "MinerU version: 4.2.1")
+    with pytest.raises(merge_mod.UnsupportedMinerU):
+        merge_mod.require_supported_mineru(binary, dict(os.environ), str(tmp_path))
+    _fake_mineru_bin(tmp_path, "mineru, version 3.4.2")  # the user installs the fix in place
+    os.utime(binary, ns=(1, 1))  # a new mtime, as a reinstall gives
+    merge_mod.require_supported_mineru(binary, dict(os.environ), str(tmp_path))

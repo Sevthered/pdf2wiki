@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`convert` and `doctor` refuse a MinerU version that pdf2wiki cannot drive.** MinerU 4.0
+  replaced the 3.x CLI with subcommands (`mineru parse`) and replaced the backends with quality
+  tiers. A 4.x `mineru` rejects the `-p` and `-b` options that pdf2wiki uses, so every pass failed.
+  A MinerU older than 3.4 has no `hybrid-engine` backend. Now `convert` stops before a pass that
+  must run, and `doctor` reports a failure, or a warning when another convert path is set. Both show the
+  install command: `mineru[all]>=3.4,<4`, or `mineru[core]>=3.4,<4` on a client that offloads the
+  hybrid pass. The install documents now ask for MinerU 3.4 or a later 3.x.
+- **pdf2wiki turns off MinerU telemetry.** MinerU 4 has usage telemetry, and it is on by default.
+  pdf2wiki now sets `MINERU_TELEMETRY_DISABLED=1`, the variable that MinerU 4 reads, for each MinerU
+  subprocess that it starts.
+
 ## [0.4.2] - 2026-11-13
 
 ### Fixed

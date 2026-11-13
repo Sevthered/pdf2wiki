@@ -32,6 +32,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from .. import bookmeta
+from . import mineru_cli
 from .block import Block
 
 # ---------- environment ----------
@@ -39,6 +40,7 @@ from .block import Block
 
 def _mineru_env() -> dict[str, str]:
     env = dict(os.environ, MINERU_MODEL_SOURCE=os.environ.get("MINERU_MODEL_SOURCE", "huggingface"))
+    env.update(mineru_cli.TELEMETRY_OFF)
     # WSL2: GPU userspace libs live here and must be visible to non-interactive subprocesses
     if os.path.isdir("/usr/lib/wsl/lib"):
         env["PATH"] = "/usr/lib/wsl/lib:" + env.get("PATH", "")
@@ -171,6 +173,53 @@ class PassFailed(RuntimeError):
     pass
 
 
+class UnsupportedMinerU(RuntimeError):
+    """`why` is the reason alone, so `convert_book` can name the exact install command."""
+
+    def __init__(self, message: str, why: str) -> None:
+        super().__init__(message)
+        self.why = why
+
+
+# (path, mtime) -> (major, minor), or None when the binary gave no version. The mtime makes a
+# reinstall in the same venv count as a new binary.
+_VERSIONS: dict[tuple[str, int], tuple[int, int] | None] = {}
+
+
+def _probe_key(mineru_bin: str) -> tuple[str, int]:
+    try:
+        return mineru_bin, os.stat(mineru_bin).st_mtime_ns
+    except OSError:
+        return mineru_bin, -1
+
+
+def require_supported_mineru(mineru_bin: str, env: dict[str, str], clean_cwd: str) -> None:
+    """Refuse a MinerU that pdf2wiki cannot drive (`mineru_cli.unsupported`), with the fix.
+    `run_mineru` calls it before a pass that is not cached, so a book whose passes are all done
+    needs no MinerU. The version is read once per binary. A binary that gives no version (or a
+    probe that times out) is let through: the pass then fails, and `run_mineru` reads MinerU's own
+    error in its log."""
+    key = _probe_key(mineru_bin)
+    if key not in _VERSIONS:
+        try:
+            r = subprocess.run(  # noqa: S603 - list-form argv, no shell; binary from the config
+                [mineru_bin, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env,
+                cwd=clean_cwd,
+                check=False,
+            )
+            _VERSIONS[key] = mineru_cli.parse_version(f"{r.stdout}\n{r.stderr}")
+        except (OSError, subprocess.TimeoutExpired):
+            _VERSIONS[key] = None
+    v = _VERSIONS[key]
+    why = mineru_cli.unsupported(v) if v else None
+    if why:
+        raise UnsupportedMinerU(f"{mineru_bin}: {why}. Install: {mineru_cli.fix(None)}", why)
+
+
 def run_mineru(
     mineru_bin: str,
     pdf: str,
@@ -196,6 +245,7 @@ def run_mineru(
     done = f"{outdir}/.done"
     cl = glob.glob(f"{outdir}/*/*/*content_list.json")
     if not (os.path.exists(done) and cl):
+        require_supported_mineru(mineru_bin, env, clean_cwd)
         os.makedirs(outdir, exist_ok=True)
         # MinerU runs with cwd=clean_cwd (stdlib-shadow-safe), NOT pdf2wiki's cwd — so any relative path
         # handed to it resolves against the wrong directory and its output lands where our glob can't see
@@ -242,6 +292,15 @@ def run_mineru(
                     f"log: {outdir}.log — completed passes are cached; re-run to resume from here."
                 ) from e
             if rc != 0:
+                # click exits on the first unknown option, so the head of the log holds the error
+                with open(f"{outdir}.log", encoding="utf-8", errors="replace") as f:
+                    if mineru_cli.NO_3X_CLI in f.read(64 * 1024):
+                        why = "it rejects the MinerU 3.x options (MinerU 4 has another CLI)"
+                        raise UnsupportedMinerU(
+                            f"FAILED pass [{tag}]: {mineru_bin}: {why}. log: {outdir}.log. "
+                            f"Install: {mineru_cli.fix(None)}",
+                            why,
+                        )
                 raise PassFailed(
                     f"FAILED pass [{tag}] pages {a}-{b} (exit {rc}). log: {outdir}.log — "
                     f"completed passes are cached; fix root cause and re-run to resume from here."
@@ -916,6 +975,10 @@ def convert_book(
         say(f"final types: {dict(Counter(b['type'] for b in final))}")
         say(f"wrote {work}/{slug}.md ({len(md)} chars)")
         return True, "\n".join(lines)
+    except UnsupportedMinerU as e:
+        fix = mineru_cli.fix(bool(cfg.mineru.hybrid_server_url))
+        say(f"FAILED: {mineru_bin}: {e.why}. Install: {fix}")
+        return False, "\n".join(lines)
     except (PassFailed, CoverageError, FileNotFoundError) as e:
         say(f"FAILED: {e}")
         return False, "\n".join(lines)

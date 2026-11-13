@@ -784,6 +784,36 @@ def test_mermaid_arrow_inside_a_mixed_delimiter_label_is_not_an_edge():
     assert '  A["a --> b"]\n' in out
 
 
+# A label that `&quot;` opens closes at a `"` (#126) only at the end of its segment, as the VLM
+# writes it. The greedy match closed a pseudocode label at the last `"]` in its code, and left the
+# rest of the label outside it (advanced-algorithms-and-data-structures, a raw book). With text
+# after the `"]`, the label is unclosed, and the output is the 0.4.1 output. That is also true for
+# a mermaid tail, such as an edge text, a `;` or a second closer: measured on 25 raw books in
+# session 81, 19 of 21 such closes are at the end of the line or before an arrow, and none has a
+# mermaid tail.
+@pytest.mark.parametrize(
+    ("line", "fixed"),
+    [
+        ('B[&quot;f\\nx["e[0"]] ← b\\nmore text', "B[\"f<br>x('e(0')) ← b<br>more text\"]"),
+        ('B[&quot;"]]n', 'B["\'))n"]'),
+        ('B[&quot;if d["k"] == 0 then x["y"]] more', "B[\"if d('k') == 0 then x('y')) more\"]"),
+        ('B[&quot;f(x["e"])', "B[\"f(x('e'))\"]"),
+        ('A[&quot;x"] & B --> C', 'A["x\') & B"] --> C'),
+        # review round 4: the split at the arrow agrees with the repair (`QUOTED_LABEL`)
+        ('A[&quot;a --> b"] & C', 'A["a"] --> b"] & C'),
+        # review round 5: a mermaid tail also gives the 0.4.1 output
+        ('A[&quot;x"] -- yes --> B', 'A["x\') -- yes"] --> B'),
+        ('A[&quot;x"];', 'A["x\');"]'),
+        ('A[[&quot;a --> b"]]', "A[['a --> b\"]"),
+        # each segment alone: the close at the end of its segment stays
+        ('A[&quot;x"] --> B[&quot;y"] & C{z', 'A["x"] --> B["y\') & C(z"]'),
+    ],
+)
+def test_mermaid_quot_label_closes_at_a_quote_only_at_the_segment_end(line, fixed):
+    out, _ = mermaid_repair.repair(f"```mermaid\ngraph TD\n{line}\n```\n")
+    assert f"\n{fixed}\n" in out
+
+
 @pytest.mark.parametrize("line", ["A['x'] --> B", "A['x\"] --> B"])
 def test_mermaid_single_quoted_label_gets_one_closer(line):
     out, _ = mermaid_repair.repair(f"```mermaid\ngraph TD\n{line}\n```\n")

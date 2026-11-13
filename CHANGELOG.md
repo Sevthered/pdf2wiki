@@ -28,6 +28,11 @@ All notable changes to this project are documented here. The format is based on
     label text. Before, the repair cut the label at the arrow.
   - `&quot;` closes a label only when `&quot;` opened it. In `F["a {&quot;b&quot;}"]`, the
     `&quot;}` is label text.
+  - A label that `&quot;` opens can close at a `"`, such as `C[&quot;k"]`. This close is valid
+    only when the end of the line or an arrow comes after the closer. An arrow is `-->`, `---`,
+    `==>`, `===`, `-.->`, `-.-`, `--x` or `~~~`. Otherwise, the `"` is label text, such as
+    `children["s[0"]]` in a pseudocode label, and the output is the same as in 0.4.1. This is also
+    true for a `;`, an edge text such as `-- yes -->`, or a second closer such as `]]`.
   - A label that `'` opens, such as `A['x']` or `A['x"]`, becomes `A["x"]`. Before, it became
     `A["x')"]`.
   - Mermaid accepts a newline in a quoted label. The repair now keeps a label that continues on

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-13
+
 ### Fixed
 - **phase 5 replaces a wrong language tag that MinerU gave, when another language verifies.**
   Before, `lang_retag` always kept a specific MinerU tag. MinerU tags Go, Java, C++, JavaScript and
@@ -1112,7 +1114,8 @@ Six MEDIUM findings from the same scan:
 - Full documentation set under `docs/` (Diátaxis: tutorials, how-to, reference, explanation) plus an
   arc42/C4 architecture overview.
 
-[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Sevthered/pdf2wiki/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Sevthered/pdf2wiki/compare/v0.2.11...v0.3.0

@@ -212,6 +212,26 @@ def test_mineru_version_ok_and_warn(monkeypatch):
     assert doctor.check_mineru_version("m").status == WARN
 
 
+def test_mineru_4_fails_with_the_fix(monkeypatch):
+    out = "MinerU version: 4.2.1\nPython version: 3.12.3\n"
+    seen = {}
+
+    def run(cmd, timeout, env=None, cwd=None):
+        seen["env"] = env
+        return 0, out, ""
+
+    monkeypatch.setattr(doctor, "_run", run)
+    c = doctor.check_mineru_version("m")
+    assert c.status == doctor.FAIL
+    assert c.fix == 'uv pip install "mineru[all]>=3.4,<4"'
+    assert seen["env"]["MINERU_TELEMETRY_DISABLED"] == "1"
+    # as for a missing binary: a warning when another convert path is set
+    assert doctor.check_mineru_version("m", other_path=True).status == WARN
+    assert (
+        doctor.check_mineru_version("m", hybrid=True).fix == 'uv pip install "mineru[core]>=3.4,<4"'
+    )
+
+
 def test_torch_cuda_ok(monkeypatch, tmp_path):
     m = _fake_mineru(tmp_path)
     seen = {}

@@ -25,7 +25,7 @@ a GPU host over SSH. The two are mutually exclusive. If you pass both, the comma
 ## Requirements
 
 - **Client:** MinerU on `PATH` for the pipeline pass — the lightweight extra is enough, no local vLLM:
-  `uv pip install "mineru[core]"`. Force CPU for the pipeline pass on a GPU-less (or small-GPU) box:
+  `uv pip install "mineru[core]>=3.4,<4"`. Force CPU for the pipeline pass on a GPU-less (or small-GPU) box:
   `export MINERU_DEVICE_MODE=cpu`.
 - **Server (BYO):** any OpenAI-compatible endpoint that serves a MinerU2.5 VLM. pdf2wiki owns no server
   lifecycle — you start it (see below).
@@ -34,7 +34,8 @@ a GPU host over SSH. The two are mutually exclusive. If you pass both, the comma
 
 ## Start a server (BYO)
 
-On the GPU host, MinerU ships an OpenAI-compatible server:
+On the GPU host, MinerU 3.x ships an OpenAI-compatible server. Install the same MinerU line as the
+client, `uv pip install "mineru[all]>=3.4,<4"`, because MinerU 4 has other tools:
 
 ```bash
 mineru-openai-server            # serves MinerU2.5 on 0.0.0.0:30000 (vLLM under the hood)

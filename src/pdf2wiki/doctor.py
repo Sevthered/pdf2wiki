@@ -245,8 +245,13 @@ def check_mineru_binary(cfg: Any, other_path: bool) -> tuple[Check, str | None]:
     return Check("local convert", "mineru binary", OK, path), path
 
 
-def check_mineru_version(mineru: str) -> Check:
-    rc, out, err = _run([mineru, "--version"], 60)
+def check_mineru_version(mineru: str, other_path: bool = False, hybrid: bool = False) -> Check:
+    from .convert import mineru_cli
+    from .convert.merge import _mineru_env
+
+    # the env and the empty cwd that MinerU gets in `convert` (telemetry off, no stdlib shadow)
+    with tempfile.TemporaryDirectory() as clean:
+        rc, out, err = _run([mineru, "--version"], 120, env=_mineru_env(), cwd=clean)
     line = _first_line(out) or _first_line(err)
     if rc != 0:
         return Check(
@@ -256,7 +261,18 @@ def check_mineru_version(mineru: str) -> Check:
             f"`mineru --version` failed (exit {rc}): {line}",
             "run `mineru --version` by hand and read the whole error",
         )
-    return Check("local convert", "mineru version", OK, line)
+    found = mineru_cli.read_version(f"{out}\n{err}")
+    why = mineru_cli.unsupported(found[0]) if found else None
+    if found and why:
+        # as for a missing binary: only a warning when another convert path is set
+        return Check(
+            "local convert",
+            "mineru version",
+            WARN if other_path else FAIL,
+            f"{found[1]}: {why}",
+            mineru_cli.fix(hybrid),
+        )
+    return Check("local convert", "mineru version", OK, found[1] if found else line)
 
 
 _SHELLS = {"sh", "bash", "dash", "zsh"}
@@ -868,7 +884,11 @@ def run_checks(report: Any, *, remote: str | None = None) -> list[Check]:
             binary, mineru = res
             checks.append(binary)
         if mineru:
-            add("local convert", "mineru version", lambda: check_mineru_version(str(mineru)))
+            add(
+                "local convert",
+                "mineru version",
+                lambda: check_mineru_version(str(mineru), other, hybrid),
+            )
             if on_linux:
                 add("local convert", "mineru torch", lambda: check_torch(cfg, str(mineru), other))
     if on_linux:

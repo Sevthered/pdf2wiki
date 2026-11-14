@@ -45,12 +45,16 @@ Skip domains with no signal OR no vault coverage. State detected scope to the us
 ## Phase 2 — Checklist: extract review criteria from the vault
 
 For each detected domain, spawn **one `knowledge-researcher` agent** (parallel, single message) asking:
-*"Extract a concrete review checklist for <area> from the vault: what the pages say a correct/
-production-grade implementation must have, common mistakes, anti-patterns, security requirements. Return
-checklist items each tied to [[Page-Name]]."*
+*"Start from `wiki/domains/<domain>.md` (this is a checklist request: skip the coverage gate). Extract a
+concrete review checklist for <area> from the vault: what the pages say a correct/production-grade
+implementation must have, common mistakes, anti-patterns, security requirements. Return checklist items
+each tied to [[Page-Name]]."*
 
 **Do NOT hardcode which pages to anchor on** — the researcher discovers the relevant pages from the vault's
 current contents. (Anchor pages differ per vault; a fresh vault has entirely different page names.)
+
+A domain that gets **no checklist item with a `[[Page-Name]]`** has no checklist: list it under **Not
+covered by the vault** and do not fan out a reviewer for it.
 
 ## Phase 3 — Review: fan out per dimension
 
@@ -68,9 +72,10 @@ coverage."*
 ## Phase 4 — Verify and rank
 
 - **Drop any finding without both** a `file:line` anchor and a `[[Page-Name]]` citation.
-- **Era filter**: book content has a publication era. Kill findings that only reflect outdated practice
-  (deprecated APIs, old versions) unless the underlying principle still holds — when in doubt, verify
-  against current official docs before reporting.
+- **Era filter**: book content has a publication era. Read it from the `year` field in the frontmatter
+  of the book's chapters or index page, or from `wiki/sources/<book>.md`. Kill findings that only
+  reflect outdated practice (deprecated APIs, old versions) unless the underlying principle still
+  holds — when in doubt, verify against current official docs before reporting.
 - Respect vault trust markers: never base a finding on a `[!warning]`/`[!gap]`/`[!contradiction]`-flagged
   claim without saying so.
 - Dedup across agents; rank: 🔴 critical (security/correctness/data-loss) → 🟠 major (resilience/

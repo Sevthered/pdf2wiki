@@ -33,16 +33,15 @@ What does the wiki say about designing a retry/backoff policy for this service?
 ```
 
 The `knowledge-query` skill triggers on phrasing like "what does the wiki say" (or invoke it
-explicitly with `/knowledge-query`). It first reads the vault's **actual** coverage — `wiki/index.md`
-and `wiki/domains/` — to check the topic is covered, then navigates
-`hot.md → index.md → domain → concept pages` and stops as soon as it has enough.
+explicitly with `/knowledge-query`). First, it uses a few greps over `wiki/concepts/` and
+`wiki/entities/` to make sure that the vault covers the topic. Then it reads the matching pages in
+ranked order. It stops when it has enough.
 
 ## Step 3 — Read the answer
 
 The answer comes back grounded in specific pages, each cited as `[[Page-Name]]` — the mechanisms,
 parameter names, defaults, and trade-offs the pages actually record, not a general-knowledge summary.
-If the topic falls outside what `wiki/domains/` covers, the skill says so plainly instead of forcing a
-citation.
+If no page covers the topic, the skill says so plainly instead of forcing a citation.
 
 Watch for **trust markers** in the answer. Pages carry honesty callouts — `[!warning]`, `[!gap]`,
 `[!contradiction]`, `[!bug]` — and the skill carries them through rather than presenting flagged

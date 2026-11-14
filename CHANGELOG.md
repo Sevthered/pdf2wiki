@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **llm-wiki plugin 0.2.0.** This is a change to the plugin assets only. The plugin comes from `main`
+  through `/plugin marketplace update pdf2wiki`, not through a PyPI release.
+  - `knowledge-query` and `knowledge-researcher` run a **coverage check** before they read a page.
+    The new script `plugin/scripts/vault_coverage.py` (standard library only) does the count. For each
+    term, a Python regular expression, it counts the files in `wiki/concepts/` and `wiki/entities/`
+    (subfolders too) whose name, heading or text has the term, without regard to case. A heading is
+    `#` to `######` outside the frontmatter and the code fences, so a `#` comment in code does not
+    count. The script lists the hit files (15 at most per list), so the researcher gets its candidate
+    list with the counts. A term with no hit is widened one time before the verdict "not covered".
+    If no term has a name or heading hit, and no read of a page with a text hit answers, the topic is
+    "not covered", and the researcher returns at once. The researcher report now starts with a
+    **Coverage** line, and the researcher always returns a report. The skill gives the script output
+    to the researcher, so the check runs once.
+    `knowledge-review` gives no reviewer to a domain that gets no checklist item.
+  - `wiki/index.md` and `wiki/domains/` are now read only for a question about the scope of the vault.
+  - The plugin uses the book folders that pdf2wiki writes. It reads the era of a book from the `year`
+    field in the frontmatter (0.3.0 and later). It finds a cited chapter through the table of
+    `<book-slug>-index.md` (0.3.0 and later), because the `NN` file prefix counts files, not chapters.
+    It follows the cross-reference links of `phase5 --links` and `pdf2wiki link` (0.4.0 and later).
+  - The llm-wiki documents no longer give the old reading order that starts at `hot.md`. The
+    reference no longer gives "allowed tools" that the skills do not set.
+
 ## [0.4.3] - 2026-11-13
 
 ### Fixed

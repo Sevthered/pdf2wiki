@@ -26,10 +26,12 @@ The skill runs in phases and tells you the detected scope before it does the exp
    are skipped.
 2. **Checklist** — for each detected domain, a `knowledge-researcher` agent extracts a concrete review
    checklist from the vault pages (must-haves, common mistakes, anti-patterns), each item tied to a
-   `[[Page-Name]]`.
+   `[[Page-Name]]`. It starts from the domain page. A domain that gets no checklist item gets no
+   reviewer, and the report lists it as not covered.
 3. **Review** — parallel read-only agents compare your code against each checklist item.
 4. **Verify and rank** — findings without both a `file:line` and a `[[Page-Name]]` are dropped;
-   outdated-practice findings are filtered against the book's era; results are deduped and severity-ranked.
+   outdated-practice findings are filtered against the book's era (the `year` field). The results
+   are deduped and severity-ranked.
 
 Because coverage is discovered per vault, the checklists are only as broad as your vault — a project
 area the vault doesn't cover is reported as *not covered*, not silently passed.

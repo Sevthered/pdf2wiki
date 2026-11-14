@@ -1,6 +1,6 @@
 # llm-wiki documentation
 
-llm-wiki is a standalone Claude Code plugin (v0.1, MIT) that lets Claude **consult** and **review your
+llm-wiki is a standalone Claude Code plugin (MIT) that lets Claude **consult** and **review your
 code against** a plain-Markdown Obsidian knowledge vault — the "LLM Wiki" pattern: a knowledge base an
 LLM reads just-in-time, an alternative to RAG/embeddings.
 
@@ -9,7 +9,7 @@ It works with **any** vault laid out as `wiki/{concepts,entities,sources,domains
 domains or page names is hardcoded. It pairs with the [pdf2wiki](../README.md) converter, which builds
 such a vault from PDFs, but does not require it.
 
-v0.1 ships the **query side only** — two skills and one agent. Ingest tooling is a later release.
+The plugin ships the **query side only** — two skills and one agent. Ingest tooling is a later release.
 
 The documentation is organized by what you are trying to do.
 

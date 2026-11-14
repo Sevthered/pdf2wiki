@@ -10,21 +10,23 @@ vector store.
 ```
 <vault>/wiki/{concepts,entities,sources,domains}/*.md
 <vault>/wiki/{index,overview,hot,log}.md
-<vault>/<domain>/<book-slug>/NN-chapter.md      # optional raw source chapters
+<vault>/<domain>/<book-slug>/NN-<title>.md      # optional raw source chapters, NN = file order
 <vault>/<domain>/<book-slug>/<book-slug>-index.md  # optional book index page (written by pdf2wiki phase5)
 ```
 
-Coverage is discovered **from the vault itself** (`wiki/domains/`, `wiki/index.md`) — nothing about your
-domains or page names is hardcoded. The companion [pdf2wiki](https://github.com/Sevthered/pdf2wiki)
+Coverage is discovered **from the vault itself** (a grep over the pages, plus `wiki/domains/` and
+`wiki/index.md` for scope) — nothing about your domains or page names is hardcoded. The companion
+[pdf2wiki](https://github.com/Sevthered/pdf2wiki)
 converter builds a vault in this shape from PDFs, but you can build one by hand or with any tool.
 
-## What's in it (v0.1 — query side)
+## What's in it (v0.2 — query side)
 
 | Asset | Type | Use |
 |---|---|---|
 | `knowledge-query` | skill | Consult the vault before planning/designing; cite `[[Page-Name]]`. |
 | `knowledge-review` | skill | Review a project against what the vault says; severity-ranked findings, each citing `file:line` + `[[Page-Name]]`. |
 | `knowledge-researcher` | agent | Read-only multi-page lookups that stay out of your main context. |
+| `scripts/vault_coverage.py` | script | Counts the pages that name a topic, so the skill and the agent know if the vault covers it before they read a page. Python 3, standard library only. |
 
 _Ingest-side tooling (build/extend a vault) ships in a later release._
 
@@ -52,8 +54,9 @@ The plugin never hardcodes a path. It resolves the vault root in this order:
 ## Use
 
 - Planning in a domain your vault covers → invoke `knowledge-query` (or just ask; it triggers on
-  "what does the wiki say…"). It reads `hot.md → index.md → domain → concept pages` and answers with
-  `[[Page-Name]]` citations.
+  "what does the wiki say…"). It first checks with a few greps that the vault covers the topic. Then
+  it finds the concept pages by grep, reads them in ranked order, and answers with `[[Page-Name]]`
+  citations. It reads `hot.md` only for a question about recent vault work.
 - `/knowledge-review [path]` → detects which of the vault's domains the project touches, builds checklists
   from the pages, fans out review agents, and reports ranked findings.
 

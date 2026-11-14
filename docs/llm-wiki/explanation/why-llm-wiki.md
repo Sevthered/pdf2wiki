@@ -37,13 +37,14 @@ Plain Markdown read by navigation gives you what embeddings don't:
   files and the tools Claude already has (Read, Grep, Glob).
 
 The cost is that the model must *find* the page rather than have it retrieved. The vault's shape pays
-for that: a shallow-to-deep navigation order (`hot.md → index.md → domain → concept pages`) and unique
-filenames that a glob can hit directly.
+for that: unique filenames that a glob can hit directly, a cheap grep that proves coverage before any
+page is read, and a rule that stops reading when the ranked pages go dry.
 
 ## Why coverage is discovered, not hardcoded
 
 The plugin never carries a built-in list of domains or page names. On every consultation or review it
-reads the vault's **own** `wiki/index.md` and `wiki/domains/` to learn what is covered *now*. This is
+reads the vault's **own** files to learn what is covered *now*: a grep over the concept and entity pages
+for the topic, and `wiki/index.md` and `wiki/domains/` for the scope of the vault. This is
 deliberate:
 
 - A vault grows as sources are added; a hardcoded list would go stale the moment it does.
@@ -55,7 +56,7 @@ deliberate:
 
 ## Where it fits
 
-llm-wiki reads a vault; it does not build one. v0.1 is query side only — ingest tooling to build and
+llm-wiki reads a vault. It does not build one. It is query side only — ingest tooling to build and
 extend a vault is a later release. To create a vault in the shape the plugin expects, the companion
 [pdf2wiki](../../README.md) converter distills PDF books into it, or you can author pages by hand
 following the [vault layout](../reference/vault-layout.md).
